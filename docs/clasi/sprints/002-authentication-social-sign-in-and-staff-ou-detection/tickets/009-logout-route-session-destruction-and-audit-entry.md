@@ -1,11 +1,15 @@
 ---
-id: "009"
-title: "Logout route — session destruction and audit entry"
-status: todo
-use-cases: [SUC-001, SUC-002, SUC-003]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: 009
+title: "Logout route \u2014 session destruction and audit entry"
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # T009: Logout route — session destruction and audit entry
@@ -23,17 +27,17 @@ mounts `routes/auth.ts`).
 
 ## Acceptance Criteria
 
-- [ ] `POST /api/auth/logout` is implemented in `routes/auth.ts`.
-- [ ] `passport.logout()` is called to clear the Passport user.
-- [ ] `req.session.destroy()` is called; the session cookie is cleared.
-- [ ] After successful logout, the response redirects to `/` (or returns 200
+- [x] `POST /api/auth/logout` is implemented in `routes/auth.ts`.
+- [x] `passport.logout()` is called to clear the Passport user.
+- [x] `req.session.destroy()` is called; the session cookie is cleared.
+- [x] After successful logout, the response redirects to `/` (or returns 200
       for API clients with `{ success: true }`).
-- [ ] Logout is idempotent: calling it when already logged out returns 200
+- [x] Logout is idempotent: calling it when already logged out returns 200
       (not 401).
-- [ ] A best-effort `logout` audit entry is recorded if a `userId` was in the
+- [x] A best-effort `logout` audit entry is recorded if a `userId` was in the
       session before destruction; failure to write the audit entry does not
       block the logout.
-- [ ] All existing tests pass.
+- [x] All existing tests pass.
 
 ## Implementation Plan
 

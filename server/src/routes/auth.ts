@@ -11,6 +11,11 @@ import passport from 'passport';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { StaffOULookupError } from '../services/auth/google-admin-directory.client.js';
+import { AuditService } from '../services/audit.service.js';
+
+// Module-level AuditService instance for the logout route.
+// Shared across requests; stateless and safe to reuse.
+const auditService = new AuditService();
 
 export const authRouter = Router();
 
@@ -113,11 +118,49 @@ authRouter.get('/auth/me', async (req: Request, res: Response) => {
 });
 
 // Logout
-authRouter.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {
-  req.logout((err) => {
-    if (err) return next(err);
-    req.session.destroy((err) => {
-      if (err) return next(err);
+authRouter.post('/auth/logout', (req: Request, res: Response, _next: NextFunction) => {
+  // Capture userId BEFORE destroying the session so we can write the audit event.
+  const userId: number | undefined = (req.session as any).userId ?? req.user?.id;
+
+  // Best-effort audit write: fire-and-forget after session destruction.
+  // Does not block logout regardless of success or failure.
+  const writeLogoutAudit = (resolvedUserId: number | undefined): void => {
+    if (!resolvedUserId) return;
+    auditService
+      .record(prisma, {
+        actor_user_id: resolvedUserId,
+        action: 'auth_logout',
+        target_user_id: resolvedUserId,
+        target_entity_type: 'User',
+        target_entity_id: String(resolvedUserId),
+      })
+      .catch((err) => {
+        // Best-effort: log but do not surface to the client.
+        console.error('[auth] Failed to write auth_logout audit event', err);
+      });
+  };
+
+  req.logout((logoutErr) => {
+    if (logoutErr) {
+      // Even if passport.logout fails, attempt session destruction.
+      console.error('[auth] passport.logout error', logoutErr);
+    }
+
+    // If no session exists, respond 200 immediately (idempotent logout).
+    if (!req.session) {
+      writeLogoutAudit(userId);
+      res.clearCookie('connect.sid');
+      return res.json({ success: true });
+    }
+
+    req.session.destroy((destroyErr) => {
+      if (destroyErr) {
+        // Session destruction failed — still return success to the client
+        // (the passport.logout above already cleared the passport user).
+        console.error('[auth] session.destroy error', destroyErr);
+      }
+      writeLogoutAudit(userId);
+      res.clearCookie('connect.sid');
       res.json({ success: true });
     });
   });
