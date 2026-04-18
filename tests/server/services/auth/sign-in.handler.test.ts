@@ -200,6 +200,43 @@ describe('signInHandler — returning Google user', () => {
 
     expect(await countAuditEvents()).toBe(0);
   });
+
+  it('does not call the merge-scan stub for a returning user', async () => {
+    const existingUser = await makeUser({
+      primary_email: 'dave@example.com',
+      display_name: 'Dave',
+      role: 'student',
+      created_via: 'social_login',
+    });
+    await makeLogin(existingUser, {
+      provider: 'google',
+      provider_user_id: 'google-uid-dave',
+      provider_email: 'dave@example.com',
+    });
+
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-dave',
+        providerEmail: 'dave@example.com',
+        displayName: 'Dave',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+    );
+
+    const mergeLogCalled = consoleSpy.mock.calls.some((args) =>
+      args.some(
+        (arg) => typeof arg === 'string' && arg.includes('merge-scan deferred to Sprint 007'),
+      ),
+    );
+    expect(mergeLogCalled).toBe(false);
+
+    consoleSpy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------

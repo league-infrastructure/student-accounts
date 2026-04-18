@@ -1,7 +1,7 @@
 /**
  * Merge-scan stub — placeholder for Sprint 007 implementation.
  *
- * This module exports a single `scanNewUser` function that is called after
+ * This module exports a single `mergeScan` function that is called after
  * every new User creation in the sign-in handler. Sprint 007 will replace
  * this implementation wholesale at the same import path — the call site in
  * sign-in.handler.ts remains unchanged.
@@ -18,7 +18,7 @@ import type { User } from '../../generated/prisma/client.js';
  *
  * @param user - The newly created User record.
  */
-export async function scanNewUser(user: User): Promise<void> {
+export async function mergeScan(user: User): Promise<void> {
   console.log(
     `[merge-scan] merge-scan deferred to Sprint 007 — no-op call site (userId=${user.id})`,
   );
