@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// Runtime configuration store for admin-managed credentials.
+model Config {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model User {
+  id          Int       @id @default(autoincrement())
+  email       String    @unique
+  displayName String?
+  role        UserRole  @default(USER)
+  avatarUrl   String?
+  provider    String?
+  providerId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  providers   UserProvider[]
+
+  @@unique([provider, providerId])
+}
+
+model UserProvider {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  provider   String
+  providerId String
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+}
+
+model ScheduledJob {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  frequency String    // 'daily', 'weekly', 'hourly'
+  enabled   Boolean   @default(true)
+  lastRun   DateTime?
+  nextRun   DateTime?
+  lastError String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Counter {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+// Express session store (PrismaSessionStore).
+model Session {
+  sid    String   @id
+  sess   Json
+  expire DateTime
+
+  @@index([expire])
+  @@map("session")
+}

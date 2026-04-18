@@ -1,0 +1,5 @@
+# Template Marker
+#
+# This file indicates the project was created from the docker-node-template.
+# The install script deletes it on first run to clear template development
+# history from docs/clasi/. Do not recreate this file manually.

@@ -1,0 +1,16 @@
+app_name: docker-nodeapp
+app_name_source: package.json name
+container_template: '{app}-{env}-pg'
+database_template: '{app}_{env}'
+deployments:
+  dev:
+    compose_file: docker/docker-compose.yml
+    docker_context: swarm1
+  prod:
+    compose_file: docker/docker-compose.prod.yml
+    docker_context: ''
+    hostname: ''
+  test:
+    compose_file: docker/docker-compose.yml
+    docker_context: swarm1
+notes: []

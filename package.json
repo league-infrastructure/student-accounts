@@ -1,0 +1,13 @@
+{
+  "name": "docker-nodeapp",
+  "version": "0.20260417.1",
+  "private": true,
+  "scripts": {
+    "dev": "./scripts/dev.sh",
+    "test:server": "cd server && npx vitest run",
+    "test:client": "cd client && npx vitest run"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

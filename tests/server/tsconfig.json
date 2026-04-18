@@ -1,0 +1,17 @@
+{
+  "extends": "../../server/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "noEmit": true,
+    "typeRoots": ["../../server/node_modules/@types"],
+    "types": ["supertest", "node"]
+  },
+  "include": [
+    "../../server/src/**/*",
+    "./**/*"
+  ],
+  "exclude": [
+    "../../server/src/index.ts",
+    "../../server/src/generated/**/*"
+  ]
+}

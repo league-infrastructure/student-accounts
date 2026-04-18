@@ -1,0 +1,58 @@
+# Caddy reverse proxy stack for Docker droplets.
+#
+# Uses caddy-docker-proxy: Caddy auto-discovers services on the "caddy"
+# network by reading their Docker labels. No Caddyfile needed.
+#
+# The whoami and hello services are smoke tests — remove them once
+# you've confirmed Caddy and DNS are working.
+#
+# Usage (on the server):
+#   docker compose -f /opt/caddy-compose.yml up -d
+#
+# Managed by: digital-ocean/setup-server.sh
+
+services:
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:ci-alpine
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      - CADDY_INGRESS_NETWORKS=caddy
+    networks:
+      - caddy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - caddy_data:/data
+      - caddy_config:/config
+    labels:
+      caddy.email: it@jointheleague.org
+
+  # --- Smoke-test services (safe to remove after verifying) ---
+
+  whoami:
+    image: traefik/whoami
+    restart: unless-stopped
+    networks:
+      - caddy
+    labels:
+      caddy: whoami.${APPS_DOMAIN:-apps.example.com}
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+  hello:
+    image: crccheck/hello-world
+    restart: unless-stopped
+    networks:
+      - caddy
+    labels:
+      caddy: hello.${APPS_DOMAIN:-apps.example.com}
+      caddy.reverse_proxy: "{{upstreams 8000}}"
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+
+networks:
+  caddy:
+    external: true

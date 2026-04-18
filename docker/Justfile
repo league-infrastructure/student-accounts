@@ -1,0 +1,44 @@
+# docker-nodeapp — Docker deployment recipes
+
+set dotenv-load
+
+# Target environment (dev, test, prod)
+ENV := env("DEPLOY_ENV", "dev")
+
+# Docker context for target environment
+CTX := "default"
+
+# Target platform for cross-architecture builds (e.g., linux/amd64)
+PLATFORM := env("DOCKER_PLATFORM", "")
+
+# Build the app image
+build:
+    {{ if PLATFORM != "" { "DOCKER_DEFAULT_PLATFORM=" + PLATFORM + " " } else { "" } }}DOCKER_CONTEXT={{CTX}} docker compose -f docker/docker-compose.yml build
+
+# Start all services
+up:
+    DOCKER_CONTEXT={{CTX}} docker compose -f docker/docker-compose.yml up -d
+
+# Stop all services
+down:
+    DOCKER_CONTEXT={{CTX}} docker compose -f docker/docker-compose.yml down
+
+# Stop and remove volumes (destructive)
+down-with-data:
+    DOCKER_CONTEXT={{CTX}} docker compose -f docker/docker-compose.yml down -v
+
+# View logs
+logs *ARGS:
+    DOCKER_CONTEXT={{CTX}} docker compose -f docker/docker-compose.yml logs {ARGS}
+
+# Rebuild and restart
+restart: build up
+
+# Deploy via context (build + start on target environment)
+deploy: build up
+
+# Deploy via SSH transfer (build locally, send to remote, start)
+deploy-transfer HOST:
+    {{ if PLATFORM != "" { "DOCKER_DEFAULT_PLATFORM=" + PLATFORM + " " } else { "" } }}docker compose -f docker/docker-compose.yml build
+    docker save $(docker compose -f docker/docker-compose.yml config --images) | ssh {{HOST}} docker load
+    DOCKER_CONTEXT={{CTX}} docker compose -f docker/docker-compose.yml up -d

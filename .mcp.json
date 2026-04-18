@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "clasi": {
+      "command": "clasi",
+      "args": [
+        "mcp"
+      ]
+    },
+    "browsermcp": {
+      "command": "npx",
+      "args": [
+        "@browsermcp/mcp@latest"
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "Docker Node App",
+  // Pre-built image from .devcontainer/Dockerfile via .github/workflows/devcontainer-image.yml
+  // To build locally instead, replace "image" with:
+  //   "build": { "dockerfile": "Dockerfile" },
+  "image": "ghcr.io/league-examples/docker-node-template/devcontainer:latest",
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": true,
+      "azureDnsAutoDetection": true,
+      "installDockerBuildx": true,
+      "version": "latest",
+      "dockerDashComposeVersion": "v2"
+    }
+  },
+
+  "postCreateCommand": ".devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Prisma.prisma",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-playwright.playwright"
+      ]
+    }
+  },
+
+  "forwardPorts": [3000, 5173]
+}

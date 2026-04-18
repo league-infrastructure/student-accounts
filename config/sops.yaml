@@ -1,0 +1,7 @@
+# SOPS encryption policy for config/*/secrets.env files
+# See: https://github.com/league-infrastructure/league-infrastructure/wiki/Repository-Secrets-with-SOPS---age
+creation_rules:
+  - path_regex: "[^/]+/secrets\\.env$"
+    age: >-
+      age1v3f2rncavwjzsvlhdn6v4wxkfsm2da8sl5snl5wa3mw7zqlvhyyqmx8q0d,
+      age1h02a69gmu8hlhv4rz4u5vvqzuldk82zsgryye4ql6jq3glpwpugsu3qmvd

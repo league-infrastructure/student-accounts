@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__clasi__*",
+      "Bash(clasi hook:*)",
+      "Bash(rundbat --help)",
+      "Bash(rundbat init-docker:*)",
+      "Bash(rundbat deploy-init:*)"
+    ]
+  }
+}
