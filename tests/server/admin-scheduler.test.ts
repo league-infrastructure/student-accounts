@@ -92,7 +92,7 @@ describe('Admin Scheduler API', () => {
     });
     const res = await userAgent.get('/api/admin/scheduler/jobs');
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('Admin access required');
+    expect(res.body.error).toBe('Forbidden');
   });
 
   it('returns 401 for unauthenticated', async () => {

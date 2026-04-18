@@ -1,11 +1,16 @@
 ---
-id: "007"
-title: "Auth middleware — requireAuth and requireRole, wired into existing admin routes"
-status: todo
-use-cases: [SUC-001, SUC-002, SUC-003]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: '007'
+title: "Auth middleware \u2014 requireAuth and requireRole, wired into existing admin\
+  \ routes"
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # T007: Auth middleware — requireAuth and requireRole, wired into existing admin routes
@@ -22,20 +27,20 @@ They read `req.session.userId` and `req.session.role`.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/middleware/requireAuth.ts` checks `req.session.userId`:
+- [x] `server/src/middleware/requireAuth.ts` checks `req.session.userId`:
   - Present → `next()`.
   - Absent → 401 JSON `{ error: 'Unauthorized' }`.
-- [ ] `server/src/middleware/requireRole.ts` is a factory `requireRole(...roles)`:
+- [x] `server/src/middleware/requireRole.ts` is a factory `requireRole(...roles)`:
   - `req.session.role` is in `roles` → `next()`.
   - Not in `roles` (including missing role) → 403 JSON `{ error: 'Forbidden' }`.
-- [ ] `server/src/routes/admin/index.ts` (and/or the admin router root) applies
+- [x] `server/src/routes/admin/index.ts` (and/or the admin router root) applies
       `requireAuth` and `requireRole('admin')` to all admin routes.
-- [ ] A request with no session to any admin route returns 401.
-- [ ] A request with a `role=student` session to any admin route returns 403.
-- [ ] A request with a `role=admin` session to any admin route passes through.
-- [ ] `/api/auth/me` returns `{ userId, role }` for authenticated sessions
+- [x] A request with no session to any admin route returns 401.
+- [x] A request with a `role=student` session to any admin route returns 403.
+- [x] A request with a `role=admin` session to any admin route passes through.
+- [x] `/api/auth/me` returns `{ userId, role }` for authenticated sessions
       or 401 for unauthenticated.
-- [ ] All existing tests pass. (Note: if any existing admin-route tests relied
+- [x] All existing tests pass. (Note: if any existing admin-route tests relied
       on the routes being unguarded, they must be updated to inject a session.)
 
 ## Implementation Plan

@@ -94,7 +94,7 @@ describe('Role-based access control', () => {
     });
     const res = await agent.get('/api/admin/users');
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('Admin access required');
+    expect(res.body.error).toBe('Forbidden');
   });
 
   it('allows admin to access admin routes', async () => {

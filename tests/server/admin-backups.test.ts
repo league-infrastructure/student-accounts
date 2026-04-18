@@ -46,7 +46,7 @@ describe('Admin Backups API', () => {
     });
     const res = await userAgent.get('/api/admin/export/json');
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('Admin access required');
+    expect(res.body.error).toBe('Forbidden');
   });
 
   it('returns 401 for unauthenticated on export', async () => {
