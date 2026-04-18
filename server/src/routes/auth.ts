@@ -10,6 +10,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import passport from 'passport';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { StaffOULookupError } from '../services/auth/google-admin-directory.client.js';
 
 export const authRouter = Router();
 
@@ -163,7 +164,15 @@ authRouter.get(
       'google',
       { session: false },
       (err: unknown, user: Express.User | false | null) => {
-        if (err || !user) {
+        if (err) {
+          // StaffOULookupError → staff_lookup_failed error page (RD-001).
+          // All other errors → generic oauth_denied.
+          if (err instanceof StaffOULookupError) {
+            return res.redirect('/?error=staff_lookup_failed');
+          }
+          return res.redirect('/?error=oauth_denied');
+        }
+        if (!user) {
           return res.redirect('/?error=oauth_denied');
         }
         req.login(user, (loginErr) => {

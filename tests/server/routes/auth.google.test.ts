@@ -82,14 +82,24 @@ class MockGoogleStrategy extends PassportStrategy {
 
 // Import app AFTER setting up environment
 import app from '../../../server/src/app.js';
-import { signInHandler } from '../../../server/src/services/auth/sign-in.handler.js';
+import { signInHandler, type SignInOptions } from '../../../server/src/services/auth/sign-in.handler.js';
 import { AuditService } from '../../../server/src/services/audit.service.js';
 import { UserService } from '../../../server/src/services/user.service.js';
 import { LoginService } from '../../../server/src/services/login.service.js';
+import {
+  FakeAdminDirectoryClient,
+  StaffOULookupError,
+} from '../../../server/src/services/auth/google-admin-directory.client.js';
 
 // The verify callback that the real GoogleStrategy uses — we replicate it
 // here so the MockGoogleStrategy exercises the same sign-in handler path.
-function makeVerifyCallback(userService: UserService, loginService: LoginService): VerifyCallback {
+// The optional `signInOptions` argument allows individual tests to inject a
+// FakeAdminDirectoryClient for OU detection cases.
+function makeVerifyCallback(
+  userService: UserService,
+  loginService: LoginService,
+  signInOptions?: SignInOptions,
+): VerifyCallback {
   return (_accessToken, _refreshToken, profile, done) => {
     const emails = profile.emails ?? [];
     const providerEmail = emails.find((e: any) => e.value)?.value ?? null;
@@ -105,6 +115,7 @@ function makeVerifyCallback(userService: UserService, loginService: LoginService
       },
       userService,
       loginService,
+      signInOptions,
     )
       .then((user) => done(null, user))
       .catch((err) => done(err));
@@ -114,6 +125,13 @@ function makeVerifyCallback(userService: UserService, loginService: LoginService
 let mockStrategy: MockGoogleStrategy;
 let userService: UserService;
 let loginService: LoginService;
+let auditService: AuditService;
+
+/** Helper: switch the mock strategy to use a different verify callback. */
+function useVerifyCallback(opts?: SignInOptions): void {
+  const cb = makeVerifyCallback(userService, loginService, opts);
+  mockStrategy['_verifyCallback'] = cb;
+}
 
 async function cleanDb() {
   await (prisma as any).mergeSuggestion.deleteMany();
@@ -137,10 +155,12 @@ beforeAll(() => {
   process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-client-secret';
   process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/api/auth/google/callback';
 
-  userService = new UserService(prisma, new AuditService());
-  loginService = new LoginService(prisma, new AuditService());
+  auditService = new AuditService();
+  userService = new UserService(prisma, auditService);
+  loginService = new LoginService(prisma, auditService);
 
-  // Register the mock strategy — overrides the real google strategy for tests
+  // Register the mock strategy — overrides the real google strategy for tests.
+  // Tests that need OU detection inject a FakeAdminDirectoryClient via useVerifyCallback().
   mockStrategy = new MockGoogleStrategy(makeVerifyCallback(userService, loginService));
   passport.use('google', mockStrategy as any);
 });
@@ -159,6 +179,9 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await cleanDb();
+  // Reset verify callback to the default (no OU client) before each test.
+  // Tests that need OU detection call useVerifyCallback({ adminDirClient: ... }).
+  useVerifyCallback();
 });
 
 // ---------------------------------------------------------------------------
@@ -355,5 +378,216 @@ describe('mergeScan stub', () => {
     expect(mergeLogCalled).toBe(true);
 
     consoleSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UC-003: Staff OU detection — route-level integration tests
+// ---------------------------------------------------------------------------
+
+describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)', () => {
+  const STAFF_OU = '/League Staff';
+
+  beforeEach(() => {
+    process.env.GOOGLE_STAFF_OU_PATH = STAFF_OU;
+  });
+
+  afterEach(() => {
+    delete process.env.GOOGLE_STAFF_OU_PATH;
+  });
+
+  it('creates user with role=staff when OU path matches', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient('/League Staff/Engineering');
+    useVerifyCallback({ adminDirClient, auditService, prisma });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-staffou-new',
+      displayName: 'Staff OU User',
+      emails: [{ value: 'staffuser@jointheleague.org' }],
+    });
+
+    const res = await request(app).get('/api/auth/google/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/account');
+
+    const user = await (prisma as any).user.findFirst({
+      where: { primary_email: 'staffuser@jointheleague.org' },
+    });
+    expect(user).not.toBeNull();
+    expect(user.role).toBe('staff');
+  });
+
+  it('session carries role=staff for @jointheleague.org user in staff OU', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient('/League Staff');
+    useVerifyCallback({ adminDirClient, auditService, prisma });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-staffou-session',
+      displayName: 'Staff Session User',
+      emails: [{ value: 'staffsession@jointheleague.org' }],
+    });
+
+    const agent = request.agent(app);
+    await agent.get('/api/auth/google/callback');
+
+    const me = await agent.get('/api/auth/me');
+    expect([200]).toContain(me.status);
+    // The /api/auth/me route maps 'staff' to 'STAFF'
+    expect(me.body.role).toBe('STAFF');
+  });
+
+  it('creates user with role=student when OU path does not match (RD-003)', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient('/Students/Cohort2025');
+    useVerifyCallback({ adminDirClient, auditService, prisma });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-nonstaffou',
+      displayName: 'Non-Staff OU User',
+      emails: [{ value: 'nonstaffou@jointheleague.org' }],
+    });
+
+    const res = await request(app).get('/api/auth/google/callback');
+
+    // Sign-in succeeds (RD-003: not a hard deny)
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/account');
+
+    const user = await (prisma as any).user.findFirst({
+      where: { primary_email: 'nonstaffou@jointheleague.org' },
+    });
+    expect(user).not.toBeNull();
+    expect(user.role).toBe('student');
+  });
+
+  it('redirects to /?error=staff_lookup_failed when AdminClient throws StaffOULookupError (RD-001)', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient(
+      new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
+    );
+    useVerifyCallback({ adminDirClient, auditService, prisma });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-ou-fail',
+      displayName: 'OU Fail User',
+      emails: [{ value: 'oufail@jointheleague.org' }],
+    });
+
+    const res = await request(app).get('/api/auth/google/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/?error=staff_lookup_failed');
+  });
+
+  it('does NOT establish a session when StaffOULookupError is thrown', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient(
+      new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
+    );
+    useVerifyCallback({ adminDirClient, auditService, prisma });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-ou-nosession',
+      displayName: 'No Session User',
+      emails: [{ value: 'nosession@jointheleague.org' }],
+    });
+
+    const agent = request.agent(app);
+    await agent.get('/api/auth/google/callback');
+
+    // No session should be established — /api/auth/me should return 401
+    const me = await agent.get('/api/auth/me');
+    expect(me.status).toBe(401);
+  });
+
+  it('writes auth_denied AuditEvent when StaffOULookupError is thrown (RD-001)', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient(
+      new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
+    );
+    useVerifyCallback({ adminDirClient, auditService, prisma });
+
+    await (prisma as any).auditEvent.deleteMany();
+
+    mockStrategy.setProfile({
+      id: 'google-uid-ou-audit',
+      displayName: 'Audit Denied User',
+      emails: [{ value: 'auditdenied@jointheleague.org' }],
+    });
+
+    await request(app).get('/api/auth/google/callback');
+
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'auth_denied' },
+    });
+    expect(events.length).toBe(1);
+    expect(events[0].target_entity_id).toBe('auditdenied@jointheleague.org');
+  });
+
+  it('skips OU check for @students.jointheleague.org — role=student, no lookup', async () => {
+    let ouLookupCalled = false;
+    const adminDirClient: any = {
+      getUserOU: async () => {
+        ouLookupCalled = true;
+        return '/League Staff';
+      },
+    };
+    useVerifyCallback({ adminDirClient });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-student-domain',
+      displayName: 'Student Domain',
+      emails: [{ value: 'student@students.jointheleague.org' }],
+    });
+
+    const res = await request(app).get('/api/auth/google/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/account');
+    expect(ouLookupCalled).toBe(false);
+
+    const user = await (prisma as any).user.findFirst({
+      where: { primary_email: 'student@students.jointheleague.org' },
+    });
+    expect(user).not.toBeNull();
+    expect(user.role).toBe('student');
+  });
+
+  it('skips OU check for external email (gmail.com) — role=student, no lookup', async () => {
+    let ouLookupCalled = false;
+    const adminDirClient: any = {
+      getUserOU: async () => {
+        ouLookupCalled = true;
+        return '/League Staff';
+      },
+    };
+    useVerifyCallback({ adminDirClient });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-gmail-external',
+      displayName: 'External Gmail',
+      emails: [{ value: 'external@gmail.com' }],
+    });
+
+    const res = await request(app).get('/api/auth/google/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/account');
+    expect(ouLookupCalled).toBe(false);
+
+    const user = await (prisma as any).user.findFirst({
+      where: { primary_email: 'external@gmail.com' },
+    });
+    expect(user).not.toBeNull();
+    expect(user.role).toBe('student');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /staff — stub landing route
+// ---------------------------------------------------------------------------
+
+describe('GET /staff', () => {
+  it('returns 200 with placeholder text', async () => {
+    const res = await request(app).get('/staff');
+    expect(res.status).toBe(200);
+    expect(res.text).toMatch(/staff/i);
   });
 });

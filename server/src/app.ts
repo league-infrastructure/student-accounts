@@ -69,7 +69,7 @@ app.use(attachServices(registry));
 
 // Passport authentication — serialize/deserialize and strategy registration.
 // configurePassport is called after the registry so UserService and LoginService are available.
-configurePassport(passport, registry.users, registry.logins);
+configurePassport(passport, registry.users, registry.logins, prisma);
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(impersonateMiddleware);

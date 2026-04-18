@@ -19,6 +19,7 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as GitHubStrategy } from 'passport-github2';
 import type { UserService } from '../user.service.js';
 import type { LoginService } from '../login.service.js';
+import { AuditService } from '../audit.service.js';
 import { signInHandler } from './sign-in.handler.js';
 import type { User } from '../../generated/prisma/client.js';
 import {
@@ -107,17 +108,22 @@ function readGitHubConfig(): {
  * @param passportInstance  - The passport instance to configure.
  * @param userService       - UserService used by deserializeUser and sign-in handler.
  * @param loginService      - LoginService used by sign-in handler.
- * @returns                 - The AdminDirectoryClient instance, available for
- *                            injection into the sign-in handler (T005).
+ * @param prismaClient      - Prisma client passed through to signInHandler for
+ *                            auth_denied audit event writes (RD-001).
+ * @returns                 - The AdminDirectoryClient instance (exposed for
+ *                            test overrides).
  */
 export function configurePassport(
   passportInstance: typeof passport,
   userService: UserService,
   loginService: LoginService,
+  prismaClient?: any,
 ): AdminDirectoryClient {
   // Build the Admin Directory client up front so it is available for injection
-  // into the Google strategy verify callback in T005.
+  // into the Google strategy verify callback.
   const adminDirClient = buildAdminDirectoryClient();
+  const auditService = new AuditService();
+
   // --- Serialize/Deserialize ---
   // serializeUser stores only the user's numeric id in the session.
   // deserializeUser loads the full User record from the database on each
@@ -147,7 +153,7 @@ export function configurePassport(
           callbackURL: googleConfig.callbackURL,
           scope: ['profile', 'email'],
         },
-        // Verify callback — wired to sign-in handler (T002).
+        // Verify callback — wired to sign-in handler with OU detection (T005).
         (_accessToken, _refreshToken, profile, done) => {
           const emails = profile.emails ?? [];
           const providerEmail = emails.find((e) => e.value)?.value ?? null;
@@ -157,12 +163,22 @@ export function configurePassport(
             providerEmail ||
             profile.id;
 
-          signInHandler('google', {
-            providerUserId: profile.id,
-            providerEmail,
-            displayName,
-            providerUsername: null,
-          }, userService, loginService)
+          signInHandler(
+            'google',
+            {
+              providerUserId: profile.id,
+              providerEmail,
+              displayName,
+              providerUsername: null,
+            },
+            userService,
+            loginService,
+            {
+              adminDirClient,
+              auditService,
+              prisma: prismaClient,
+            },
+          )
             .then((user) => done(null, user))
             .catch((err) => done(err));
         },
