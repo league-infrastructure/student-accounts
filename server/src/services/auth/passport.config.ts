@@ -146,10 +146,31 @@ export function configurePassport(
           callbackURL: githubConfig.callbackURL,
           scope: ['read:user', 'user:email'],
         },
-        // Verify callback — replaced by the sign-in handler in T003.
-        // Stub: returns 501 until the sign-in handler is wired.
-        (_accessToken, _refreshToken, _profile, done) => {
-          done(new Error('GitHub OAuth sign-in handler not yet implemented (T003)'));
+        // Verify callback — wired to sign-in handler (T003).
+        (_accessToken, _refreshToken, profile, done) => {
+          // GitHub returns emails in profile.emails[] and username in profile.username.
+          const emails = profile.emails ?? [];
+          const providerEmail = emails.find((e: any) => e.value)?.value ?? null;
+          const providerUsername = (profile as any).username ?? null;
+          const displayName =
+            profile.displayName ||
+            providerUsername ||
+            providerEmail ||
+            profile.id;
+
+          signInHandler(
+            'github',
+            {
+              providerUserId: profile.id,
+              providerEmail,
+              displayName,
+              providerUsername,
+            },
+            userService,
+            loginService,
+          )
+            .then((user) => done(null, user))
+            .catch((err) => done(err));
         },
       ),
     );

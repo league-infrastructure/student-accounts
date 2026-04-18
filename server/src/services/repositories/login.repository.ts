@@ -16,6 +16,7 @@ export type CreateLoginInput = {
   provider: string;
   provider_user_id: string;
   provider_email?: string | null;
+  provider_username?: string | null;
 };
 
 export class LoginRepository {

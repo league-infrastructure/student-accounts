@@ -179,10 +179,16 @@ authRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// GitHub OAuth routes (T003 — stubs only)
+// GitHub OAuth routes (T003)
 // ---------------------------------------------------------------------------
 
-authRouter.get('/auth/github', (req: Request, res: Response) => {
+/**
+ * GET /api/auth/github
+ * Initiates the GitHub OAuth redirect.
+ * Returns 501 if GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET are absent.
+ * Returns 401 if ?link=1 is passed and the user is not authenticated.
+ */
+authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction) => {
   if (!(process.env.GITHUB_OAUTH_CLIENT_ID && process.env.GITHUB_OAUTH_CLIENT_SECRET)) {
     return res.status(501).json({
       error: 'GitHub OAuth not configured',
@@ -192,14 +198,39 @@ authRouter.get('/auth/github', (req: Request, res: Response) => {
   if (req.query.link === '1' && !req.user) {
     return res.status(401).json({ error: 'Authentication required to link an account' });
   }
-  // T003 will replace this stub with passport.authenticate('github').
-  return res.status(501).json({ error: 'GitHub OAuth not yet implemented (T003)' });
+  passport.authenticate('github', { scope: ['read:user', 'user:email'] })(req, res, next);
 });
 
-authRouter.get('/auth/github/callback', (_req: Request, res: Response) => {
-  // T003 will replace this stub.
-  res.status(501).json({ error: 'GitHub OAuth not yet implemented (T003)' });
-});
+/**
+ * GET /api/auth/github/callback
+ * GitHub redirects here after the user grants (or denies) consent.
+ * On success: writes userId + role to session, redirects to /account.
+ * On failure/denial: redirects to /?error=oauth_denied.
+ */
+authRouter.get(
+  '/auth/github/callback',
+  (req: Request, res: Response, next: NextFunction) => {
+    if (!(process.env.GITHUB_OAUTH_CLIENT_ID && process.env.GITHUB_OAUTH_CLIENT_SECRET)) {
+      return res.redirect('/?error=oauth_denied');
+    }
+    passport.authenticate(
+      'github',
+      { session: false },
+      (err: unknown, user: Express.User | false | null) => {
+        if (err || !user) {
+          return res.redirect('/?error=oauth_denied');
+        }
+        req.login(user, (loginErr) => {
+          if (loginErr) return next(loginErr);
+          // Write typed session fields.
+          (req.session as any).userId = (user as any).id;
+          (req.session as any).role = (user as any).role;
+          res.redirect('/account');
+        });
+      },
+    )(req, res, next);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Account-linking stub (future sprint)
