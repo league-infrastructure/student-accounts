@@ -1,11 +1,13 @@
 ---
-id: "006"
-title: "Repository layer — typed CRUD for all 7 entities with integration tests"
-status: todo
-use-cases: [SUC-004]
-depends-on: ["005"]
-github-issue: ""
-todo: ""
+id: '006'
+title: "Repository layer \u2014 typed CRUD for all 7 entities with integration tests"
+status: done
+use-cases:
+- SUC-004
+depends-on:
+- '005'
+github-issue: ''
+todo: ''
 ---
 
 # Repository layer — typed CRUD for all 7 entities with integration tests
@@ -25,7 +27,7 @@ all seven entities, used by repository tests and future service tests.
 
 ## Acceptance Criteria
 
-- [ ] Repository files exist at `server/src/services/repositories/`:
+- [x] Repository files exist at `server/src/services/repositories/`:
   - `user.repository.ts`
   - `cohort.repository.ts`
   - `login.repository.ts`
@@ -34,47 +36,47 @@ all seven entities, used by repository tests and future service tests.
   - `provisioning-request.repository.ts`
   - `merge-suggestion.repository.ts`
 
-- [ ] Each repository accepts a db client (`PrismaClient |
+- [x] Each repository accepts a db client (`PrismaClient |
       Prisma.TransactionClient`) as a parameter on every method (not
       stored in constructor state). Example method signature:
       `async findById(db: DbClient, id: number): Promise<User | null>`
 
-- [ ] **UserRepository** provides: `create`, `findById`, `findByEmail`,
+- [x] **UserRepository** provides: `create`, `findById`, `findByEmail`,
       `findAll` (with optional role filter, optional cohort filter),
       `update`, `delete`.
 
-- [ ] **CohortRepository** provides: `create`, `findById`, `findByName`,
+- [x] **CohortRepository** provides: `create`, `findById`, `findByName`,
       `findAll`, `update`, `delete`.
 
-- [ ] **LoginRepository** provides: `create`, `findById`,
+- [x] **LoginRepository** provides: `create`, `findById`,
       `findByProvider(provider, provider_user_id)`,
       `findAllByUser(user_id)`, `delete`.
 
-- [ ] **ExternalAccountRepository** provides: `create`, `findById`,
+- [x] **ExternalAccountRepository** provides: `create`, `findById`,
       `findAllByUser(user_id)`,
       `findActiveByUserAndType(user_id, type)`,
       `updateStatus(id, status)`, `delete`.
 
-- [ ] **AuditEventRepository** provides: `create(db, event)`,
+- [x] **AuditEventRepository** provides: `create(db, event)`,
       `findById`, `findByTargetUser(user_id, limit?)`,
       `findByActor(actor_user_id, limit?)`,
       `findByAction(action, limit?)`.
 
-- [ ] **ProvisioningRequestRepository** provides: `create`, `findById`,
+- [x] **ProvisioningRequestRepository** provides: `create`, `findById`,
       `findByUser(user_id)`, `findPending`, `updateStatus(id, status,
       decided_by, decided_at)`.
 
-- [ ] **MergeSuggestionRepository** provides: `create`, `findById`,
+- [x] **MergeSuggestionRepository** provides: `create`, `findById`,
       `findPending`, `findByPair(user_a_id, user_b_id)`,
       `updateStatus(id, status, decided_by?, decided_at?)`.
 
-- [ ] `tests/server/helpers/factories.ts` exports:
+- [x] `tests/server/helpers/factories.ts` exports:
       `makeUser`, `makeCohort`, `makeLogin`, `makeExternalAccount`,
       `makeAuditEvent`, `makeProvisioningRequest`, `makeMergeSuggestion`.
       Each factory inserts directly via the Prisma client and returns the
       created row with all fields.
 
-- [ ] Integration test files exist at `tests/server/repositories/` for all
+- [x] Integration test files exist at `tests/server/repositories/` for all
       7 entities. Each test file covers at minimum:
       - create + findById (hit)
       - findById (miss) → returns null
@@ -83,11 +85,12 @@ all seven entities, used by repository tests and future service tests.
       - At least one entity-specific lookup (e.g., `findByProvider` for
         Login, `findByPair` for MergeSuggestion)
 
-- [ ] FK constraint violations surface as caught errors (not unhandled
-      promise rejections). Repositories may re-throw as `ConflictError` or
-      let Prisma errors propagate — document which approach is taken.
+- [x] FK constraint violations surface as caught errors (not unhandled
+      promise rejections). Repositories let Prisma errors propagate to
+      callers unchanged; callers (services) decide whether to re-wrap as
+      `ConflictError`. This is documented in each repository file's JSDoc.
 
-- [ ] `npm run test:server` passes all new and existing tests.
+- [x] `npm run test:server` passes all new and existing tests.
 
 ## Implementation Plan
 
