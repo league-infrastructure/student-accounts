@@ -1,11 +1,14 @@
 ---
-id: "005"
-title: "Migration — AuditEvent, ProvisioningRequest, and MergeSuggestion entities"
-status: todo
-use-cases: [SUC-002, SUC-003]
-depends-on: ["004"]
-github-issue: ""
-todo: ""
+id: '005'
+title: "Migration \u2014 AuditEvent, ProvisioningRequest, and MergeSuggestion entities"
+status: in-progress
+use-cases:
+- SUC-002
+- SUC-003
+depends-on:
+- '004'
+github-issue: ''
+todo: ''
 ---
 
 # Migration — AuditEvent, ProvisioningRequest, and MergeSuggestion entities
@@ -18,7 +21,7 @@ full schema migration — after this ticket all seven domain entity tables exist
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma` defines:
+- [x] `server/prisma/schema.prisma` defines:
 
   **AuditEvent:**
   - `id`, `actor_user_id` (nullable FK → User, SetNull on delete),
@@ -50,15 +53,15 @@ full schema migration — after this ticket all seven domain entity tables exist
 
   **New enums:** `ProvisioningType`, `ProvisioningStatus`, `MergeStatus`.
 
-- [ ] `npx prisma migrate dev --name audit-provisioning-merge` generates and
+- [x] `npx prisma migrate dev --name audit-provisioning-merge` generates and
       applies cleanly on fresh Postgres and SQLite databases.
-- [ ] `npx prisma generate` regenerates client without errors; exports all new
+- [x] `npx prisma generate` regenerates client without errors; exports all new
       model types and enums.
-- [ ] `npm run build` passes with no TypeScript errors.
-- [ ] Prisma enum emulation in SQLite (TEXT + CHECK constraint) is verified:
+- [x] `npm run build` passes with no TypeScript errors.
+- [x] Prisma enum emulation in SQLite (TEXT + CHECK constraint) is verified:
       inserting an invalid enum value for `MergeStatus` fails with a
       constraint error in the SQLite test DB.
-- [ ] `npm run test:server` passes.
+- [x] `npm run test:server` passes.
 
 ## Implementation Plan
 

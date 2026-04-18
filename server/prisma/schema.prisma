@@ -80,6 +80,24 @@ enum ExternalAccountStatus {
   removed
 }
 
+enum ProvisioningType {
+  workspace
+  claude
+}
+
+enum ProvisioningStatus {
+  pending
+  approved
+  rejected
+}
+
+enum MergeStatus {
+  pending
+  approved
+  rejected
+  deferred
+}
+
 // ---------------------------------------------------------------------------
 // Domain models
 // ---------------------------------------------------------------------------
@@ -106,6 +124,14 @@ model User {
   cohort            Cohort?           @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
   logins            Login[]
   external_accounts ExternalAccount[]
+
+  audit_events_as_actor  AuditEvent[]          @relation("AuditActor")
+  audit_events_as_target AuditEvent[]          @relation("AuditTarget")
+  provisioning_requests  ProvisioningRequest[] @relation("RequesterUser")
+  provisioning_decisions ProvisioningRequest[] @relation("DeciderUser")
+  merge_suggestions_a    MergeSuggestion[]     @relation("MergeUserA")
+  merge_suggestions_b    MergeSuggestion[]     @relation("MergeUserB")
+  merge_decisions        MergeSuggestion[]     @relation("MergeDecider")
 
   @@index([role])
   @@index([cohort_id])
@@ -141,4 +167,57 @@ model ExternalAccount {
 
   @@index([user_id])
   @@index([type, status])
+}
+
+model AuditEvent {
+  id                 Int      @id @default(autoincrement())
+  actor_user_id      Int?
+  action             String
+  target_user_id     Int?
+  target_entity_type String?
+  target_entity_id   String?
+  details            Json?
+  created_at         DateTime @default(now())
+
+  actor              User?    @relation("AuditActor",  fields: [actor_user_id],  references: [id], onDelete: SetNull)
+  target             User?    @relation("AuditTarget", fields: [target_user_id], references: [id], onDelete: SetNull)
+
+  @@index([actor_user_id, created_at])
+  @@index([target_user_id, created_at])
+  @@index([action, created_at])
+}
+
+model ProvisioningRequest {
+  id             Int                @id @default(autoincrement())
+  user_id        Int
+  requested_type ProvisioningType
+  status         ProvisioningStatus @default(pending)
+  decided_by     Int?
+  decided_at     DateTime?
+  created_at     DateTime           @default(now())
+
+  user           User               @relation("RequesterUser", fields: [user_id],    references: [id], onDelete: Cascade)
+  decider        User?              @relation("DeciderUser",   fields: [decided_by], references: [id], onDelete: SetNull)
+
+  @@index([user_id, status])
+  @@index([status, created_at])
+}
+
+model MergeSuggestion {
+  id               Int         @id @default(autoincrement())
+  user_a_id        Int
+  user_b_id        Int
+  haiku_confidence Float
+  haiku_rationale  String?
+  status           MergeStatus @default(pending)
+  decided_by       Int?
+  decided_at       DateTime?
+  created_at       DateTime    @default(now())
+
+  user_a           User        @relation("MergeUserA",   fields: [user_a_id],   references: [id], onDelete: Cascade)
+  user_b           User        @relation("MergeUserB",   fields: [user_b_id],   references: [id], onDelete: Cascade)
+  decider          User?       @relation("MergeDecider", fields: [decided_by],  references: [id], onDelete: SetNull)
+
+  @@unique([user_a_id, user_b_id])
+  @@index([status, created_at])
 }
