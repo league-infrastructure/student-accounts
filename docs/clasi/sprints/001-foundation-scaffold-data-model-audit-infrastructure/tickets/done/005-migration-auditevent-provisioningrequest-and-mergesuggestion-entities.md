@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: "Migration \u2014 AuditEvent, ProvisioningRequest, and MergeSuggestion entities"
-status: in-progress
+status: done
 use-cases:
 - SUC-002
 - SUC-003

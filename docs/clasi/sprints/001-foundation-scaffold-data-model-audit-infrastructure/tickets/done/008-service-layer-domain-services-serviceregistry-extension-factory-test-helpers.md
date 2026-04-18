@@ -2,7 +2,7 @@
 id: 008
 title: "Service layer \u2014 domain services, ServiceRegistry extension, factory test\
   \ helpers"
-status: in-progress
+status: done
 use-cases:
 - SUC-004
 depends-on:

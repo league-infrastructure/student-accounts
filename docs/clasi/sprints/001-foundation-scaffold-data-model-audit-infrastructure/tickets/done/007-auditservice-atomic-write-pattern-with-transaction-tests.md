@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: "AuditService \u2014 atomic write pattern with transaction tests"
-status: in-progress
+status: done
 use-cases:
 - SUC-001
 - SUC-002
