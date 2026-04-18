@@ -2,7 +2,7 @@
 id: '002'
 title: "Database connection \u2014 Prisma adapter auto-selects SQLite vs Postgres\
   \ from DATABASE_URL"
-status: in-progress
+status: done
 use-cases:
 - SUC-003
 - SUC-005
