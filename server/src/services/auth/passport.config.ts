@@ -18,6 +18,8 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as GitHubStrategy } from 'passport-github2';
 import type { UserService } from '../user.service.js';
+import type { LoginService } from '../login.service.js';
+import { signInHandler } from './sign-in.handler.js';
 import type { User } from '../../generated/prisma/client.js';
 
 // ---------------------------------------------------------------------------
@@ -68,11 +70,13 @@ function readGitHubConfig(): {
  * without a startup crash.
  *
  * @param passportInstance  - The passport instance to configure.
- * @param userService       - UserService used by deserializeUser.
+ * @param userService       - UserService used by deserializeUser and sign-in handler.
+ * @param loginService      - LoginService used by sign-in handler.
  */
 export function configurePassport(
   passportInstance: typeof passport,
   userService: UserService,
+  loginService: LoginService,
 ): void {
   // --- Serialize/Deserialize ---
   // serializeUser stores only the user's numeric id in the session.
@@ -103,10 +107,24 @@ export function configurePassport(
           callbackURL: googleConfig.callbackURL,
           scope: ['profile', 'email'],
         },
-        // Verify callback — replaced by the sign-in handler in T002.
-        // Stub: returns 501 until the sign-in handler is wired.
-        (_accessToken, _refreshToken, _profile, done) => {
-          done(new Error('Google OAuth sign-in handler not yet implemented (T002)'));
+        // Verify callback — wired to sign-in handler (T002).
+        (_accessToken, _refreshToken, profile, done) => {
+          const emails = profile.emails ?? [];
+          const providerEmail = emails.find((e) => e.value)?.value ?? null;
+          const displayName =
+            profile.displayName ||
+            profile.name?.givenName ||
+            providerEmail ||
+            profile.id;
+
+          signInHandler('google', {
+            providerUserId: profile.id,
+            providerEmail,
+            displayName,
+            providerUsername: null,
+          }, userService, loginService)
+            .then((user) => done(null, user))
+            .catch((err) => done(err));
         },
       ),
     );

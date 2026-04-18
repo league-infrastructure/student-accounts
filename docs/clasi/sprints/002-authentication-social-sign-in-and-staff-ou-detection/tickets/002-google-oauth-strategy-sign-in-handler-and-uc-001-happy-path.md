@@ -1,11 +1,13 @@
 ---
-id: "002"
-title: "Google OAuth strategy — sign-in handler and UC-001 happy path"
-status: todo
-use-cases: [SUC-001]
-depends-on: ["001"]
-github-issue: ""
-todo: ""
+id: '002'
+title: "Google OAuth strategy \u2014 sign-in handler and UC-001 happy path"
+status: done
+use-cases:
+- SUC-001
+depends-on:
+- '001'
+github-issue: ''
+todo: ''
 ---
 
 # T002: Google OAuth strategy — sign-in handler and UC-001 happy path
@@ -24,25 +26,25 @@ Google accounts only.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/auth/sign-in.handler.ts` is implemented as a pure
+- [x] `server/src/services/auth/sign-in.handler.ts` is implemented as a pure
       service function (no Express types in its signature).
-- [ ] `GET /api/auth/google` redirects to Google OAuth consent screen when
+- [x] `GET /api/auth/google` redirects to Google OAuth consent screen when
       credentials are configured.
-- [ ] On successful Google callback with an unknown identity: a new User record
+- [x] On successful Google callback with an unknown identity: a new User record
       is created (`role=student`, `created_via=social_login`) and a new Login
       record is created (`provider=google`), both atomically with their
       AuditEvents.
-- [ ] `req.session.userId` and `req.session.role` are set after successful
+- [x] `req.session.userId` and `req.session.role` are set after successful
       sign-in.
-- [ ] On successful Google callback with a known identity: no new User or Login
+- [x] On successful Google callback with a known identity: no new User or Login
       is created; session is established for the existing User.
-- [ ] OAuth denied or error: redirect to `/?error=oauth_denied`; no User or
+- [x] OAuth denied or error: redirect to `/?error=oauth_denied`; no User or
       Login created.
-- [ ] `mergeScan` stub is called after new User creation (verified by log output
+- [x] `mergeScan` stub is called after new User creation (verified by log output
       in tests).
-- [ ] `GET /account` returns HTTP 200 with placeholder text after sign-in
+- [x] `GET /account` returns HTTP 200 with placeholder text after sign-in
       (stub landing route).
-- [ ] All existing tests pass (`npm run test:server`).
+- [x] All existing tests pass (`npm run test:server`).
 
 ## Implementation Plan
 
