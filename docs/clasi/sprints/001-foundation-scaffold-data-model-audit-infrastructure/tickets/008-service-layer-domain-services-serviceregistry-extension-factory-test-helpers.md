@@ -1,11 +1,14 @@
 ---
-id: "008"
-title: "Service layer — domain services, ServiceRegistry extension, factory test helpers"
-status: todo
-use-cases: [SUC-004]
-depends-on: ["007"]
-github-issue: ""
-todo: ""
+id: 008
+title: "Service layer \u2014 domain services, ServiceRegistry extension, factory test\
+  \ helpers"
+status: in-progress
+use-cases:
+- SUC-004
+depends-on:
+- '007'
+github-issue: ''
+todo: ''
 ---
 
 # Service layer — domain services, ServiceRegistry extension, factory test helpers
@@ -25,7 +28,7 @@ event recording for actions that produce audit events without external calls.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/user.service.ts` is fully rewritten for the
+- [x] `server/src/services/user.service.ts` is fully rewritten for the
       domain schema. It provides at minimum:
       - `createWithAudit(data, actorId?)` — creates User + records
         `create_user` AuditEvent in one transaction (pattern from T007).
@@ -40,14 +43,14 @@ event recording for actions that produce audit events without external calls.
         the DB constraint error as a domain error (stakeholder decision,
         2026-04-18).
 
-- [ ] `server/src/services/cohort.service.ts` provides:
+- [x] `server/src/services/cohort.service.ts` provides:
       - `create(data)` — creates Cohort record (no Google API call in this
         sprint; that's a later sprint).
       - `findById(id)` — returns Cohort or throws NotFoundError.
       - `findAll()` — returns Cohort[].
       - `findByName(name)` — returns Cohort or null.
 
-- [ ] `server/src/services/login.service.ts` provides:
+- [x] `server/src/services/login.service.ts` provides:
       - `create(userId, provider, providerUserId, providerEmail?)` — creates
         Login; throws ConflictError if `(provider, provider_user_id)` already
         exists on any User.
@@ -56,7 +59,7 @@ event recording for actions that produce audit events without external calls.
       - `delete(loginId, actorId)` — deletes Login; throws ValidationError if
         it would leave the User with zero Logins.
 
-- [ ] `server/src/services/external-account.service.ts` provides:
+- [x] `server/src/services/external-account.service.ts` provides:
       - `create(userId, type, externalId?)` — creates ExternalAccount in
         pending status; throws ConflictError if an active/pending account of
         the same type already exists for this user.
@@ -66,19 +69,19 @@ event recording for actions that produce audit events without external calls.
       - `updateStatus(accountId, status, actorId)` — updates status +
         records appropriate AuditEvent (`suspend_workspace`, etc.).
 
-- [ ] Stub service classes exist for `ProvisioningRequest` and
+- [x] Stub service classes exist for `ProvisioningRequest` and
       `MergeSuggestion` — just enough to instantiate without errors.
       Business logic methods (approve, reject, defer) are deferred.
 
-- [ ] `ServiceRegistry` is updated to include all new service instances:
+- [x] `ServiceRegistry` is updated to include all new service instances:
       `users`, `cohorts`, `logins`, `externalAccounts`, `provisioningRequests`,
       `mergeSuggestions`, `audit`.
 
-- [ ] `tests/server/global-setup.ts` truncates all 7 domain entity tables
+- [x] `tests/server/global-setup.ts` truncates all 7 domain entity tables
       (verify the existing dynamic introspection covers the new tables, or
       add them explicitly).
 
-- [ ] `npm run test:server` passes all repository tests from T006, audit
+- [x] `npm run test:server` passes all repository tests from T006, audit
       service tests from T007, and any new service-level tests written here.
 
 ## Implementation Plan
