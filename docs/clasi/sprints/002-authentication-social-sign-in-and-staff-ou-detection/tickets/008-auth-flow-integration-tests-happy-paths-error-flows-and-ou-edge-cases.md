@@ -1,11 +1,18 @@
 ---
-id: "008"
-title: "Auth flow integration tests — happy paths, error flows, and OU edge cases"
-status: todo
-use-cases: [SUC-001, SUC-002, SUC-003]
-depends-on: ["003", "005", "006", "007"]
-github-issue: ""
-todo: ""
+id: 008
+title: "Auth flow integration tests \u2014 happy paths, error flows, and OU edge cases"
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+depends-on:
+- '003'
+- '005'
+- '006'
+- '007'
+github-issue: ''
+todo: ''
 ---
 
 # T008: Auth flow integration tests — happy paths, error flows, and OU edge cases
@@ -46,11 +53,11 @@ Each row in the table below maps to one or more test cases. All must pass.
 | mergeScan stub called for new users | Log message verified |
 | mergeScan stub not called for returning users | Not logged |
 
-- [ ] All 18+ scenarios have passing tests.
-- [ ] Tests use real SQLite database (not mocked).
-- [ ] `FakeAdminDirectoryClient` used for all OU tests.
-- [ ] `MockGoogleStrategy` and `MockGitHubStrategy` are in shared test helper.
-- [ ] `npm run test:server` passes with the full suite.
+- [x] All 18+ scenarios have passing tests.
+- [x] Tests use real SQLite database (not mocked).
+- [x] `FakeAdminDirectoryClient` used for all OU tests.
+- [x] `MockGoogleStrategy` and `MockGitHubStrategy` are in shared test helper.
+- [x] `npm run test:server` passes with the full suite.
 
 ## Implementation Plan
 
