@@ -21,6 +21,41 @@ import type { UserService } from '../user.service.js';
 import type { LoginService } from '../login.service.js';
 import { signInHandler } from './sign-in.handler.js';
 import type { User } from '../../generated/prisma/client.js';
+import {
+  GoogleAdminDirectoryClient,
+  type AdminDirectoryClient,
+} from './google-admin-directory.client.js';
+
+// ---------------------------------------------------------------------------
+// Admin Directory client factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a GoogleAdminDirectoryClient if both required env vars are present.
+ *
+ * Returns null if either var is missing — the app still starts, but any
+ * attempt to call getUserOU() on a missing-credentials client will throw
+ * StaffOULookupError (fail-secure per RD-001).
+ *
+ * The client is created regardless of whether both vars are present so that
+ * the missing-credential path is tested on the first real lookup rather than
+ * at startup. The GoogleAdminDirectoryClient constructor handles missing
+ * values gracefully — it only throws at getUserOU() call time.
+ */
+function buildAdminDirectoryClient(): AdminDirectoryClient {
+  const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '';
+  const delegatedUser = process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '';
+
+  if (!serviceAccountJson || !delegatedUser) {
+    console.warn(
+      '[passport.config] Google Admin Directory client: ' +
+        'GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_ADMIN_DELEGATED_USER_EMAIL is missing. ' +
+        '@jointheleague.org sign-ins will be rejected (fail-secure RD-001).',
+    );
+  }
+
+  return new GoogleAdminDirectoryClient(serviceAccountJson, delegatedUser);
+}
 
 // ---------------------------------------------------------------------------
 // OAuth env var reads
@@ -72,12 +107,17 @@ function readGitHubConfig(): {
  * @param passportInstance  - The passport instance to configure.
  * @param userService       - UserService used by deserializeUser and sign-in handler.
  * @param loginService      - LoginService used by sign-in handler.
+ * @returns                 - The AdminDirectoryClient instance, available for
+ *                            injection into the sign-in handler (T005).
  */
 export function configurePassport(
   passportInstance: typeof passport,
   userService: UserService,
   loginService: LoginService,
-): void {
+): AdminDirectoryClient {
+  // Build the Admin Directory client up front so it is available for injection
+  // into the Google strategy verify callback in T005.
+  const adminDirClient = buildAdminDirectoryClient();
   // --- Serialize/Deserialize ---
   // serializeUser stores only the user's numeric id in the session.
   // deserializeUser loads the full User record from the database on each
@@ -180,4 +220,6 @@ export function configurePassport(
         'GITHUB_OAUTH_CLIENT_ID, GITHUB_OAUTH_CLIENT_SECRET, or GITHUB_CALLBACK_URL is missing.',
     );
   }
+
+  return adminDirClient;
 }
