@@ -145,10 +145,10 @@ describe('Admin user management API', () => {
     expect(res.body.displayName).toBe('New User');
     expect(res.body).toHaveProperty('id');
 
-    // Verify in DB
+    // Verify in DB (domain schema uses display_name)
     const dbUser = await findUserByEmail('newuser@example.com');
     expect(dbUser).not.toBeNull();
-    expect(dbUser!.displayName).toBe('New User');
+    expect(dbUser!.display_name).toBe('New User');
   });
 
   it('POST /api/admin/users returns 400 without email', async () => {
@@ -174,9 +174,9 @@ describe('Admin user management API', () => {
     expect(res.status).toBe(200);
     expect(res.body.role).toBe('ADMIN');
 
-    // Verify in DB
+    // Verify in DB (domain schema uses lowercase enum: 'admin')
     const updated = await findUserById(user!.id);
-    expect(updated!.role).toBe('ADMIN');
+    expect(updated!.role).toBe('admin');
   });
 
   it('DELETE /api/admin/users/:id deletes a user', async () => {

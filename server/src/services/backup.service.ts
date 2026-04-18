@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 /** Resolve the SQLite database file path from DATABASE_URL. */
 function sqliteDbPath(): string {

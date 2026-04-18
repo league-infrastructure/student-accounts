@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { ServiceRegistry } from '../services/service.registry';
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       services: ServiceRegistry;

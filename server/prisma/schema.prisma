@@ -1,3 +1,14 @@
+// Dual-adapter strategy: the adapter is selected at runtime in
+// server/src/services/prisma.ts based on DATABASE_URL:
+//   "file:" prefix → @prisma/adapter-better-sqlite3 (dev / integration tests)
+//   anything else  → @prisma/adapter-pg (production PostgreSQL)
+//
+// NOTE: Prisma 7 enforces strict adapter/provider compatibility.
+// @prisma/adapter-better-sqlite3 declares provider="sqlite", so the datasource
+// must also say "sqlite" for dev/test to work. For production migrations against
+// Postgres, prisma.config.ts supplies the postgresql:// URL and uses the pg
+// adapter at runtime.
+//
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -7,43 +18,15 @@ datasource db {
   provider = "sqlite"
 }
 
+// ---------------------------------------------------------------------------
+// Infrastructure models (unchanged from template)
+// ---------------------------------------------------------------------------
+
 // Runtime configuration store for admin-managed credentials.
 model Config {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
-}
-
-enum UserRole {
-  USER
-  ADMIN
-}
-
-model User {
-  id          Int       @id @default(autoincrement())
-  email       String    @unique
-  displayName String?
-  role        UserRole  @default(USER)
-  avatarUrl   String?
-  provider    String?
-  providerId  String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  providers   UserProvider[]
-
-  @@unique([provider, providerId])
-}
-
-model UserProvider {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  provider   String
-  providerId String
-  createdAt  DateTime @default(now())
-
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerId])
 }
 
 model ScheduledJob {
@@ -58,13 +41,6 @@ model ScheduledJob {
   updatedAt DateTime  @updatedAt
 }
 
-model Counter {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  value     Int      @default(0)
-  updatedAt DateTime @updatedAt
-}
-
 // Express session store (PrismaSessionStore).
 model Session {
   sid    String   @id
@@ -73,4 +49,175 @@ model Session {
 
   @@index([expire])
   @@map("session")
+}
+
+// ---------------------------------------------------------------------------
+// Domain enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  student
+  staff
+  admin
+}
+
+enum CreatedVia {
+  social_login
+  pike13_sync
+  admin_created
+}
+
+enum ExternalAccountType {
+  workspace
+  claude
+  pike13
+}
+
+enum ExternalAccountStatus {
+  pending
+  active
+  suspended
+  removed
+}
+
+enum ProvisioningType {
+  workspace
+  claude
+}
+
+enum ProvisioningStatus {
+  pending
+  approved
+  rejected
+}
+
+enum MergeStatus {
+  pending
+  approved
+  rejected
+  deferred
+}
+
+// ---------------------------------------------------------------------------
+// Domain models
+// ---------------------------------------------------------------------------
+
+model Cohort {
+  id             Int      @id @default(autoincrement())
+  name           String   @unique
+  google_ou_path String?
+  created_at     DateTime @default(now())
+
+  users          User[]
+}
+
+model User {
+  id            Int        @id @default(autoincrement())
+  display_name  String
+  primary_email String     @unique
+  role          UserRole   @default(student)
+  created_via   CreatedVia
+  cohort_id     Int?
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  cohort            Cohort?           @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
+  logins            Login[]
+  external_accounts ExternalAccount[]
+
+  audit_events_as_actor  AuditEvent[]          @relation("AuditActor")
+  audit_events_as_target AuditEvent[]          @relation("AuditTarget")
+  provisioning_requests  ProvisioningRequest[] @relation("RequesterUser")
+  provisioning_decisions ProvisioningRequest[] @relation("DeciderUser")
+  merge_suggestions_a    MergeSuggestion[]     @relation("MergeUserA")
+  merge_suggestions_b    MergeSuggestion[]     @relation("MergeUserB")
+  merge_decisions        MergeSuggestion[]     @relation("MergeDecider")
+
+  @@index([role])
+  @@index([cohort_id])
+}
+
+model Login {
+  id               Int      @id @default(autoincrement())
+  user_id          Int
+  provider         String   // 'google' | 'github'
+  provider_user_id String
+  provider_email   String?
+  created_at       DateTime @default(now())
+
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Restrict)
+
+  @@unique([provider, provider_user_id])
+  @@index([user_id])
+}
+
+// Note: A partial unique index on (user_id, type) WHERE status IN ('pending','active')
+// is added as raw SQL in the migration file because Prisma's DSL does not support
+// partial indexes. The @@index directives below cover plain (non-partial) indexes only.
+model ExternalAccount {
+  id                Int                   @id @default(autoincrement())
+  user_id           Int
+  type              ExternalAccountType
+  external_id       String?
+  status            ExternalAccountStatus @default(pending)
+  created_at        DateTime              @default(now())
+  status_changed_at DateTime?
+
+  user              User                  @relation(fields: [user_id], references: [id], onDelete: Restrict)
+
+  @@index([user_id])
+  @@index([type, status])
+}
+
+model AuditEvent {
+  id                 Int      @id @default(autoincrement())
+  actor_user_id      Int?
+  action             String
+  target_user_id     Int?
+  target_entity_type String?
+  target_entity_id   String?
+  details            Json?
+  created_at         DateTime @default(now())
+
+  actor              User?    @relation("AuditActor",  fields: [actor_user_id],  references: [id], onDelete: SetNull)
+  target             User?    @relation("AuditTarget", fields: [target_user_id], references: [id], onDelete: SetNull)
+
+  @@index([actor_user_id, created_at])
+  @@index([target_user_id, created_at])
+  @@index([action, created_at])
+}
+
+model ProvisioningRequest {
+  id             Int                @id @default(autoincrement())
+  user_id        Int
+  requested_type ProvisioningType
+  status         ProvisioningStatus @default(pending)
+  decided_by     Int?
+  decided_at     DateTime?
+  created_at     DateTime           @default(now())
+
+  user           User               @relation("RequesterUser", fields: [user_id],    references: [id], onDelete: Cascade)
+  decider        User?              @relation("DeciderUser",   fields: [decided_by], references: [id], onDelete: SetNull)
+
+  @@index([user_id, status])
+  @@index([status, created_at])
+}
+
+model MergeSuggestion {
+  id               Int         @id @default(autoincrement())
+  user_a_id        Int
+  user_b_id        Int
+  haiku_confidence Float
+  haiku_rationale  String?
+  status           MergeStatus @default(pending)
+  decided_by       Int?
+  decided_at       DateTime?
+  created_at       DateTime    @default(now())
+
+  user_a           User        @relation("MergeUserA",   fields: [user_a_id],   references: [id], onDelete: Cascade)
+  user_b           User        @relation("MergeUserB",   fields: [user_b_id],   references: [id], onDelete: Cascade)
+  decider          User?       @relation("MergeDecider", fields: [decided_by],  references: [id], onDelete: SetNull)
+
+  @@unique([user_a_id, user_b_id])
+  @@index([status, created_at])
 }

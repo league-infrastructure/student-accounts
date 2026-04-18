@@ -1,17 +1,17 @@
 import { Router } from 'express';
-import { prisma } from '../../services/prisma';
-import { requireAuth } from '../../middleware/requireAuth';
+import { prisma } from '../../services/prisma.js';
+import { requireAuth } from '../../middleware/requireAuth.js';
 
 export const adminUsersRouter = Router();
 
-// GET /admin/users - list all users with linked providers
+// GET /admin/users - list all users
 adminUsersRouter.get('/users', async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: { providers: { select: { provider: true } } },
+      orderBy: { created_at: 'desc' },
     });
-    res.json(users);
+    // Serialize to the shape callers expect
+    res.json(users.map(serializeUser));
   } catch (err) {
     next(err);
   }
@@ -23,7 +23,7 @@ adminUsersRouter.post('/users', async (req, res, next) => {
     const { email, displayName, role } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
     const user = await req.services.users.create({ email, displayName, role });
-    res.status(201).json(user);
+    res.status(201).json(serializeUser(user));
   } catch (err: any) {
     if (err.code === 'P2002') {
       return res.status(409).json({ error: 'User with this email already exists' });
@@ -38,7 +38,7 @@ adminUsersRouter.put('/users/:id', async (req, res, next) => {
     const id = parseInt(req.params.id, 10);
     const { email, displayName, role } = req.body;
     const user = await req.services.users.update(id, { email, displayName, role });
-    res.json(user);
+    res.json(serializeUser(user));
   } catch (err: any) {
     if (err.code === 'P2025') {
       return res.status(404).json({ error: 'User not found' });
@@ -62,7 +62,6 @@ adminUsersRouter.delete('/users/:id', async (req, res, next) => {
 });
 
 // POST /admin/users/:id/impersonate — start impersonating a user (admin only)
-// requireAdmin is already applied at the router level in admin/index.ts.
 adminUsersRouter.post('/users/:id/impersonate', async (req, res, next) => {
   try {
     const targetId = parseInt(req.params.id, 10);
@@ -70,16 +69,12 @@ adminUsersRouter.post('/users/:id/impersonate', async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid user id' });
     }
 
-    // Determine the real admin's id (impersonating an impersonated session is not
-    // allowed; use the outermost real admin if present).
     const realAdminId = (req.realAdmin as any)?.id ?? (req.user as any)?.id;
 
-    // Reject self-impersonation
     if (realAdminId === targetId) {
       return res.status(400).json({ error: 'Cannot impersonate yourself' });
     }
 
-    // Load target user
     const target = await prisma.user.findUnique({ where: { id: targetId } });
     if (!target) {
       return res.status(404).json({ error: 'User not found' });
@@ -94,9 +89,10 @@ adminUsersRouter.post('/users/:id/impersonate', async (req, res, next) => {
         ok: true,
         impersonating: {
           id: target.id,
-          displayName: target.displayName,
-          email: target.email,
-          role: target.role,
+          displayName: target.display_name,
+          email: target.primary_email,
+          // Map domain role to legacy string
+          role: target.role === 'admin' ? 'ADMIN' : target.role === 'staff' ? 'STAFF' : 'USER',
         },
       });
     });
@@ -106,11 +102,6 @@ adminUsersRouter.post('/users/:id/impersonate', async (req, res, next) => {
 });
 
 // POST /admin/stop-impersonating — stop impersonation and restore real admin session.
-// Guarded with requireAuth (not requireAdmin) so it remains callable even when
-// impersonating a non-admin user. The admin/index.ts applies requireAdmin to all
-// /admin routes, but requireAdmin already handles the impersonation case correctly
-// (it checks req.realAdmin.role). The additional check on realAdminId ensures
-// we only honour this endpoint when a genuine impersonation session is active.
 adminUsersRouter.post('/stop-impersonating', requireAuth, async (req, res, next) => {
   if (!req.session.impersonatingUserId) {
     return res.status(400).json({ error: 'Not impersonating' });
@@ -128,3 +119,19 @@ adminUsersRouter.post('/stop-impersonating', requireAuth, async (req, res, next)
     next(err);
   }
 });
+
+/** Serialize a domain User to the legacy shape callers/tests expect. */
+function serializeUser(user: any) {
+  return {
+    id: user.id,
+    email: user.primary_email,
+    displayName: user.display_name,
+    // Map domain role to legacy string for backward compatibility
+    role: user.role === 'admin' ? 'ADMIN' : user.role === 'staff' ? 'STAFF' : 'USER',
+    avatarUrl: null,
+    provider: null,
+    providerId: null,
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
+  };
+}

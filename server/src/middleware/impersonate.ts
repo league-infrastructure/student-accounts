@@ -9,6 +9,7 @@ declare module 'express-session' {
 }
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       realAdmin?: any;
@@ -40,7 +41,7 @@ export async function impersonateMiddleware(req: Request, _res: Response, next: 
     req.realAdmin = req.user;
     req.user = impersonatedUser;
     next();
-  } catch (err) {
+  } catch (_err) {
     // On error, don't block the request — just skip impersonation
     next();
   }

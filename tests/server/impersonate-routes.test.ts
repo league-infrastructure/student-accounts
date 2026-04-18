@@ -21,27 +21,25 @@ let targetUserId: number;
 
 beforeAll(async () => {
   const admin = await prisma.user.upsert({
-    where: { email: 'imp-route-admin@example.com' },
-    update: { role: 'ADMIN' },
+    where: { primary_email: 'imp-route-admin@example.com' },
+    update: { role: 'admin' },
     create: {
-      email: 'imp-route-admin@example.com',
-      displayName: 'Route Admin',
-      role: 'ADMIN',
-      provider: 'test',
-      providerId: 'test-imp-route-admin',
+      primary_email: 'imp-route-admin@example.com',
+      display_name: 'Route Admin',
+      role: 'admin',
+      created_via: 'admin_created',
     },
   });
   adminId = admin.id;
 
   const target = await prisma.user.upsert({
-    where: { email: 'imp-route-target@example.com' },
-    update: { role: 'USER' },
+    where: { primary_email: 'imp-route-target@example.com' },
+    update: { role: 'student' },
     create: {
-      email: 'imp-route-target@example.com',
-      displayName: 'Route Target',
-      role: 'USER',
-      provider: 'test',
-      providerId: 'test-imp-route-target',
+      primary_email: 'imp-route-target@example.com',
+      display_name: 'Route Target',
+      role: 'student',
+      created_via: 'admin_created',
     },
   });
   targetUserId = target.id;
@@ -50,7 +48,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.user.deleteMany({
     where: {
-      email: {
+      primary_email: {
         in: [
           'imp-route-admin@example.com',
           'imp-route-target@example.com',
