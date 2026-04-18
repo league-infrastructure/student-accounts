@@ -1,7 +1,7 @@
 ---
 id: "002"
 title: "Authentication — Social Sign-In and Staff OU Detection"
-status: roadmap
+status: active
 branch: sprint/002-authentication-social-sign-in-and-staff-ou-detection
 use-cases: [UC-001, UC-002, UC-003]
 ---
@@ -62,4 +62,22 @@ complexity to the callback.
 
 ## Tickets
 
-_(To be created when this sprint enters Detail Mode.)_
+| # | Title | Depends On | Group |
+|---|---|---|---|
+| T001 | OAuth config, secrets wiring, and Passport session setup | — | 1 |
+| T002 | Google OAuth strategy — sign-in handler and UC-001 happy path | T001 | 2 |
+| T003 | GitHub OAuth strategy — sign-in and UC-002 happy path | T002 | 3 |
+| T004 | Google Admin Directory client — abstraction and injection interface | T001 | 2 |
+| T005 | Staff OU detection — role assignment on Google sign-in | T002, T004 | 4 |
+| T006 | Merge-scan stub call site — no-op module wired at new-user creation | T002 | 3 |
+| T007 | Auth middleware — requireAuth and requireRole, wired into admin routes | T002 | 3 |
+| T008 | Auth flow integration tests — happy paths, error flows, OU edge cases | T003, T005, T006, T007 | 5 |
+| T009 | Logout route — session destruction and audit entry | T002 | 3 |
+
+### Parallel Execution Groups
+
+- **Group 1** (foundation): T001
+- **Group 2** (parallel): T002, T004
+- **Group 3** (parallel, after Group 2): T003, T006, T007, T009
+- **Group 4** (after Groups 2+3): T005
+- **Group 5** (final): T008
