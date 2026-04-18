@@ -1,11 +1,15 @@
 ---
-id: "005"
-title: "Staff OU detection — role assignment on Google sign-in for jointheleague.org accounts"
-status: todo
-use-cases: [SUC-003]
-depends-on: ["002", "004"]
-github-issue: ""
-todo: ""
+id: '005'
+title: "Staff OU detection \u2014 role assignment on Google sign-in for jointheleague.org\
+  \ accounts"
+status: in-progress
+use-cases:
+- SUC-003
+depends-on:
+- '002'
+- '004'
+github-issue: ''
+todo: ''
 ---
 
 # T005: Staff OU detection — role assignment on Google sign-in for jointheleague.org accounts
@@ -23,19 +27,19 @@ This ticket completes UC-003.
 
 ## Acceptance Criteria
 
-- [ ] `SignInHandler` reads the email domain after a Google sign-in and calls
+- [x] `SignInHandler` reads the email domain after a Google sign-in and calls
       `adminDirClient.getUserOU(email)` only for `@jointheleague.org` accounts.
-- [ ] `@students.jointheleague.org` accounts skip the OU check and receive
+- [x] `@students.jointheleague.org` accounts skip the OU check and receive
       `role=student`.
-- [ ] Any other domain skips the OU check and receives `role=student`.
-- [ ] OU path starts with `GOOGLE_STAFF_OU_PATH` → `UserService.update` sets
+- [x] Any other domain skips the OU check and receives `role=student`.
+- [x] OU path starts with `GOOGLE_STAFF_OU_PATH` → `UserService.update` sets
       `role=staff`; session carries `role: 'staff'`.
-- [ ] OU path does not start with `GOOGLE_STAFF_OU_PATH` → `role` is assigned
+- [x] OU path does not start with `GOOGLE_STAFF_OU_PATH` → `role` is assigned
       `student` and sign-in completes normally; session carries `role: 'student'`.
       This covers `@jointheleague.org` accounts that exist in the Admin Directory
       but are not yet in the staff OU (e.g., newly hired staff during onboarding).
       Access is NOT denied. (RD-003)
-- [ ] `StaffOULookupError` thrown (including when Admin SDK credentials are
+- [x] `StaffOULookupError` thrown (including when Admin SDK credentials are
       absent or misconfigured) → access is denied for the `@jointheleague.org`
       account; HTTP 403 or redirect to error page; session is NOT established.
       The denial is logged at ERROR level. Where possible (i.e., if an audit
@@ -43,10 +47,10 @@ This ticket completes UC-003.
       `auth_denied` is written so the condition appears in the audit trail.
       Operators must be able to observe this failure without inspecting raw
       server logs. (RD-001)
-- [ ] `GET /staff` returns HTTP 200 with placeholder text for sessions with
+- [x] `GET /staff` returns HTTP 200 with placeholder text for sessions with
       `role=staff`.
-- [ ] `FakeAdminDirectoryClient` is used in all tests (no real Admin SDK calls).
-- [ ] All existing tests pass.
+- [x] `FakeAdminDirectoryClient` is used in all tests (no real Admin SDK calls).
+- [x] All existing tests pass.
 
 ## Implementation Plan
 

@@ -14,6 +14,10 @@ import { AuditService } from '../../../../server/src/services/audit.service.js';
 import { UserService } from '../../../../server/src/services/user.service.js';
 import { LoginService } from '../../../../server/src/services/login.service.js';
 import { signInHandler } from '../../../../server/src/services/auth/sign-in.handler.js';
+import {
+  FakeAdminDirectoryClient,
+  StaffOULookupError,
+} from '../../../../server/src/services/auth/google-admin-directory.client.js';
 import { makeUser, makeLogin } from '../../helpers/factories.js';
 
 // ---------------------------------------------------------------------------
@@ -275,5 +279,214 @@ describe('signInHandler — edge cases', () => {
     // Should not crash; email field has a value
     expect(user.primary_email).toBeTruthy();
     expect(user.primary_email.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UC-003: Staff OU detection for @jointheleague.org accounts
+// ---------------------------------------------------------------------------
+
+describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () => {
+  const STAFF_OU = '/League Staff';
+
+  beforeEach(() => {
+    process.env.GOOGLE_STAFF_OU_PATH = STAFF_OU;
+  });
+
+  afterEach(() => {
+    delete process.env.GOOGLE_STAFF_OU_PATH;
+  });
+
+  it('sets role=staff when OU path matches GOOGLE_STAFF_OU_PATH', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient('/League Staff/Engineering');
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-staff-001',
+        providerEmail: 'alice@jointheleague.org',
+        displayName: 'Alice Staff',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    expect(user.role).toBe('staff');
+  });
+
+  it('sets role=staff when OU path exactly equals GOOGLE_STAFF_OU_PATH', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient('/League Staff');
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-staff-002',
+        providerEmail: 'bob@jointheleague.org',
+        displayName: 'Bob Staff',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    expect(user.role).toBe('staff');
+  });
+
+  it('sets role=student when OU path does not match (RD-003)', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient('/Students/Spring2025');
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-nonstaffou',
+        providerEmail: 'carol@jointheleague.org',
+        displayName: 'Carol Not In Staff OU',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    expect(user.role).toBe('student');
+  });
+
+  it('throws StaffOULookupError when AdminClient fails (RD-001)', async () => {
+    const adminDirClient = new FakeAdminDirectoryClient(
+      new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
+    );
+
+    await expect(
+      signInHandler(
+        'google',
+        {
+          providerUserId: 'google-uid-fail',
+          providerEmail: 'fail@jointheleague.org',
+          displayName: 'Fail User',
+          providerUsername: null,
+        },
+        userService,
+        loginService,
+        { adminDirClient },
+      ),
+    ).rejects.toThrow(StaffOULookupError);
+  });
+
+  it('writes auth_denied AuditEvent when StaffOULookupError is thrown (RD-001)', async () => {
+    const auditService = new AuditService();
+    const adminDirClient = new FakeAdminDirectoryClient(
+      new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
+    );
+
+    await (prisma as any).auditEvent.deleteMany();
+
+    await expect(
+      signInHandler(
+        'google',
+        {
+          providerUserId: 'google-uid-audit',
+          providerEmail: 'audit@jointheleague.org',
+          displayName: 'Audit User',
+          providerUsername: null,
+        },
+        userService,
+        loginService,
+        { adminDirClient, auditService, prisma },
+      ),
+    ).rejects.toThrow(StaffOULookupError);
+
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'auth_denied' },
+    });
+    expect(events.length).toBe(1);
+    expect(events[0].target_entity_id).toBe('audit@jointheleague.org');
+  });
+
+  it('does NOT call adminDirClient for @students.jointheleague.org accounts', async () => {
+    let ouLookupCalled = false;
+    const adminDirClient: any = {
+      getUserOU: async (_email: string) => {
+        ouLookupCalled = true;
+        return '/Students';
+      },
+    };
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-student-domain',
+        providerEmail: 'student@students.jointheleague.org',
+        displayName: 'Student Domain User',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    expect(ouLookupCalled).toBe(false);
+    expect(user.role).toBe('student');
+  });
+
+  it('does NOT call adminDirClient for external (gmail.com) accounts', async () => {
+    let ouLookupCalled = false;
+    const adminDirClient: any = {
+      getUserOU: async (_email: string) => {
+        ouLookupCalled = true;
+        return '/League Staff';
+      },
+    };
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-gmail-ext',
+        providerEmail: 'external@gmail.com',
+        displayName: 'External User',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    expect(ouLookupCalled).toBe(false);
+    expect(user.role).toBe('student');
+  });
+
+  it('updates role to staff on subsequent sign-in when OU matches (returning user)', async () => {
+    // Seed a returning user who previously had student role
+    const existingUser = await makeUser({
+      primary_email: 'returning-staff@jointheleague.org',
+      display_name: 'Returning Staff',
+      role: 'student',
+      created_via: 'social_login',
+    });
+    await makeLogin(existingUser, {
+      provider: 'google',
+      provider_user_id: 'google-uid-returning-staff',
+      provider_email: 'returning-staff@jointheleague.org',
+    });
+
+    const adminDirClient = new FakeAdminDirectoryClient('/League Staff/Engineering');
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-returning-staff',
+        providerEmail: 'returning-staff@jointheleague.org',
+        displayName: 'Returning Staff',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    // Role should be promoted to staff even for a returning user
+    expect(user.role).toBe('staff');
   });
 });
