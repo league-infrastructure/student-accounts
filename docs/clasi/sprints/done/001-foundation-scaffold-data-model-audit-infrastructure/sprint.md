@@ -1,9 +1,10 @@
 ---
-id: "001"
-title: "Foundation — Scaffold, Data Model, Audit Infrastructure"
-status: ticketing
+id: '001'
+title: "Foundation \u2014 Scaffold, Data Model, Audit Infrastructure"
+status: done
 branch: sprint/001-foundation-scaffold-data-model-audit-infrastructure
-use-cases: [UC-021]
+use-cases:
+- UC-021
 ---
 
 # Sprint 001: Foundation — Scaffold, Data Model, Audit Infrastructure
