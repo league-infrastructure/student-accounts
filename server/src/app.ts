@@ -15,6 +15,7 @@ import { createMcpHandler } from './mcp/handler';
 import { errorHandler } from './middleware/errorHandler';
 import { attachServices } from './middleware/services';
 import { ServiceRegistry } from './services/service.registry';
+import { configurePassport } from './services/auth/passport.config';
 import { logBuffer } from './services/logBuffer';
 import { prisma } from './services/prisma';
 
@@ -62,27 +63,16 @@ if (process.env.NODE_ENV !== 'test') {
 
 app.use(session(sessionConfig));
 
-// Passport authentication
-passport.serializeUser((user: any, done) => {
-  done(null, user.id);
-});
-passport.deserializeUser(async (id: number, done) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-    done(null, user);
-  } catch (err) {
-    done(err);
-  }
-});
-app.use(passport.initialize());
-app.use(passport.session());
-app.use(impersonateMiddleware);
-
 // Service registry — provides req.services to all route handlers
 const registry = ServiceRegistry.create('API');
 app.use(attachServices(registry));
+
+// Passport authentication — serialize/deserialize and strategy registration.
+// configurePassport is called after the registry so UserService is available.
+configurePassport(passport, registry.users);
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(impersonateMiddleware);
 
 // Routes
 app.use('/api', healthRouter);
