@@ -20,6 +20,7 @@
     "@aws-sdk/client-s3": "^3.1007.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@prisma/adapter-better-sqlite3": "^7.5.0",
+    "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.4.2",
     "better-sqlite3": "^12.8.0",
     "dotenv": "^17.3.1",

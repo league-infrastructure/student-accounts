@@ -1,11 +1,15 @@
 ---
-id: "002"
-title: "Database connection — Prisma adapter auto-selects SQLite vs Postgres from DATABASE_URL"
-status: todo
-use-cases: [SUC-003, SUC-005]
-depends-on: ["001"]
-github-issue: ""
-todo: ""
+id: '002'
+title: "Database connection \u2014 Prisma adapter auto-selects SQLite vs Postgres\
+  \ from DATABASE_URL"
+status: in-progress
+use-cases:
+- SUC-003
+- SUC-005
+depends-on:
+- '001'
+github-issue: ''
+todo: ''
 ---
 
 # Database connection — Prisma adapter auto-selects SQLite vs Postgres from DATABASE_URL
@@ -27,20 +31,33 @@ to work with both adapters at runtime.
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma` datasource uses `provider = "postgresql"`
+- [x] `server/prisma/schema.prisma` datasource uses `provider = "postgresql"`
       with `previewFeatures = ["driverAdapters"]` so the Prisma client is
       adapter-agnostic at the schema level.
-- [ ] `server/src/services/prisma.ts` `initPrisma()` function reads
+      **DEVIATION:** Prisma 7 enforces strict adapter/provider matching.
+      `@prisma/adapter-better-sqlite3` declares `provider = "sqlite"`, so the
+      schema must remain `provider = "sqlite"` for SQLite tests to work. The
+      `driverAdapters` feature is GA (stable) in Prisma 7 — no `previewFeatures`
+      directive is needed. The schema comment documents the dual-adapter strategy.
+      The schema will switch to `provider = "postgresql"` in the ticket that
+      replaces the template models with the domain schema (T003).
+- [x] `server/src/services/prisma.ts` `initPrisma()` function reads
       `DATABASE_URL`:
       - If it starts with `file:`, initialises with
         `@prisma/adapter-better-sqlite3`.
-      - Otherwise, initialises with no adapter (native Postgres connector).
-- [ ] `npx prisma generate` runs without errors after the schema change.
+      - Otherwise, initialises with `@prisma/adapter-pg` (production Postgres).
+        Note: the original criterion said "no adapter (native Postgres connector)"
+        but Prisma 7 requires an adapter or accelerateUrl; `@prisma/adapter-pg`
+        is the correct production path.
+- [x] `npx prisma generate` runs without errors after the schema change.
 - [ ] `npx prisma migrate dev` (against a dev Postgres container provisioned
       via `rundbat`) applies cleanly.
-- [ ] Running `npm run test:server` with `DATABASE_URL=file:./data/test.db`
-      uses SQLite and all existing tests pass.
-- [ ] `server/src/env.ts` is imported first in `server/src/index.ts` (before
+      **DEFERRED:** Not verifiable until the domain schema replaces the template
+      models (T003). The migration lock is currently `sqlite` and will need to
+      change when T003 introduces the PostgreSQL schema.
+- [x] Running `npm run test:server` with `DATABASE_URL=file:./data/test.db`
+      uses SQLite and all existing tests pass. (117/117 green)
+- [x] `server/src/env.ts` is imported first in `server/src/index.ts` (before
       any Prisma init) so `DATABASE_URL` is available from `.env` in local dev.
 
 ## Implementation Plan

@@ -1,3 +1,13 @@
+// Dual-adapter strategy: the adapter is selected at runtime in
+// server/src/services/prisma.ts based on DATABASE_URL:
+//   "file:" prefix → @prisma/adapter-better-sqlite3 (dev / integration tests)
+//   anything else  → @prisma/adapter-pg (production PostgreSQL)
+//
+// NOTE: Prisma 7 enforces strict adapter/provider compatibility.
+// @prisma/adapter-better-sqlite3 declares provider="sqlite", so the datasource
+// must also say "sqlite" for dev/test to work. For production migrations against
+// Postgres, prisma.config.ts supplies the postgresql:// URL and uses the pg
+// adapter at runtime.
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
