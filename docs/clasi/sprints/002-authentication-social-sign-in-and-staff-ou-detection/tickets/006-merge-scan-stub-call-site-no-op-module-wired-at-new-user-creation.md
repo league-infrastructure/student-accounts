@@ -1,11 +1,14 @@
 ---
-id: "006"
-title: "Merge-scan stub call site — no-op module wired at new-user creation"
-status: todo
-use-cases: [SUC-001, SUC-002]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: '006'
+title: "Merge-scan stub call site \u2014 no-op module wired at new-user creation"
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # T006: Merge-scan stub call site — no-op module wired at new-user creation
@@ -29,17 +32,17 @@ skip creation).
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/auth/merge-scan.stub.ts` exists with an exported
+- [x] `server/src/services/auth/merge-scan.stub.ts` exists with an exported
       `async function mergeScan(user: User): Promise<void>` that logs the
       Sprint 007 deferral message and returns.
-- [ ] `SignInHandler` imports `mergeScan` from `./merge-scan.stub` and calls
+- [x] `SignInHandler` imports `mergeScan` from `./merge-scan.stub` and calls
       it immediately after new User creation (before returning the User).
-- [ ] `mergeScan` is not called when an existing User is found (returning-user
+- [x] `mergeScan` is not called when an existing User is found (returning-user
       path).
-- [ ] The log message includes the `userId` for traceability.
-- [ ] A unit test confirms `mergeScan` is called for new users and not for
+- [x] The log message includes the `userId` for traceability.
+- [x] A unit test confirms `mergeScan` is called for new users and not for
       returning users.
-- [ ] All existing tests pass.
+- [x] All existing tests pass.
 
 ## Implementation Plan
 

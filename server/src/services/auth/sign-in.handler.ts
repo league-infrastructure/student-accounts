@@ -27,7 +27,7 @@ import type { User } from '../../generated/prisma/client.js';
 import type { UserService } from '../user.service.js';
 import type { LoginService } from '../login.service.js';
 import { AuditService } from '../audit.service.js';
-import { scanNewUser } from './merge-scan.stub.js';
+import { mergeScan } from './merge-scan.stub.js';
 import {
   type AdminDirectoryClient,
   StaffOULookupError,
@@ -150,7 +150,7 @@ export async function signInHandler(
     );
 
     // 3c. Merge-scan stub (Sprint 007 replaces this module)
-    await scanNewUser(user);
+    await mergeScan(user);
   }
 
   // --- Step 4: Staff OU detection (@jointheleague.org accounts only) ---
