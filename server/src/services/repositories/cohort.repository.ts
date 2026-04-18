@@ -7,7 +7,7 @@
  * FK errors (e.g., deleting a cohort that still has users) propagate as
  * Prisma errors; callers may catch and re-wrap as ConflictError if desired.
  */
-import type { Cohort, Prisma } from '../../generated/prisma/client.js';
+import type { Cohort } from '../../generated/prisma/client.js';
 import type { DbClient } from './types.js';
 
 export type CreateCohortInput = {

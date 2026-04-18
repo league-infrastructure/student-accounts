@@ -1,11 +1,13 @@
 ---
-id: "009"
-title: "Health-check endpoint + CI skeleton (lint, type-check, test on push)"
-status: todo
-use-cases: [SUC-005]
-depends-on: ["008"]
-github-issue: ""
-todo: ""
+id: 009
+title: Health-check endpoint + CI skeleton (lint, type-check, test on push)
+status: done
+use-cases:
+- SUC-005
+depends-on:
+- 008
+github-issue: ''
+todo: ''
 ---
 
 # Health-check endpoint + CI skeleton (lint, type-check, test on push)
@@ -22,16 +24,16 @@ complete sprint deliverable works end-to-end.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/health` returns `200 { status: "ok", db: "ok" }` when the
+- [x] `GET /api/health` returns `200 { status: "ok", db: "ok" }` when the
       database is reachable.
-- [ ] `GET /api/health` returns `503 { status: "error", db: "unreachable" }`
+- [x] `GET /api/health` returns `503 { status: "error", db: "unreachable" }`
       (or similar) when the database ping fails. The server must not crash.
-- [ ] The health endpoint pings the database with a lightweight query
+- [x] The health endpoint pings the database with a lightweight query
       (e.g., `prisma.$queryRaw\`SELECT 1\``).
-- [ ] A GitHub Actions workflow file exists at `.github/workflows/ci.yml`.
-- [ ] The CI workflow runs on: `push` to `master`, `pull_request` targeting
+- [x] A GitHub Actions workflow file exists at `.github/workflows/ci.yml`.
+- [x] The CI workflow runs on: `push` to `master`, `pull_request` targeting
       `master`.
-- [ ] The CI workflow has three sequential jobs (or steps within one job):
+- [x] The CI workflow has three sequential jobs (or steps within one job):
       1. **lint** — runs ESLint (or the project's configured linter). If no
          linter is yet configured, add a minimal ESLint setup for TypeScript
          (eslint + @typescript-eslint/parser + @typescript-eslint/eslint-plugin)
@@ -40,10 +42,10 @@ complete sprint deliverable works end-to-end.
          with zero errors.
       3. **test** — runs `npm run test:server` against the SQLite test DB
          (no external services required). Must pass with all tests green.
-- [ ] The CI workflow uses `ubuntu-latest`, `node: 20`.
-- [ ] The `npm run test:server` and `npm run build` scripts continue to work
+- [x] The CI workflow uses `ubuntu-latest`, `node: 20`.
+- [x] The `npm run test:server` and `npm run build` scripts continue to work
       locally (no CI-only environment assumptions introduced).
-- [ ] Integration test `tests/server/app.test.ts` (or a new
+- [x] Integration test `tests/server/app.test.ts` (or a new
       `tests/server/health.test.ts`) covers:
       - `GET /api/health` returns 200 with `{ status: "ok" }` when the
         SQLite test database is up and migrations are applied.

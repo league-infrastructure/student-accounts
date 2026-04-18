@@ -65,7 +65,7 @@ authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
       if (err) return res.status(500).json({ error: 'Login failed' });
       res.json(serializeUser(user));
     });
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Test login failed' });
   }
 });

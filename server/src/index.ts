@@ -3,7 +3,6 @@ import app from './app.js';
 import { initPrisma } from './services/prisma.js';
 import { initConfigCache } from './services/config.js';
 import { ServiceRegistry } from './services/service.registry.js';
-import { prisma } from './services/prisma.js';
 
 const port = parseInt(process.env.PORT || '3000', 10);
 
