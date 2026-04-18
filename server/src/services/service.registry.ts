@@ -6,6 +6,7 @@ import { prisma as defaultPrisma } from './prisma';
 // Import existing service functions
 import { initConfigCache, getConfig, getAllConfig, setConfig, exportConfig } from './config';
 import { logBuffer } from './logBuffer';
+import { AuditService } from './audit.service';
 import { UserService } from './user.service';
 import { SchedulerService } from './scheduler.service';
 import { BackupService } from './backup.service';
@@ -13,6 +14,7 @@ import { SessionService } from './session.service';
 
 export class ServiceRegistry {
   readonly source: ServiceSource;
+  readonly audit: AuditService;
   readonly users: UserService;
   readonly scheduler: SchedulerService;
   readonly backups: BackupService;
@@ -20,7 +22,8 @@ export class ServiceRegistry {
 
   private constructor(source: ServiceSource = 'UI') {
     this.source = source;
-    this.users = new UserService(defaultPrisma);
+    this.audit = new AuditService();
+    this.users = new UserService(defaultPrisma, this.audit);
     this.scheduler = new SchedulerService(defaultPrisma);
     this.backups = new BackupService(defaultPrisma);
     this.sessions = new SessionService(defaultPrisma);

@@ -1,11 +1,14 @@
 ---
-id: "007"
-title: "AuditService — atomic write pattern with transaction tests"
-status: todo
-use-cases: [SUC-001, SUC-002]
-depends-on: ["006"]
-github-issue: ""
-todo: ""
+id: '007'
+title: "AuditService \u2014 atomic write pattern with transaction tests"
+status: in-progress
+use-cases:
+- SUC-001
+- SUC-002
+depends-on:
+- '006'
+github-issue: ''
+todo: ''
 ---
 
 # AuditService — atomic write pattern with transaction tests
@@ -29,34 +32,34 @@ example: a UserService method that creates a User and records a
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/audit.service.ts` exports `AuditService` class
+- [x] `server/src/services/audit.service.ts` exports `AuditService` class
       with a single public method:
       `async record(tx: Prisma.TransactionClient, event: AuditEventInput): Promise<void>`
       where `AuditEventInput` is defined in the same file or in
       `contracts/index.ts`.
 
-- [ ] `AuditEventInput` type includes:
+- [x] `AuditEventInput` type includes:
       `actor_user_id?: number | null`, `action: string`,
       `target_user_id?: number | null`, `target_entity_type?: string`,
       `target_entity_id?: string`, `details?: Record<string, unknown>`.
 
-- [ ] `AuditService` is instantiated in `ServiceRegistry` and accessible
+- [x] `AuditService` is instantiated in `ServiceRegistry` and accessible
       as `registry.audit`.
 
-- [ ] `UserService` (or a thin demo method) demonstrates the atomic pattern:
+- [x] `UserService` (or a thin demo method) demonstrates the atomic pattern:
       a method that calls `prisma.$transaction(async (tx) => { ... })`,
       performs a User write, then calls `this.audit.record(tx, { ... })`.
       Both writes succeed or both are rolled back.
 
-- [ ] Integration test `tests/server/services/audit.service.test.ts`:
-  - [ ] Test: successful write — one User is created and one AuditEvent
+- [x] Integration test `tests/server/services/audit.service.test.ts`:
+  - [x] Test: successful write — one User is created and one AuditEvent
         row exists with the correct `action`, `actor_user_id` (null for
         system), `target_entity_type` ('User'), `target_entity_id`
         (string of the new user's id), non-null `created_at`.
-  - [ ] Test: atomic rollback — a transaction that creates a User and
+  - [x] Test: atomic rollback — a transaction that creates a User and
         records an audit event but then throws before committing results
         in zero User rows and zero AuditEvent rows in the database.
-  - [ ] Test: audit write failure — a transaction where the audit write
+  - [x] Test: audit write failure — a transaction where the audit write
         is forced to fail (e.g., by passing an oversized `action` string
         if the column has a length limit, or by using a mock TX that
         throws) results in the outer transaction rolling back the primary
@@ -64,7 +67,7 @@ example: a UserService method that creates a User and records a
         alternative test structure is acceptable: explicitly roll back
         after the audit write and assert both writes are gone.)
 
-- [ ] `npm run test:server` passes all tests including the new audit
+- [x] `npm run test:server` passes all tests including the new audit
       service tests.
 
 ## Implementation Plan
