@@ -1,11 +1,13 @@
 ---
-id: "003"
-title: "GitHub OAuth strategy — sign-in and UC-002 happy path"
-status: todo
-use-cases: [SUC-002]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: '003'
+title: "GitHub OAuth strategy \u2014 sign-in and UC-002 happy path"
+status: in-progress
+use-cases:
+- SUC-002
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # T003: GitHub OAuth strategy — sign-in and UC-002 happy path
@@ -19,23 +21,23 @@ GitHub no-public-email edge case with a placeholder primary_email.
 
 ## Acceptance Criteria
 
-- [ ] Prisma migration adds `provider_username String?` column to `Login`.
+- [x] Prisma migration adds `provider_username String?` column to `Login`.
       Migration is compatible with both SQLite (test) and Postgres (production).
-- [ ] `GET /api/auth/github` redirects to GitHub OAuth consent screen when
+- [x] `GET /api/auth/github` redirects to GitHub OAuth consent screen when
       credentials are configured.
-- [ ] On successful GitHub callback with an unknown identity: a new User and
+- [x] On successful GitHub callback with an unknown identity: a new User and
       Login are created. The GitHub username is stored in `Login.provider_username`.
-- [ ] When GitHub returns no public email, `primary_email` is set to
+- [x] When GitHub returns no public email, `primary_email` is set to
       `<github_username>@github.invalid`, a warning is logged, and sign-in
       completes normally (sign-in is NOT blocked). The `.invalid` domain is an
       RFC-reserved sentinel that cannot be a real address. The student may update
       their primary email on the account page (Sprint 003). (RD-002)
-- [ ] On successful GitHub callback with a known identity: no new records
+- [x] On successful GitHub callback with a known identity: no new records
       created; session established for existing User.
-- [ ] OAuth denied or error: redirect to `/?error=oauth_denied`.
-- [ ] `mergeScan` stub is called after new User creation.
-- [ ] `GET /account` stub route is accessible after GitHub sign-in.
-- [ ] All existing tests pass (`npm run test:server`).
+- [x] OAuth denied or error: redirect to `/?error=oauth_denied`.
+- [x] `mergeScan` stub is called after new User creation.
+- [x] `GET /account` stub route is accessible after GitHub sign-in.
+- [x] All existing tests pass (`npm run test:server`).
 
 ## Implementation Plan
 

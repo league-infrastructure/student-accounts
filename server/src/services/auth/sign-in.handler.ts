@@ -84,24 +84,41 @@ export async function signInHandler(
 
   // --- Step 3: New identity — create User and Login atomically ---
 
+  // Resolve the primary email. For GitHub, if no public email is available,
+  // fall back to <username>@github.invalid (RD-002). The .invalid TLD is
+  // RFC-reserved and cannot be a real deliverable address.
+  let resolvedEmail: string;
+  if (providerEmail) {
+    resolvedEmail = providerEmail;
+  } else if (provider === 'github' && providerUsername) {
+    console.warn(
+      `[sign-in.handler] GitHub user "${providerUsername}" has no public email — ` +
+        `using placeholder address ${providerUsername}@github.invalid (RD-002)`,
+    );
+    resolvedEmail = `${providerUsername}@github.invalid`;
+  } else {
+    resolvedEmail = `${providerUserId}@provider.invalid`;
+  }
+
   // 3a. Create User with audit event
   const user = await userService.createWithAudit(
     {
       display_name: displayName || providerEmail || providerUserId,
-      primary_email: providerEmail ?? `${providerUserId}@provider.invalid`,
+      primary_email: resolvedEmail,
       role: 'student',
       created_via: 'social_login',
     },
     null, // system action; no acting user
   );
 
-  // 3b. Create Login with audit event
+  // 3b. Create Login with audit event (pass provider_username for GitHub)
   await loginService.create(
     user.id,
     provider,
     providerUserId,
     providerEmail ?? null,
     null, // system action
+    providerUsername ?? null,
   );
 
   // 3c. Merge-scan stub (Sprint 007 replaces this module)
