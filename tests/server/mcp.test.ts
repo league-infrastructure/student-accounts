@@ -45,11 +45,11 @@ describe('MCP endpoint — POST /api/mcp', () => {
       .send({ jsonrpc: '2.0', method: 'initialize', id: 2 });
 
     const mcpUser = await prisma.user.findFirst({
-      where: { provider: 'mcp', providerId: 'mcp-bot' },
+      where: { primary_email: 'mcp-bot@system.local' },
     });
     expect(mcpUser).not.toBeNull();
-    expect(mcpUser!.displayName).toBe('MCP Bot');
-    expect(mcpUser!.role).toBe('ADMIN');
-    expect(mcpUser!.email).toBe('mcp-bot@system.local');
+    expect(mcpUser!.display_name).toBe('MCP Bot');
+    expect(mcpUser!.role).toBe('admin');
+    expect(mcpUser!.primary_email).toBe('mcp-bot@system.local');
   });
 });

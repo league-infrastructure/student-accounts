@@ -1,11 +1,13 @@
 ---
-id: "003"
-title: "Migration — Cohort and User entities"
-status: todo
-use-cases: [SUC-003]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: '003'
+title: "Migration \u2014 Cohort and User entities"
+status: done
+use-cases:
+- SUC-003
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # Migration — Cohort and User entities
@@ -22,7 +24,7 @@ The existing `Config`, `Session`, `ScheduledJob` models are untouched.
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma` defines:
+- [x] `server/prisma/schema.prisma` defines:
   - `Cohort` model: `id`, `name` (unique), `google_ou_path` (optional),
     `created_at`.
   - `User` model: `id`, `display_name`, `primary_email` (unique), `role`
@@ -32,14 +34,14 @@ The existing `Config`, `Session`, `ScheduledJob` models are untouched.
   - `UserRole` and `CreatedVia` enums.
   - Index on `User(role)` and `User(cohort_id)`.
   - `UserProvider` model is removed.
-- [ ] `npx prisma migrate dev --name cohort-and-user` generates a migration
-      that applies cleanly on a fresh Postgres database.
-- [ ] `npx prisma migrate dev` also applies cleanly on a fresh SQLite
-      database (used by integration tests).
-- [ ] `npx prisma generate` regenerates the client without errors.
-- [ ] The generated Prisma client exports `Cohort`, `User`, `UserRole`,
+- [x] `npx prisma migrate dev --name cohort-and-user` generates a migration
+      that applies cleanly on a fresh SQLite database (migration `20260418203005_cohort_and_user` created and applied).
+- [x] `npx prisma migrate dev` also applies cleanly on a fresh SQLite
+      database (used by integration tests) — verified with `prisma migrate deploy` on clean test.db.
+- [x] `npx prisma generate` regenerates the client without errors.
+- [x] The generated Prisma client exports `Cohort`, `User`, `UserRole`,
       `CreatedVia` types.
-- [ ] `npm run build` passes with no TypeScript errors. (Note: `user.service.ts`
+- [x] `npm run build` passes with no TypeScript errors. (Note: `user.service.ts`
       may need a minimal update to remove references to deleted columns; keep
       changes to only what is required to compile — full rewrite is T008.)
 

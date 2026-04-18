@@ -8,6 +8,11 @@
 // must also say "sqlite" for dev/test to work. For production migrations against
 // Postgres, prisma.config.ts supplies the postgresql:// URL and uses the pg
 // adapter at runtime.
+//
+// TODO(T004): When the full domain schema is applied against a fresh Postgres
+// database in CI, verify that the migration SQL generated here (for SQLite)
+// is equivalent to what Prisma would generate for Postgres. The schema itself
+// uses no Postgres-only DDL in this sprint, so compatibility is expected.
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -17,43 +22,15 @@ datasource db {
   provider = "sqlite"
 }
 
+// ---------------------------------------------------------------------------
+// Infrastructure models (unchanged from template)
+// ---------------------------------------------------------------------------
+
 // Runtime configuration store for admin-managed credentials.
 model Config {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
-}
-
-enum UserRole {
-  USER
-  ADMIN
-}
-
-model User {
-  id          Int       @id @default(autoincrement())
-  email       String    @unique
-  displayName String?
-  role        UserRole  @default(USER)
-  avatarUrl   String?
-  provider    String?
-  providerId  String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  providers   UserProvider[]
-
-  @@unique([provider, providerId])
-}
-
-model UserProvider {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  provider   String
-  providerId String
-  createdAt  DateTime @default(now())
-
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerId])
 }
 
 model ScheduledJob {
@@ -68,13 +45,6 @@ model ScheduledJob {
   updatedAt DateTime  @updatedAt
 }
 
-model Counter {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  value     Int      @default(0)
-  updatedAt DateTime @updatedAt
-}
-
 // Express session store (PrismaSessionStore).
 model Session {
   sid    String   @id
@@ -83,4 +53,49 @@ model Session {
 
   @@index([expire])
   @@map("session")
+}
+
+// ---------------------------------------------------------------------------
+// Domain enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  student
+  staff
+  admin
+}
+
+enum CreatedVia {
+  social_login
+  pike13_sync
+  admin_created
+}
+
+// ---------------------------------------------------------------------------
+// Domain models
+// ---------------------------------------------------------------------------
+
+model Cohort {
+  id             Int      @id @default(autoincrement())
+  name           String   @unique
+  google_ou_path String?
+  created_at     DateTime @default(now())
+
+  users          User[]
+}
+
+model User {
+  id            Int        @id @default(autoincrement())
+  display_name  String
+  primary_email String     @unique
+  role          UserRole   @default(student)
+  created_via   CreatedVia
+  cohort_id     Int?
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  cohort        Cohort?    @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
+
+  @@index([role])
+  @@index([cohort_id])
 }

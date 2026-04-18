@@ -12,19 +12,26 @@ declare module 'express-session' {
  * admin's identity. We check the real admin's role so that admin-only routes
  * remain accessible during impersonation, even if the impersonated user is not
  * an admin.
+ *
+ * NOTE: Accepts both legacy role string 'ADMIN' and domain enum value 'admin'
+ * for compatibility during the schema migration (T003). T008 will normalize this.
  */
+function isAdmin(role: string | undefined): boolean {
+  return role === 'ADMIN' || role === 'admin';
+}
+
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   // When impersonating, check the real admin's role (not the impersonated user's)
   const realAdmin = (req as any).realAdmin;
   if (realAdmin) {
-    if (realAdmin.role === 'ADMIN') {
+    if (isAdmin(realAdmin.role)) {
       return next();
     }
     return res.status(403).json({ error: 'Admin access required' });
   }
 
   // Support both DB-backed user role and legacy session-based admin auth
-  if (req.user && (req.user as any).role === 'ADMIN') {
+  if (req.user && isAdmin((req.user as any).role)) {
     return next();
   }
   if (req.session.isAdmin) {

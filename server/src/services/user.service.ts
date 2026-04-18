@@ -1,3 +1,5 @@
+// NOTE: This is a minimal stub updated for the domain User schema (T003).
+// The full rewrite aligning with the repository pattern is T008.
 import { NotFoundError } from '../errors.js';
 
 export class UserService {
@@ -8,7 +10,7 @@ export class UserService {
   }
 
   async list() {
-    return this.prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+    return this.prisma.user.findMany({ orderBy: { created_at: 'desc' } });
   }
 
   async getById(id: number) {
@@ -18,51 +20,33 @@ export class UserService {
   }
 
   async getByEmail(email: string) {
-    return this.prisma.user.findUnique({ where: { email } });
+    return this.prisma.user.findUnique({ where: { primary_email: email } });
   }
 
-  async getByProvider(provider: string, providerId: string) {
-    return this.prisma.user.findUnique({
-      where: { provider_providerId: { provider, providerId } },
-    });
-  }
-
-  async upsertByProvider(data: {
-    provider: string;
-    providerId: string;
-    email: string;
-    displayName?: string;
-    avatarUrl?: string;
-  }) {
-    return this.prisma.user.upsert({
-      where: {
-        provider_providerId: { provider: data.provider, providerId: data.providerId },
-      },
-      update: {
-        email: data.email,
-        displayName: data.displayName,
-        avatarUrl: data.avatarUrl,
-      },
-      create: {
-        provider: data.provider,
-        providerId: data.providerId,
-        email: data.email,
-        displayName: data.displayName,
-        avatarUrl: data.avatarUrl,
+  async create(data: { email?: string; displayName?: string; role?: string }) {
+    return this.prisma.user.create({
+      data: {
+        primary_email: data.email ?? 'unknown@example.com',
+        display_name: data.displayName ?? data.email ?? 'Unknown',
+        role: mapRole(data.role),
+        created_via: 'admin_created',
       },
     });
   }
 
-  async create(data: { email: string; displayName?: string; role?: 'USER' | 'ADMIN' }) {
-    return this.prisma.user.create({ data });
+  async update(id: number, data: { email?: string; displayName?: string; role?: string }) {
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        ...(data.email !== undefined ? { primary_email: data.email } : {}),
+        ...(data.displayName !== undefined ? { display_name: data.displayName } : {}),
+        ...(data.role !== undefined ? { role: mapRole(data.role) } : {}),
+      },
+    });
   }
 
-  async updateRole(id: number, role: 'USER' | 'ADMIN') {
-    return this.prisma.user.update({ where: { id }, data: { role } });
-  }
-
-  async update(id: number, data: { email?: string; displayName?: string; role?: 'USER' | 'ADMIN'; avatarUrl?: string }) {
-    return this.prisma.user.update({ where: { id }, data });
+  async updateRole(id: number, role: string) {
+    return this.prisma.user.update({ where: { id }, data: { role: mapRole(role) } });
   }
 
   async delete(id: number) {
@@ -72,4 +56,13 @@ export class UserService {
   async count() {
     return this.prisma.user.count();
   }
+}
+
+/** Map legacy USER/ADMIN role strings to domain enum values. */
+function mapRole(role: string | undefined): string {
+  if (role === 'ADMIN') return 'admin';
+  if (role === 'USER') return 'student';
+  // Accept domain enum values directly
+  if (role === 'admin' || role === 'staff' || role === 'student') return role;
+  return 'student';
 }

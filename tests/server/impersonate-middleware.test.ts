@@ -53,6 +53,20 @@ describe('requireAdmin (unit)', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
+  it('allows request when req.user.role === admin (domain enum)', () => {
+    const req = makeMockReq({
+      user: { id: 1, role: 'admin' },
+      session: {},
+    });
+    const res = makeMockRes();
+    const next = vi.fn();
+
+    requireAdmin(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
   it('rejects request when req.user.role is USER and no realAdmin', () => {
     const req = makeMockReq({
       user: { id: 2, role: 'USER' },
@@ -89,6 +103,21 @@ describe('requireAdmin (unit)', () => {
     const req = makeMockReq({
       user: { id: 99, role: 'USER' },
       realAdmin: { id: 10, role: 'ADMIN' },
+      session: {},
+    });
+    const res = makeMockRes();
+    const next = vi.fn();
+
+    requireAdmin(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('allows request when req.realAdmin.role === admin (domain enum)', () => {
+    const req = makeMockReq({
+      user: { id: 99, role: 'student' },
+      realAdmin: { id: 10, role: 'admin' },
       session: {},
     });
     const res = makeMockRes();
@@ -143,29 +172,27 @@ describe('Impersonation integration via app', () => {
   let targetUserId: number;
 
   beforeAll(async () => {
-    // Create admin and target user in the test DB
+    // Create admin and target user in the test DB using domain schema
     const admin = await prisma.user.upsert({
-      where: { email: 'imp-admin@example.com' },
-      update: { role: 'ADMIN' },
+      where: { primary_email: 'imp-admin@example.com' },
+      update: { role: 'admin' },
       create: {
-        email: 'imp-admin@example.com',
-        displayName: 'Imp Admin',
-        role: 'ADMIN',
-        provider: 'test',
-        providerId: 'test-imp-admin',
+        primary_email: 'imp-admin@example.com',
+        display_name: 'Imp Admin',
+        role: 'admin',
+        created_via: 'admin_created',
       },
     });
     adminId = admin.id;
 
     const target = await prisma.user.upsert({
-      where: { email: 'imp-target@example.com' },
-      update: { role: 'USER' },
+      where: { primary_email: 'imp-target@example.com' },
+      update: { role: 'student' },
       create: {
-        email: 'imp-target@example.com',
-        displayName: 'Imp Target',
-        role: 'USER',
-        provider: 'test',
-        providerId: 'test-imp-target',
+        primary_email: 'imp-target@example.com',
+        display_name: 'Imp Target',
+        role: 'student',
+        created_via: 'admin_created',
       },
     });
     targetUserId = target.id;
@@ -173,13 +200,11 @@ describe('Impersonation integration via app', () => {
 
   afterAll(async () => {
     await prisma.user.deleteMany({
-      where: { email: { in: ['imp-admin@example.com', 'imp-target@example.com'] } },
+      where: { primary_email: { in: ['imp-admin@example.com', 'imp-target@example.com'] } },
     });
   });
 
   it('no impersonation: req.user is the logged-in user, req.realAdmin is absent', async () => {
-    // Without impersonation, /api/auth/me returns the logged-in user's data.
-    // If realAdmin were leaking, the response would differ.
     const agent = request.agent(app);
     await agent.post('/api/auth/test-login').send({
       email: 'imp-admin@example.com',
@@ -221,24 +246,13 @@ describe('Impersonation integration via app', () => {
   });
 
   /**
-   * Full impersonation flow: admin logs in, session gets impersonatingUserId set,
-   * impersonateMiddleware swaps req.user. The admin should still access admin routes
-   * because requireAdmin checks req.realAdmin.role.
-   *
-   * We simulate the session mutation by using a test endpoint that sets
-   * session.impersonatingUserId directly. Since ticket 008 (impersonation API)
-   * doesn't exist yet, we use the test-login flow and manually set session state
-   * via a helper route registered only in test mode, or we verify the middleware
-   * behavior through the unit tests above.
-   *
-   * The following test verifies the impersonation path by directly calling
-   * impersonateMiddleware with a mock that uses the real prisma.
+   * Full impersonation flow via impersonateMiddleware with mock using real prisma.
    */
   it('impersonateMiddleware swaps req.user and preserves realAdmin', async () => {
     const { impersonateMiddleware } = await import('../../server/src/middleware/impersonate');
 
     const req = makeMockReq({
-      user: { id: adminId, role: 'ADMIN' },
+      user: { id: adminId, role: 'admin' },
       session: { impersonatingUserId: targetUserId },
     });
     const res = makeMockRes();
@@ -248,18 +262,16 @@ describe('Impersonation integration via app', () => {
 
     expect(next).toHaveBeenCalledOnce();
     // req.user is now the target (non-admin) user
-    expect((req.user as any).email).toBe('imp-target@example.com');
-    expect((req.user as any).role).toBe('USER');
+    expect((req.user as any).primary_email).toBe('imp-target@example.com');
+    expect((req.user as any).role).toBe('student');
     // req.realAdmin is the original admin object that was previously req.user
-    expect((req as any).realAdmin.role).toBe('ADMIN');
+    expect((req as any).realAdmin.role).toBe('admin');
   });
 
-  it('requireAdmin allows access when req.realAdmin is ADMIN and req.user is USER (impersonation)', () => {
-    // This is the critical path: admin impersonates a non-admin user,
-    // but requireAdmin should still grant access.
+  it('requireAdmin allows access when req.realAdmin is admin and req.user is student (impersonation)', () => {
     const req = makeMockReq({
-      user: { id: targetUserId, role: 'USER' },
-      realAdmin: { id: adminId, role: 'ADMIN' },
+      user: { id: targetUserId, role: 'student' },
+      realAdmin: { id: adminId, role: 'admin' },
       session: {},
     });
     const res = makeMockRes();

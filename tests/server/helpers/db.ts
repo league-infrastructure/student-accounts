@@ -6,13 +6,13 @@ import { prisma } from '../../../server/src/services/prisma';
 
 export async function cleanupTestDb() {
   try {
-    const testEmails = ['@example.com', '@test.com'];
+    const testEmailSuffixes = ['@example.com', '@test.com'];
 
-    // Find test users
+    // Find test users by primary_email
     const testUsers = await prisma.user.findMany({
       where: {
-        OR: testEmails.map(suffix => ({
-          email: { endsWith: suffix },
+        OR: testEmailSuffixes.map(suffix => ({
+          primary_email: { endsWith: suffix },
         })),
       },
       select: { id: true },
@@ -20,10 +20,6 @@ export async function cleanupTestDb() {
     const userIds = testUsers.map((u: any) => u.id);
 
     if (userIds.length > 0) {
-      // Delete related records first (FK constraints)
-      await prisma.userProvider.deleteMany({
-        where: { userId: { in: userIds } },
-      });
       await prisma.user.deleteMany({
         where: { id: { in: userIds } },
       });
@@ -34,7 +30,7 @@ export async function cleanupTestDb() {
 }
 
 export async function findUserByEmail(email: string) {
-  return prisma.user.findFirst({ where: { email } });
+  return prisma.user.findFirst({ where: { primary_email: email } });
 }
 
 export async function findUserById(id: number) {

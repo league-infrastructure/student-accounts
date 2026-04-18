@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../services/prisma';
+import { prisma } from '../services/prisma.js';
 
 export async function mcpTokenAuth(req: Request, res: Response, next: NextFunction) {
   const token = process.env.MCP_DEFAULT_TOKEN;
@@ -20,16 +20,15 @@ export async function mcpTokenAuth(req: Request, res: Response, next: NextFuncti
     return;
   }
 
-  // Upsert the MCP bot user
+  // Upsert the MCP bot user using the domain schema.
   const mcpUser = await prisma.user.upsert({
-    where: { provider_providerId: { provider: 'mcp', providerId: 'mcp-bot' } },
+    where: { primary_email: 'mcp-bot@system.local' },
     update: {},
     create: {
-      provider: 'mcp',
-      providerId: 'mcp-bot',
-      email: 'mcp-bot@system.local',
-      displayName: 'MCP Bot',
-      role: 'ADMIN',
+      primary_email: 'mcp-bot@system.local',
+      display_name: 'MCP Bot',
+      role: 'admin',
+      created_via: 'admin_created',
     },
   });
 
