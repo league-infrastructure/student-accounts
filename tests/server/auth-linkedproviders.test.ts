@@ -59,28 +59,28 @@ describe('POST /api/auth/unlink/:provider — authentication', () => {
 
 describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () => {
   beforeEach(() => {
-    delete process.env.GITHUB_CLIENT_ID;
-    delete process.env.GITHUB_CLIENT_SECRET;
-    delete process.env.GOOGLE_CLIENT_ID;
-    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.GITHUB_OAUTH_CLIENT_ID;
+    delete process.env.GITHUB_OAUTH_CLIENT_SECRET;
+    delete process.env.GOOGLE_OAUTH_CLIENT_ID;
+    delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   });
 
   it('GET /api/auth/github?link=1 returns 401 when not authenticated (configured)', async () => {
-    process.env.GITHUB_CLIENT_ID = 'test-id';
-    process.env.GITHUB_CLIENT_SECRET = 'test-secret';
+    process.env.GITHUB_OAUTH_CLIENT_ID = 'test-id';
+    process.env.GITHUB_OAUTH_CLIENT_SECRET = 'test-secret';
     const res = await request(app).get('/api/auth/github?link=1');
     expect(res.status).toBe(401);
-    delete process.env.GITHUB_CLIENT_ID;
-    delete process.env.GITHUB_CLIENT_SECRET;
+    delete process.env.GITHUB_OAUTH_CLIENT_ID;
+    delete process.env.GITHUB_OAUTH_CLIENT_SECRET;
   });
 
   it('GET /api/auth/google?link=1 returns 401 when not authenticated (configured)', async () => {
-    process.env.GOOGLE_CLIENT_ID = 'test-id';
-    process.env.GOOGLE_CLIENT_SECRET = 'test-secret';
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-id';
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-secret';
     const res = await request(app).get('/api/auth/google?link=1');
     expect(res.status).toBe(401);
-    delete process.env.GOOGLE_CLIENT_ID;
-    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.GOOGLE_OAUTH_CLIENT_ID;
+    delete process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   });
 
   it('GET /api/auth/github returns 501 (not 401) when not configured and no ?link=1', async () => {
@@ -91,8 +91,8 @@ describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () 
 
 describe('OAuth initiate routes — link mode (authenticated)', () => {
   it('GET /api/auth/github?link=1 does not return 401 when authenticated', async () => {
-    process.env.GITHUB_CLIENT_ID = 'test-id';
-    process.env.GITHUB_CLIENT_SECRET = 'test-secret';
+    process.env.GITHUB_OAUTH_CLIENT_ID = 'test-id';
+    process.env.GITHUB_OAUTH_CLIENT_SECRET = 'test-secret';
 
     const agent = request.agent(app);
     await agent.post('/api/auth/test-login').send({
@@ -102,10 +102,10 @@ describe('OAuth initiate routes — link mode (authenticated)', () => {
     });
 
     const res = await agent.get('/api/auth/github?link=1');
-    // Should not be 401 (auth check passed); will be 501 because OAuth not implemented
+    // Should not be 401 (auth check passed); will be 501 because OAuth not implemented (T003)
     expect(res.status).not.toBe(401);
 
-    delete process.env.GITHUB_CLIENT_ID;
-    delete process.env.GITHUB_CLIENT_SECRET;
+    delete process.env.GITHUB_OAUTH_CLIENT_ID;
+    delete process.env.GITHUB_OAUTH_CLIENT_SECRET;
   });
 });

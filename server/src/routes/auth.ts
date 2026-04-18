@@ -1,9 +1,13 @@
-// NOTE: This auth route is a minimal shim for T003.
-// OAuth flows (GitHub, Google), UserProvider logic, and the unlink endpoint
-// are template features replaced by the domain Login model in a later sprint (T008).
-// The test-login and auth/me endpoints are updated to use the domain User schema.
+/**
+ * Auth routes — OAuth strategy endpoints, shared auth utilities.
+ *
+ * Google OAuth (T002): GET /api/auth/google, GET /api/auth/google/callback
+ * GitHub OAuth (T003): stub routes; implementation deferred.
+ * Shared: /api/auth/me, POST /api/auth/logout, POST /api/auth/test-login
+ */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import passport from 'passport';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 
@@ -116,47 +120,91 @@ authRouter.post('/auth/logout', (req: Request, res: Response, next: NextFunction
 });
 
 // ---------------------------------------------------------------------------
-// OAuth stubs — full implementation in a later sprint (T008 / OAuth sprint)
+// Google OAuth routes (T002)
 // ---------------------------------------------------------------------------
 
-authRouter.post('/auth/unlink/:provider', requireAuth, (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'OAuth account linking not yet implemented' });
-});
-
-authRouter.get('/auth/github', (req: Request, res: Response) => {
-  if (!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)) {
-    return res.status(501).json({
-      error: 'GitHub OAuth not configured',
-      docs: 'https://github.com/settings/developers',
-    });
-  }
-  if (req.query.link === '1') {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required to link an account' });
-    }
-  }
-  return res.status(501).json({ error: 'GitHub OAuth not yet implemented' });
-});
-
-authRouter.get('/auth/github/callback', (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'GitHub OAuth not yet implemented' });
-});
-
-authRouter.get('/auth/google', (req: Request, res: Response) => {
-  if (!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)) {
+/**
+ * GET /api/auth/google
+ * Initiates the Google OAuth redirect.
+ * Returns 501 if GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are absent
+ * (strategy not registered — Passport would throw a "Unknown authentication
+ * strategy" error, so we gate it explicitly).
+ * Returns 401 if ?link=1 is passed and the user is not authenticated
+ * (account-linking mode requires an existing session).
+ */
+authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction) => {
+  if (!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET)) {
     return res.status(501).json({
       error: 'Google OAuth not configured',
       docs: 'https://console.cloud.google.com/apis/credentials',
     });
   }
-  if (req.query.link === '1') {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required to link an account' });
-    }
+  if (req.query.link === '1' && !req.user) {
+    return res.status(401).json({ error: 'Authentication required to link an account' });
   }
-  return res.status(501).json({ error: 'Google OAuth not yet implemented' });
+  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
 });
 
-authRouter.get('/auth/google/callback', (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Google OAuth not yet implemented' });
+/**
+ * GET /api/auth/google/callback
+ * Google redirects here after the user grants (or denies) consent.
+ * On success: writes userId + role to session, redirects to /account.
+ * On failure/denial: redirects to /?error=oauth_denied.
+ */
+authRouter.get(
+  '/auth/google/callback',
+  (req: Request, res: Response, next: NextFunction) => {
+    if (!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET)) {
+      return res.redirect('/?error=oauth_denied');
+    }
+    // Use a custom callback to intercept authentication failures and redirect
+    // instead of letting Passport return a default 401.
+    passport.authenticate(
+      'google',
+      { session: false },
+      (err: unknown, user: Express.User | false | null) => {
+        if (err || !user) {
+          return res.redirect('/?error=oauth_denied');
+        }
+        req.login(user, (loginErr) => {
+          if (loginErr) return next(loginErr);
+          // Write typed session fields.
+          (req.session as any).userId = (user as any).id;
+          (req.session as any).role = (user as any).role;
+          res.redirect('/account');
+        });
+      },
+    )(req, res, next);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GitHub OAuth routes (T003 — stubs only)
+// ---------------------------------------------------------------------------
+
+authRouter.get('/auth/github', (req: Request, res: Response) => {
+  if (!(process.env.GITHUB_OAUTH_CLIENT_ID && process.env.GITHUB_OAUTH_CLIENT_SECRET)) {
+    return res.status(501).json({
+      error: 'GitHub OAuth not configured',
+      docs: 'https://github.com/settings/developers',
+    });
+  }
+  if (req.query.link === '1' && !req.user) {
+    return res.status(401).json({ error: 'Authentication required to link an account' });
+  }
+  // T003 will replace this stub with passport.authenticate('github').
+  return res.status(501).json({ error: 'GitHub OAuth not yet implemented (T003)' });
+});
+
+authRouter.get('/auth/github/callback', (_req: Request, res: Response) => {
+  // T003 will replace this stub.
+  res.status(501).json({ error: 'GitHub OAuth not yet implemented (T003)' });
+});
+
+// ---------------------------------------------------------------------------
+// Account-linking stub (future sprint)
+// ---------------------------------------------------------------------------
+
+authRouter.post('/auth/unlink/:provider', requireAuth, (_req: Request, res: Response) => {
+  res.status(501).json({ error: 'OAuth account linking not yet implemented' });
 });

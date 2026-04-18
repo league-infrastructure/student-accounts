@@ -138,14 +138,15 @@ model User {
 }
 
 model Login {
-  id               Int      @id @default(autoincrement())
-  user_id          Int
-  provider         String   // 'google' | 'github'
-  provider_user_id String
-  provider_email   String?
-  created_at       DateTime @default(now())
+  id                Int      @id @default(autoincrement())
+  user_id           Int
+  provider          String   // 'google' | 'github'
+  provider_user_id  String
+  provider_email    String?
+  provider_username String?  // GitHub username; null for Google logins
+  created_at        DateTime @default(now())
 
-  user             User     @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Restrict)
 
   @@unique([provider, provider_user_id])
   @@index([user_id])
