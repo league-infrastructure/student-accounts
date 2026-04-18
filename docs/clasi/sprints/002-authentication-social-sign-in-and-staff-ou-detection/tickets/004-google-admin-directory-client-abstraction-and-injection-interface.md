@@ -1,11 +1,13 @@
 ---
-id: "004"
-title: "Google Admin Directory client — abstraction and injection interface"
-status: todo
-use-cases: [SUC-003]
-depends-on: ["001"]
-github-issue: ""
-todo: ""
+id: '004'
+title: "Google Admin Directory client \u2014 abstraction and injection interface"
+status: done
+use-cases:
+- SUC-003
+depends-on:
+- '001'
+github-issue: ''
+todo: ''
 ---
 
 # T004: Google Admin Directory client — abstraction and injection interface
@@ -24,8 +26,8 @@ It delivers the abstraction and verifies the interface independently.
 
 ## Acceptance Criteria
 
-- [ ] `googleapis` is installed as a production dependency.
-- [ ] `server/src/services/auth/google-admin-directory.client.ts` exports:
+- [x] `googleapis` is installed as a production dependency.
+- [x] `server/src/services/auth/google-admin-directory.client.ts` exports:
   - `AdminDirectoryClient` interface with `getUserOU(email: string): Promise<string>`.
   - `GoogleAdminDirectoryClient` class implementing the interface, using a
     service account JSON and delegated user email for domain-wide delegation.
@@ -33,11 +35,11 @@ It delivers the abstraction and verifies the interface independently.
   - `FakeAdminDirectoryClient` class that returns a configured OU path string
     without network calls.
   - `StaffOULookupError` typed error class.
-- [ ] `GoogleAdminDirectoryClient.getUserOU` calls the Google Admin SDK
+- [x] `GoogleAdminDirectoryClient.getUserOU` calls the Google Admin SDK
       `users.get` endpoint, reads `orgUnitPath`, and returns it.
-- [ ] `GoogleAdminDirectoryClient.getUserOU` throws `StaffOULookupError` on
+- [x] `GoogleAdminDirectoryClient.getUserOU` throws `StaffOULookupError` on
       any API failure (network error, auth error, user not found).
-- [ ] When `GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_ADMIN_DELEGATED_USER_EMAIL`
+- [x] When `GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_ADMIN_DELEGATED_USER_EMAIL`
       are absent or misconfigured, the app still starts cleanly (no crash on
       startup). However, `GoogleAdminDirectoryClient` must throw
       `StaffOULookupError` immediately when `getUserOU` is called — it must NOT
@@ -46,10 +48,10 @@ It delivers the abstraction and verifies the interface independently.
       granting student access to an unverified `@jointheleague.org` account.
       The error must be logged at ERROR level with enough context for an operator
       to diagnose the misconfiguration. (RD-001)
-- [ ] `config/dev/secrets.env.example` updated with
+- [x] `config/dev/secrets.env.example` updated with
       `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_ADMIN_DELEGATED_USER_EMAIL`,
       and `GOOGLE_STAFF_OU_PATH` placeholders.
-- [ ] All existing tests pass.
+- [x] All existing tests pass.
 
 ## Implementation Plan
 
