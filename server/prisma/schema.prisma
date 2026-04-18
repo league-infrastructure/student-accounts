@@ -9,10 +9,6 @@
 // Postgres, prisma.config.ts supplies the postgresql:// URL and uses the pg
 // adapter at runtime.
 //
-// TODO(T004): When the full domain schema is applied against a fresh Postgres
-// database in CI, verify that the migration SQL generated here (for SQLite)
-// is equivalent to what Prisma would generate for Postgres. The schema itself
-// uses no Postgres-only DDL in this sprint, so compatibility is expected.
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -71,6 +67,19 @@ enum CreatedVia {
   admin_created
 }
 
+enum ExternalAccountType {
+  workspace
+  claude
+  pike13
+}
+
+enum ExternalAccountStatus {
+  pending
+  active
+  suspended
+  removed
+}
+
 // ---------------------------------------------------------------------------
 // Domain models
 // ---------------------------------------------------------------------------
@@ -94,8 +103,42 @@ model User {
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
 
-  cohort        Cohort?    @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
+  cohort            Cohort?           @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
+  logins            Login[]
+  external_accounts ExternalAccount[]
 
   @@index([role])
   @@index([cohort_id])
+}
+
+model Login {
+  id               Int      @id @default(autoincrement())
+  user_id          Int
+  provider         String   // 'google' | 'github'
+  provider_user_id String
+  provider_email   String?
+  created_at       DateTime @default(now())
+
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Restrict)
+
+  @@unique([provider, provider_user_id])
+  @@index([user_id])
+}
+
+// Note: A partial unique index on (user_id, type) WHERE status IN ('pending','active')
+// is added as raw SQL in the migration file because Prisma's DSL does not support
+// partial indexes. The @@index directives below cover plain (non-partial) indexes only.
+model ExternalAccount {
+  id                Int                   @id @default(autoincrement())
+  user_id           Int
+  type              ExternalAccountType
+  external_id       String?
+  status            ExternalAccountStatus @default(pending)
+  created_at        DateTime              @default(now())
+  status_changed_at DateTime?
+
+  user              User                  @relation(fields: [user_id], references: [id], onDelete: Restrict)
+
+  @@index([user_id])
+  @@index([type, status])
 }

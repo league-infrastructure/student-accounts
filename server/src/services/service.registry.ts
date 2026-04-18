@@ -52,6 +52,10 @@ export class ServiceRegistry {
   async clearAll(): Promise<void> {
     const p = this.prisma;
     await p.scheduledJob.deleteMany();
+    // Login and ExternalAccount have FK → User with onDelete: Restrict,
+    // so they must be deleted before User.
+    await p.login.deleteMany();
+    await p.externalAccount.deleteMany();
     await p.user.deleteMany();
   }
 }
