@@ -1,11 +1,14 @@
 ---
-id: "001"
-title: "OAuth config, secrets wiring, and Passport session setup"
-status: todo
-use-cases: [SUC-001, SUC-002, SUC-003]
+id: '001'
+title: OAuth config, secrets wiring, and Passport session setup
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 
 # T001: OAuth config, secrets wiring, and Passport session setup
@@ -26,27 +29,27 @@ T002 and T003 build on.
 
 ## Acceptance Criteria
 
-- [ ] `passport`, `passport-google-oauth20`, `passport-github2` are installed
+- [x] `passport`, `passport-google-oauth20`, `passport-github2` are installed
       as production dependencies.
-- [ ] A `server/src/services/auth/passport.config.ts` module exists that reads
+- [x] A `server/src/services/auth/passport.config.ts` module exists that reads
       `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
       `GOOGLE_CALLBACK_URL`, `GITHUB_OAUTH_CLIENT_ID`,
       `GITHUB_OAUTH_CLIENT_SECRET`, `GITHUB_CALLBACK_URL` from `process.env`.
-- [ ] Missing OAuth env vars cause the affected strategy to be skipped (not
+- [x] Missing OAuth env vars cause the affected strategy to be skipped (not
       registered); the app still starts cleanly.
-- [ ] `passport.serializeUser` stores `user.id`; `passport.deserializeUser`
+- [x] `passport.serializeUser` stores `user.id`; `passport.deserializeUser`
       loads the User from the database by id and calls `done(null, user)`.
-- [ ] `passport.initialize()` and `passport.session()` are registered in
+- [x] `passport.initialize()` and `passport.session()` are registered in
       `app.ts` in correct middleware order (after `express-session`, before
       routes).
-- [ ] `req.session` is extended with typed fields `userId: number` and
+- [x] `req.session` is extended with typed fields `userId: number` and
       `role: UserRole` via a `express-session` module augmentation.
-- [ ] `config/dev/secrets.env.example` and `config/prod/secrets.env.example`
+- [x] `config/dev/secrets.env.example` and `config/prod/secrets.env.example`
       are updated to include all 6 OAuth env vars (`GOOGLE_OAUTH_CLIENT_ID`,
       `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`,
       `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`,
       `GITHUB_CALLBACK_URL`).
-- [ ] `npm run test:server` passes (257 existing tests still green).
+- [x] `npm run test:server` passes (257 existing tests still green).
 
 ## Implementation Plan
 
