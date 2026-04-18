@@ -56,7 +56,7 @@ describe('Admin Authentication', () => {
     it('blocks unauthenticated access to admin endpoints', async () => {
       const res = await request(app).get('/api/admin/env');
       expect(res.status).toBe(401);
-      expect(res.body.error).toBe('Authentication required');
+      expect(res.body.error).toBe('Unauthorized');
     });
   });
 

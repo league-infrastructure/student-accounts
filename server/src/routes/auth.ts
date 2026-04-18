@@ -68,6 +68,9 @@ authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
     });
     req.login(user, (err) => {
       if (err) return res.status(500).json({ error: 'Login failed' });
+      // Set session fields used by requireAuth and requireRole middleware.
+      (req.session as any).userId = user.id;
+      (req.session as any).role = user.role;
       res.json(serializeUser(user));
     });
   } catch (_err) {
