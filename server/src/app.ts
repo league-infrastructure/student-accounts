@@ -7,12 +7,8 @@ import pino from 'pino';
 import pinoHttp from 'pino-http';
 import { Writable } from 'stream';
 import { healthRouter } from './routes/health';
-import { integrationsRouter } from './routes/integrations';
 import { authRouter } from './routes/auth';
-import { githubRouter } from './routes/github';
 import { adminRouter } from './routes/admin';
-import { countersRouter } from './routes/counters';
-import { pike13Router } from './routes/pike13';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -90,12 +86,8 @@ app.use(attachServices(registry));
 
 // Routes
 app.use('/api', healthRouter);
-app.use('/api', integrationsRouter);
 app.use('/api', authRouter);
-app.use('/api', githubRouter);
-app.use('/api', pike13Router);
 app.use('/api', adminRouter);
-app.use('/api/counters', countersRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());

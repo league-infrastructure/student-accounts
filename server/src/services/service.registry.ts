@@ -10,7 +10,6 @@ import { UserService } from './user.service';
 import { SchedulerService } from './scheduler.service';
 import { BackupService } from './backup.service';
 import { SessionService } from './session.service';
-import { CounterService } from './counter.service';
 
 export class ServiceRegistry {
   readonly source: ServiceSource;
@@ -18,7 +17,6 @@ export class ServiceRegistry {
   readonly scheduler: SchedulerService;
   readonly backups: BackupService;
   readonly sessions: SessionService;
-  readonly counter: CounterService;
 
   private constructor(source: ServiceSource = 'UI') {
     this.source = source;
@@ -26,7 +24,6 @@ export class ServiceRegistry {
     this.scheduler = new SchedulerService(defaultPrisma);
     this.backups = new BackupService(defaultPrisma);
     this.sessions = new SessionService(defaultPrisma);
-    this.counter = new CounterService(defaultPrisma);
   }
 
   static create(source?: ServiceSource): ServiceRegistry {

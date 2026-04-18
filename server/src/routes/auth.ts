@@ -165,57 +165,9 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 // ---------------------------------------------------------------------------
-// Demo login credentials
+// OAuth strategies (Google, GitHub) are registered in a later sprint.
+// The passport.serializeUser / passport.deserializeUser stubs live in app.ts.
 // ---------------------------------------------------------------------------
-// These are intentionally hardcoded for template demonstration purposes.
-const DEMO_CREDENTIALS = [
-  { username: 'user',  password: 'pass',  email: 'user@demo.local',  displayName: 'Demo User',  role: 'USER'  as const },
-  { username: 'admin', password: 'admin', email: 'admin@demo.local', displayName: 'Demo Admin', role: 'ADMIN' as const },
-];
-
-// POST /api/auth/demo-login
-// Authenticates against hardcoded credential pairs; finds or creates the User record.
-authRouter.post('/auth/demo-login', async (req: Request, res: Response) => {
-  const { username, password } = req.body ?? {};
-
-  if (!username || !password) {
-    return res.status(400).json({ error: 'username and password are required' });
-  }
-
-  const match = DEMO_CREDENTIALS.find(
-    (c) => c.username === username && c.password === password,
-  );
-
-  if (!match) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  try {
-    const user = await prisma.user.upsert({
-      where: { email: match.email },
-      update: { role: match.role },
-      create: {
-        email: match.email,
-        displayName: match.displayName,
-        role: match.role,
-      },
-    });
-
-    req.login(user, (err) => {
-      if (err) return res.status(500).json({ error: 'Login failed' });
-      res.json({
-        user: {
-          id: user.id,
-          email: user.email,
-          displayName: user.displayName,
-          role: user.role,
-        },
-      });
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Login failed' });
-  }
-});
 
 // --- Test login (non-production only) ---
 authRouter.post('/auth/test-login', async (req: Request, res: Response) => {

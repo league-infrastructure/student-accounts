@@ -347,8 +347,6 @@ describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () 
     delete process.env.GITHUB_CLIENT_SECRET;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
-    delete process.env.PIKE13_CLIENT_ID;
-    delete process.env.PIKE13_CLIENT_SECRET;
   });
 
   it('GET /api/auth/github?link=1 returns 401 when not authenticated (configured)', async () => {
@@ -369,15 +367,6 @@ describe('OAuth initiate routes — 401 when ?link=1 and not authenticated', () 
     expect(res.status).toBe(401);
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
-  });
-
-  it('GET /api/auth/pike13?link=1 returns 401 when not authenticated (configured)', async () => {
-    process.env.PIKE13_CLIENT_ID = 'test-id';
-    process.env.PIKE13_CLIENT_SECRET = 'test-secret';
-    const res = await request(app).get('/api/auth/pike13?link=1');
-    expect(res.status).toBe(401);
-    delete process.env.PIKE13_CLIENT_ID;
-    delete process.env.PIKE13_CLIENT_SECRET;
   });
 
   it('GET /api/auth/github returns 501 (not 401) when not configured and no ?link=1', async () => {

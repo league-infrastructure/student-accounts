@@ -1,7 +1,7 @@
 ---
 id: '001'
-title: "Project scaffold \u2014 adapt template for domain, remove demo features"
-status: in-progress
+title: "Project scaffold — adapt template for domain, remove demo features"
+status: done
 use-cases:
 - SUC-003
 - SUC-005
@@ -27,28 +27,28 @@ only the infrastructure that this application actually needs.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/routes/counters.ts` is deleted; the `/api/counters` route
+- [x] `server/src/routes/counters.ts` is deleted; the `/api/counters` route
       is removed from `app.ts`.
-- [ ] `server/src/services/counter.service.ts` is deleted and removed from
+- [x] `server/src/services/counter.service.ts` is deleted and removed from
       `ServiceRegistry` (property, import, and instantiation).
-- [ ] The demo login route (`POST /api/auth/demo-login`) is removed from
+- [x] The demo login route (`POST /api/auth/demo-login`) is removed from
       `routes/auth.ts`. The file remains as a skeleton with a comment noting
       OAuth strategies land in a later sprint. `passport.serializeUser` /
       `passport.deserializeUser` stubs remain.
-- [ ] `server/src/routes/pike13.ts`, `server/src/routes/integrations.ts`,
+- [x] `server/src/routes/pike13.ts`, `server/src/routes/integrations.ts`,
       and `server/src/routes/github.ts` are deleted; their `app.use()`
       registrations are removed from `app.ts`.
-- [ ] `server/src/errors.ts` exports: `AppError` (base, with `statusCode`),
+- [x] `server/src/errors.ts` exports: `AppError` (base, with `statusCode`),
       `NotFoundError` (404), `ConflictError` (409), `ValidationError` (422),
       `ForbiddenError` (403). Existing `NotFoundError` is retained and any
       missing classes added.
-- [ ] `server/src/contracts/index.ts` exports `ServiceSource` as
+- [x] `server/src/contracts/index.ts` exports `ServiceSource` as
       `'UI' | 'API' | 'MCP' | 'SYSTEM'` (already present; verify no change
       needed).
-- [ ] `server/src/app.ts` compiles cleanly with no references to removed
+- [x] `server/src/app.ts` compiles cleanly with no references to removed
       modules.
-- [ ] `npm run build` (TypeScript compile) exits with code 0, no errors.
-- [ ] `npm run test:server` passes. Existing tests for removed routes
+- [x] `npm run build` (TypeScript compile) exits with code 0, no errors.
+- [x] `npm run test:server` passes. Existing tests for removed routes
       (counter tests, demo-login tests, pike13 tests, github tests,
       integrations tests) are deleted alongside their route files.
 
