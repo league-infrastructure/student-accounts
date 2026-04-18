@@ -2,7 +2,7 @@
 id: '005'
 title: "Staff OU detection \u2014 role assignment on Google sign-in for jointheleague.org\
   \ accounts"
-status: in-progress
+status: done
 use-cases:
 - SUC-003
 depends-on:

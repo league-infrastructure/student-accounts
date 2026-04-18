@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: "GitHub OAuth strategy \u2014 sign-in and UC-002 happy path"
-status: in-progress
+status: done
 use-cases:
 - SUC-002
 depends-on:
