@@ -179,14 +179,16 @@ describe('Admin user management API', () => {
     expect(updated!.role).toBe('admin');
   });
 
-  it('DELETE /api/admin/users/:id deletes a user', async () => {
+  it('DELETE /api/admin/users/:id soft-deletes a user', async () => {
     const user = await findUserByEmail('newuser@example.com');
     const res = await adminAgent.delete(`/api/admin/users/${user!.id}`);
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
 
-    // Verify deleted in DB
-    const deleted = await findUserById(user!.id);
-    expect(deleted).toBeNull();
+    // Verify soft-deleted in DB (row still exists, is_active=false)
+    const softDeleted = await findUserById(user!.id);
+    expect(softDeleted).not.toBeNull();
+    expect((softDeleted as any).is_active).toBe(false);
   });
 
   it('DELETE /api/admin/users/:id returns 404 for non-existent user', async () => {
