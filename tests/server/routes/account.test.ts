@@ -216,6 +216,153 @@ describe('GET /api/account — student with no external accounts or requests', (
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /api/account/logins/:id tests (T003)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Test: Happy path — removes login and returns 204
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/account/logins/:id — happy path', () => {
+  it('returns 204 when login belongs to current user and another login remains', async () => {
+    const user = await makeUser({ primary_email: 'del-happy@example.com', role: 'student' });
+    const login1 = await makeLogin(user, { provider: 'google' });
+    const login2 = await makeLogin(user, { provider: 'github' });
+
+    const agent = await loginAs('del-happy@example.com', 'student');
+    const res = await agent.delete(`/api/account/logins/${login2.id}`);
+
+    expect(res.status).toBe(204);
+
+    // Confirm login2 is gone from the database
+    const remaining = await (prisma as any).login.findMany({ where: { user_id: user.id } });
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(login1.id);
+  });
+
+  it('records a remove_login audit event atomically with the deletion', async () => {
+    const user = await makeUser({ primary_email: 'del-audit@example.com', role: 'student' });
+    const login1 = await makeLogin(user, { provider: 'google' });
+    const login2 = await makeLogin(user, { provider: 'github' });
+
+    const agent = await loginAs('del-audit@example.com', 'student');
+    await agent.delete(`/api/account/logins/${login2.id}`);
+
+    const auditRows = await (prisma as any).auditEvent.findMany({
+      where: { action: 'remove_login', target_user_id: user.id },
+    });
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0].target_entity_id).toBe(String(login2.id));
+    expect(auditRows[0].details).toMatchObject({ provider: 'github' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: Last-login guard — 409
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/account/logins/:id — last-login guard', () => {
+  it('returns 409 when the user has exactly one login', async () => {
+    const user = await makeUser({ primary_email: 'del-last@example.com', role: 'student' });
+    const login = await makeLogin(user, { provider: 'google' });
+
+    const agent = await loginAs('del-last@example.com', 'student');
+    const res = await agent.delete(`/api/account/logins/${login.id}`);
+
+    expect(res.status).toBe(409);
+
+    // Login must still exist
+    const remaining = await (prisma as any).login.findMany({ where: { user_id: user.id } });
+    expect(remaining).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: Cross-user attempt — 404
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/account/logins/:id — cross-user scope guard', () => {
+  it('returns 404 when login belongs to another user', async () => {
+    const userA = await makeUser({ primary_email: 'del-scope-a@example.com', role: 'student' });
+    const userB = await makeUser({ primary_email: 'del-scope-b@example.com', role: 'student' });
+    await makeLogin(userA, { provider: 'google' });
+    const loginB1 = await makeLogin(userB, { provider: 'google' });
+    await makeLogin(userB, { provider: 'github' });
+
+    // Log in as userA and try to delete userB's login
+    const agent = await loginAs('del-scope-a@example.com', 'student');
+    const res = await agent.delete(`/api/account/logins/${loginB1.id}`);
+
+    expect(res.status).toBe(404);
+
+    // userB's login must still exist
+    const remaining = await (prisma as any).login.findMany({ where: { user_id: userB.id } });
+    expect(remaining.some((l: any) => l.id === loginB1.id)).toBe(true);
+  });
+
+  it('returns 404 for a non-existent login id', async () => {
+    const user = await makeUser({ primary_email: 'del-nonexist@example.com', role: 'student' });
+    await makeLogin(user, { provider: 'google' });
+
+    const agent = await loginAs('del-nonexist@example.com', 'student');
+    const res = await agent.delete('/api/account/logins/9999999');
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: Unauthenticated — 401
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/account/logins/:id — unauthenticated', () => {
+  it('returns 401 when no session exists', async () => {
+    const res = await request(app).delete('/api/account/logins/1');
+    expect(res.status).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: Staff role — 403
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/account/logins/:id — staff role', () => {
+  it('returns 403 for a user with role=staff', async () => {
+    const user = await makeUser({ primary_email: 'del-staff@example.com', role: 'staff' });
+    const login = await makeLogin(user, { provider: 'google' });
+
+    const agent = await loginAs('del-staff@example.com', 'staff');
+    const res = await agent.delete(`/api/account/logins/${login.id}`);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: Session remains valid after removing the login used to sign in
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/account/logins/:id — session survives login removal', () => {
+  it('session stays valid after removing the login the student signed in with', async () => {
+    const user = await makeUser({ primary_email: 'del-session@example.com', role: 'student' });
+    const loginA = await makeLogin(user, { provider: 'google' });
+    await makeLogin(user, { provider: 'github' });
+
+    // Sign in (session is keyed to userId, not loginId)
+    const agent = await loginAs('del-session@example.com', 'student');
+
+    // Remove the google login (the one "used to sign in")
+    const deleteRes = await agent.delete(`/api/account/logins/${loginA.id}`);
+    expect(deleteRes.status).toBe(204);
+
+    // Session must still be valid — GET /api/account should return 200
+    const accountRes = await agent.get('/api/account');
+    expect(accountRes.status).toBe(200);
+    expect(accountRes.body.profile.primaryEmail).toBe('del-session@example.com');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Test 7: Data is scoped to req.session.userId only
 // ---------------------------------------------------------------------------
 
