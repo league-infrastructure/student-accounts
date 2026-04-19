@@ -414,13 +414,13 @@ describe('GET /account (after GitHub sign-in)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// mergeScan stub: called for new GitHub users
+// mergeScan: called for new GitHub users
 // ---------------------------------------------------------------------------
 
-describe('mergeScan stub — GitHub new user', () => {
-  it('logs "merge-scan deferred to Sprint 007" when a new GitHub user is created', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
+describe('mergeScan — GitHub new user', () => {
+  it('runs without error when a new GitHub user is created (no candidates)', async () => {
+    // With no existing users in the DB, mergeScan short-circuits immediately.
+    // Verify the OAuth callback still succeeds (not a 500).
     mockStrategy.setProfile({
       id: 'gh-uid-mergescan',
       displayName: 'Merge Scan GitHub User',
@@ -428,16 +428,9 @@ describe('mergeScan stub — GitHub new user', () => {
       emails: [{ value: 'mergescan-gh@example.com' }],
     });
 
-    await request(app).get('/api/auth/github/callback');
+    const res = await request(app).get('/api/auth/github/callback');
 
-    const mergeLogCalled = consoleSpy.mock.calls.some((args) =>
-      args.some(
-        (arg) =>
-          typeof arg === 'string' && arg.includes('merge-scan deferred to Sprint 007'),
-      ),
-    );
-    expect(mergeLogCalled).toBe(true);
-
-    consoleSpy.mockRestore();
+    // OAuth callback should redirect (3xx) — not 500
+    expect(res.status).not.toBe(500);
   });
 });
