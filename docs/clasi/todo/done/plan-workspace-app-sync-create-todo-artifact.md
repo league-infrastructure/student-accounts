@@ -1,5 +1,8 @@
 ---
-status: pending
+status: done
+sprint: '006'
+tickets:
+- 006-001
 ---
 
 # Plan — Workspace → App Sync (create TODO artifact)

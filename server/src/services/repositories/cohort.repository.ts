@@ -33,6 +33,18 @@ export class CohortRepository {
     return (db as any).cohort.findUnique({ where: { name } });
   }
 
+  static async findByOUPath(db: DbClient, google_ou_path: string): Promise<Cohort | null> {
+    return (db as any).cohort.findFirst({ where: { google_ou_path } });
+  }
+
+  /** Return all cohorts that have a non-null google_ou_path. */
+  static async findAllWithOUPath(db: DbClient): Promise<Cohort[]> {
+    return (db as any).cohort.findMany({
+      where: { google_ou_path: { not: null } },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   static async findAll(db: DbClient): Promise<Cohort[]> {
     return (db as any).cohort.findMany({ orderBy: { name: 'asc' } });
   }

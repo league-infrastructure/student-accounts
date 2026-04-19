@@ -22,6 +22,7 @@ import UsersPanel from './pages/admin/UsersPanel';
 import UserDetailPanel from './pages/admin/UserDetailPanel';
 import ProvisioningRequests from './pages/admin/ProvisioningRequests';
 import Cohorts from './pages/admin/Cohorts';
+import SyncPanel from './pages/admin/SyncPanel';
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,7 @@ function App() {
                 <Route path="/admin/import-export" element={<ImportExport />} />
                 <Route path="/admin/provisioning-requests" element={<ProvisioningRequests />} />
                 <Route path="/admin/cohorts" element={<Cohorts />} />
+                <Route path="/admin/sync" element={<SyncPanel />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />

@@ -13,6 +13,7 @@
  *
  * Default return values (when no override is configured):
  *  - `getUserOU`     → '/League Staff'
+ *  - `listOUs`       → [] (or seeded value from ouSeed map)
  *  - `createUser`    → { id: 'fake-gws-user-id', primaryEmail: params.primaryEmail }
  *  - `createOU`      → { ouPath: '/Students/' + name }
  *  - `suspendUser`   → resolves void
@@ -43,6 +44,7 @@ import type {
   CreatedUser,
   CreatedOU,
   WorkspaceUser,
+  WorkspaceOU,
 } from '../../../server/src/services/google-workspace/google-workspace-admin.client.js';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +53,7 @@ import type {
 
 export interface FakeCallRecords {
   getUserOU: string[];
+  listOUs: string[];
   createUser: CreateUserParams[];
   createOU: string[];
   suspendUser: string[];
@@ -64,6 +67,7 @@ export interface FakeCallRecords {
 
 type MethodReturnOverrides = {
   getUserOU?: string;
+  listOUs?: WorkspaceOU[];
   createUser?: CreatedUser;
   createOU?: CreatedOU;
   suspendUser?: void;
@@ -80,9 +84,28 @@ type MethodErrorOverrides = {
 // ---------------------------------------------------------------------------
 
 export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClient {
+  /**
+   * Seeded OU data for listOUs: maps parentPath → array of child WorkspaceOU.
+   * Populate this before calling listOUs in tests.
+   *
+   *   fake.seedOUs('/Students', [{ orgUnitPath: '/Students/Spring2025', name: 'Spring2025' }]);
+   */
+  readonly ouSeed: Map<string, WorkspaceOU[]> = new Map();
+
+  /**
+   * Seeded user data for listUsersInOU: maps ouPath → array of WorkspaceUser.
+   * Populate this before calling listUsersInOU in tests.
+   *
+   *   fake.seedUsers('/Students/Spring2025', [{ id: 'u1', primaryEmail: 'a@s.com', orgUnitPath: '/Students/Spring2025' }]);
+   *
+   * When an ouPath has no seeded entry and no returnOverrides, returns [].
+   */
+  readonly userSeed: Map<string, WorkspaceUser[]> = new Map();
+
   /** Recorded call arguments, indexed by method name. */
   readonly calls: FakeCallRecords = {
     getUserOU: [],
+    listOUs: [],
     createUser: [],
     createOU: [],
     suspendUser: [],
@@ -117,8 +140,26 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
    * Reset all recorded calls and configured overrides.
    * Call between tests to ensure test isolation.
    */
+  /**
+   * Seed OU data for a given parent path.
+   * listOUs will return these when called with that parentPath (unless overridden).
+   */
+  seedOUs(parentPath: string, ous: WorkspaceOU[]): void {
+    this.ouSeed.set(parentPath, ous);
+  }
+
+  /**
+   * Seed user data for a given OU path.
+   * listUsersInOU will return these when called with that ouPath (unless
+   * a returnOverrides.listUsersInOU is set, which takes priority).
+   */
+  seedUsers(ouPath: string, users: WorkspaceUser[]): void {
+    this.userSeed.set(ouPath, users);
+  }
+
   reset(): void {
     this.calls.getUserOU = [];
+    this.calls.listOUs = [];
     this.calls.createUser = [];
     this.calls.createOU = [];
     this.calls.suspendUser = [];
@@ -126,6 +167,8 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
     this.calls.listUsersInOU = [];
     this.returnOverrides = {};
     this.errorOverrides = {};
+    this.ouSeed.clear();
+    this.userSeed.clear();
   }
 
   // ---------------------------------------------------------------------------
@@ -138,6 +181,17 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
       throw this.errorOverrides.getUserOU;
     }
     return this.returnOverrides.getUserOU ?? '/League Staff';
+  }
+
+  async listOUs(parentPath: string): Promise<WorkspaceOU[]> {
+    this.calls.listOUs.push(parentPath);
+    if (this.errorOverrides.listOUs) {
+      throw this.errorOverrides.listOUs;
+    }
+    if (this.returnOverrides.listOUs !== undefined) {
+      return this.returnOverrides.listOUs;
+    }
+    return this.ouSeed.get(parentPath) ?? [];
   }
 
   // ---------------------------------------------------------------------------
@@ -184,6 +238,9 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
     if (this.errorOverrides.listUsersInOU) {
       throw this.errorOverrides.listUsersInOU;
     }
-    return this.returnOverrides.listUsersInOU ?? [];
+    if (this.returnOverrides.listUsersInOU !== undefined) {
+      return this.returnOverrides.listUsersInOU;
+    }
+    return this.userSeed.get(ouPath) ?? [];
   }
 }

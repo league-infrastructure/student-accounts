@@ -28,10 +28,10 @@ process.env.NODE_ENV = 'test';
 import app from '../../../server/src/app.js';
 
 // ---------------------------------------------------------------------------
-// Spy on pike13WritebackStub.githubHandle
+// Spy on pike13Writeback.githubHandle (real service)
 // ---------------------------------------------------------------------------
 
-import * as pike13WritebackStub from '../../../server/src/services/pike13-writeback.stub.js';
+import * as pike13WritebackStub from '../../../server/src/services/pike13/pike13-writeback.service.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

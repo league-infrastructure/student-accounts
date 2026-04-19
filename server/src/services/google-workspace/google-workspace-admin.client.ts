@@ -244,6 +244,13 @@ export interface WorkspaceUser {
   orgUnitPath: string;
 }
 
+export interface WorkspaceOU {
+  /** Full OU path (e.g. /Students/Spring2025). */
+  orgUnitPath: string;
+  /** Display name of the OU (e.g. Spring2025). */
+  name: string;
+}
+
 // ---------------------------------------------------------------------------
 // GoogleWorkspaceAdminClient interface
 // ---------------------------------------------------------------------------
@@ -259,6 +266,9 @@ export interface GoogleWorkspaceAdminClient {
   // Read — used by sign-in handler (preserved from Sprint 002)
   getUserOU(email: string): Promise<string>;
 
+  // Read — new in Sprint 006 (T005)
+  listOUs(parentPath: string): Promise<WorkspaceOU[]>;
+
   // Write — new in Sprint 004
   createUser(params: CreateUserParams): Promise<CreatedUser>;
   createOU(name: string): Promise<CreatedOU>;
@@ -271,8 +281,12 @@ export interface GoogleWorkspaceAdminClient {
 // GoogleWorkspaceAdminClientImpl — real implementation
 // ---------------------------------------------------------------------------
 
+// admin.directory.user covers both read and write (subsumes the .readonly
+// variant). admin.directory.orgunit covers both read and write of OUs.
+// We intentionally do NOT request .readonly variants — requesting a scope
+// the service account has NOT been granted via domain-wide delegation
+// causes Google to reject the token request with unauthorized_client.
 const ADMIN_SDK_SCOPES = [
-  'https://www.googleapis.com/auth/admin.directory.user.readonly',
   'https://www.googleapis.com/auth/admin.directory.user',
   'https://www.googleapis.com/auth/admin.directory.orgunit',
 ];
@@ -322,10 +336,25 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
    *    `config/files/` relative to the project root (process.cwd()).
    */
   static resolveServiceAccountFilePath(fileValue: string): string {
-    if (fileValue.includes('/') || fileValue.includes(path.sep)) {
-      return path.resolve(process.cwd(), fileValue);
+    const hasSep = fileValue.includes('/') || fileValue.includes(path.sep);
+    // Candidate base directories: cwd (server/) and its parent (repo root).
+    // The dev server runs from server/, but the credentials file lives at
+    // repo-root/config/files/, so relative paths in .env resolve correctly
+    // from either anchor.
+    const bases = [process.cwd(), path.resolve(process.cwd(), '..')];
+    if (hasSep) {
+      if (path.isAbsolute(fileValue)) return fileValue;
+      for (const base of bases) {
+        const candidate = path.resolve(base, fileValue);
+        if (fs.existsSync(candidate)) return candidate;
+      }
+      return path.resolve(bases[0], fileValue);
     }
-    return path.resolve(process.cwd(), 'config', 'files', fileValue);
+    for (const base of bases) {
+      const candidate = path.resolve(base, 'config', 'files', fileValue);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return path.resolve(bases[0], 'config', 'files', fileValue);
   }
 
   /**
@@ -506,6 +535,46 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         `Admin Directory lookup failed for ${email}`,
         'API_ERROR',
         email,
+        err,
+      );
+    }
+  }
+
+  async listOUs(parentPath: string): Promise<WorkspaceOU[]> {
+    const auth = this.buildAuthClient(`listOUs:${parentPath}`);
+
+    try {
+      const adminSdk = google.admin({ version: 'directory_v1', auth });
+      const response = await adminSdk.orgunits.list({
+        customerId: 'my_customer',
+        orgUnitPath: parentPath,
+        type: 'children',
+      });
+
+      const ous: WorkspaceOU[] = [];
+      for (const ou of response.data.organizationUnits ?? []) {
+        if (ou.orgUnitPath && ou.name) {
+          ous.push({ orgUnitPath: ou.orgUnitPath, name: ou.name });
+        }
+      }
+
+      logger.info(
+        { parentPath, count: ous.length },
+        '[google-workspace-admin] listOUs: completed.',
+      );
+
+      return ous;
+    } catch (err) {
+      if (err instanceof StaffOULookupError) {
+        throw err;
+      }
+      const apiErr = err as any;
+      const statusCode: number | undefined = apiErr?.response?.status ?? apiErr?.code;
+      logger.error({ parentPath, err }, '[google-workspace-admin] listOUs failed.');
+      throw new WorkspaceApiError(
+        `Admin SDK listOUs failed for '${parentPath}': ${apiErr?.message ?? String(err)}`,
+        'listOUs',
+        statusCode,
         err,
       );
     }
