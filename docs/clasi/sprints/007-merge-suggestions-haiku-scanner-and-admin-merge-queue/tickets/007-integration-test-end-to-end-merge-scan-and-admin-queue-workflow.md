@@ -1,7 +1,7 @@
 ---
 id: "007"
 title: "Integration test — end-to-end merge scan and admin queue workflow"
-status: todo
+status: done
 use-cases: [SUC-007-001, SUC-007-002, SUC-007-003, SUC-007-004]
 depends-on: ["003", "005"]
 github-issue: ""
@@ -22,22 +22,22 @@ They verify the complete pipeline works together.
 
 ## Acceptance Criteria
 
-- [ ] Test: Simulate user creation → `mergeScan` called with fake HaikuClient
+- [x] Test: Simulate user creation → `mergeScan` called with fake HaikuClient
       returning confidence 0.8 → `MergeSuggestion` row created with correct
       user_a_id, user_b_id, haiku_confidence.
-- [ ] Test: Simulate user creation → fake HaikuClient returns confidence 0.4 →
+- [x] Test: Simulate user creation → fake HaikuClient returns confidence 0.4 →
       no `MergeSuggestion` row created.
-- [ ] Test: `GET /admin/merge-queue` returns the suggestion from the first test.
-- [ ] Test: `GET /admin/merge-queue/:id` returns full detail including User A
+- [x] Test: `GET /admin/merge-queue` returns the suggestion from the first test.
+- [x] Test: `GET /admin/merge-queue/:id` returns full detail including User A
       Logins and ExternalAccounts.
-- [ ] Test: `POST /admin/merge-queue/:id/approve` → verify survivor has all
+- [x] Test: `POST /admin/merge-queue/:id/approve` → verify survivor has all
       Logins, non-survivor has `is_active=false`, suggestion `status=approved`.
-- [ ] Test: `POST /admin/merge-queue/:id/approve` with duplicate Login →
+- [x] Test: `POST /admin/merge-queue/:id/approve` with duplicate Login →
       transaction rolls back; both users intact.
-- [ ] Test: `POST /admin/merge-queue/:id/reject` → suggestion `status=rejected`.
-- [ ] Test: `POST /admin/merge-queue/:id/defer` → suggestion `status=deferred`;
+- [x] Test: `POST /admin/merge-queue/:id/reject` → suggestion `status=rejected`.
+- [x] Test: `POST /admin/merge-queue/:id/defer` → suggestion `status=deferred`;
       suggestion appears in `GET /admin/merge-queue`.
-- [ ] All integration tests pass with `npm run test:server`.
+- [x] All integration tests pass with `npm run test:server`.
 
 ## Implementation Plan
 
