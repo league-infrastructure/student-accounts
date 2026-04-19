@@ -1,11 +1,13 @@
 ---
-id: "002"
-title: "GET /api/account — aggregate profile/logins/accounts/requests endpoint"
-status: todo
-use-cases: [SUC-001]
-depends-on: ["001"]
-github-issue: ""
-todo: ""
+id: '002'
+title: "GET /api/account \u2014 aggregate profile/logins/accounts/requests endpoint"
+status: done
+use-cases:
+- SUC-001
+depends-on:
+- '001'
+github-issue: ''
+todo: ''
 ---
 
 # GET /api/account — aggregate profile/logins/accounts/requests endpoint
@@ -22,23 +24,23 @@ T003 and T004. This ticket creates the module skeleton and the GET endpoint.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/account` returns 200 with an `AccountData` JSON response for
+- [x] `GET /api/account` returns 200 with an `AccountData` JSON response for
       an authenticated student.
-- [ ] Response includes `profile` (id, displayName, primaryEmail, cohort
+- [x] Response includes `profile` (id, displayName, primaryEmail, cohort
       name or null, role, createdAt).
-- [ ] Response includes `logins` (id, provider, providerEmail,
+- [x] Response includes `logins` (id, provider, providerEmail,
       providerUsername, createdAt) — all logins for the signed-in user.
-- [ ] Response includes `externalAccounts` (id, type, status, externalId,
+- [x] Response includes `externalAccounts` (id, type, status, externalId,
       createdAt) — all external accounts for the signed-in user.
-- [ ] Response includes `provisioningRequests` (id, requestedType, status,
+- [x] Response includes `provisioningRequests` (id, requestedType, status,
       createdAt, decidedAt) — all provisioning requests for the signed-in
       user, most recent first.
-- [ ] `GET /api/account` returns 401 when no session exists.
-- [ ] `GET /api/account` returns 403 when the session user has role=staff or
+- [x] `GET /api/account` returns 401 when no session exists.
+- [x] `GET /api/account` returns 403 when the session user has role=staff or
       role=admin.
-- [ ] Data is strictly scoped to `req.session.userId` — no cross-user data
+- [x] Data is strictly scoped to `req.session.userId` — no cross-user data
       is returned.
-- [ ] Route module is mounted at `/api` in `server/src/app.ts`.
+- [x] Route module is mounted at `/api` in `server/src/app.ts`.
 
 ## Implementation Plan
 

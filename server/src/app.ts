@@ -9,6 +9,7 @@ import { Writable } from 'stream';
 import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
+import { accountRouter } from './routes/account';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -78,6 +79,7 @@ app.use(impersonateMiddleware);
 app.use('/api', healthRouter);
 app.use('/api', authRouter);
 app.use('/api', adminRouter);
+app.use('/api', accountRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());
