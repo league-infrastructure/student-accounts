@@ -1,11 +1,14 @@
 ---
-id: "006"
-title: "Admin role assignment — ADMIN_EMAILS env var check in sign-in handler"
-status: todo
-use-cases: [UC-005, UC-012]
-depends-on: ["001"]
-github-issue: ""
-todo: ""
+id: '006'
+title: "Admin role assignment \u2014 ADMIN_EMAILS env var check in sign-in handler"
+status: done
+use-cases:
+- UC-005
+- UC-012
+depends-on:
+- '001'
+github-issue: ''
+todo: ''
 ---
 
 # Admin role assignment — ADMIN_EMAILS env var check in sign-in handler
@@ -32,30 +35,30 @@ any admin route handlers.
 
 ## Acceptance Criteria
 
-- [ ] `ADMIN_EMAILS` environment variable is parsed at module load time in the
+- [x] `ADMIN_EMAILS` environment variable is parsed at module load time in the
       sign-in handler (or a shared config module): split by comma, trim
       whitespace, lowercase for comparison.
-- [ ] Sign-in handler step for `@jointheleague.org` accounts: after the staff
+- [x] Sign-in handler step for `@jointheleague.org` accounts: after the staff
       OU check, if `user.primary_email.toLowerCase()` is in the `ADMIN_EMAILS`
       set, call `UserService.update(user.id, { role: 'admin' })` and set
       `session.role = 'admin'`.
-- [ ] If `ADMIN_EMAILS` is empty or absent, no user gets `role=admin` via this
+- [x] If `ADMIN_EMAILS` is empty or absent, no user gets `role=admin` via this
       path (no default admin account).
-- [ ] If a user is in `ADMIN_EMAILS`, their role is set to `admin` even if the
+- [x] If a user is in `ADMIN_EMAILS`, their role is set to `admin` even if the
       staff OU check would have assigned `staff`.
-- [ ] For non-`@jointheleague.org` accounts (students, GitHub sign-ins), the
+- [x] For non-`@jointheleague.org` accounts (students, GitHub sign-ins), the
       `ADMIN_EMAILS` check is never run.
-- [ ] Session shape is unchanged — `session.role` is still `UserRole` (now
+- [x] Session shape is unchanged — `session.role` is still `UserRole` (now
       `'admin'` is a valid value it can hold; it was already in the `UserRole`
       enum from Sprint 001).
-- [ ] Integration tests (using `FakeGoogleWorkspaceAdminClient`):
+- [x] Integration tests (using `FakeGoogleWorkspaceAdminClient`):
       - Email in `ADMIN_EMAILS` → `session.role = 'admin'`.
       - Email NOT in `ADMIN_EMAILS`, in staff OU → `session.role = 'staff'`.
       - Email NOT in `ADMIN_EMAILS`, NOT in staff OU → `session.role = 'student'`.
       - `ADMIN_EMAILS` env var absent → nobody gets admin role.
-- [ ] `requireRole('admin')` middleware continues to work unchanged (it reads
+- [x] `requireRole('admin')` middleware continues to work unchanged (it reads
       `session.role`; the value `'admin'` was already in the enum).
-- [ ] `npm test` passes.
+- [x] `npm test` passes.
 
 ## Implementation Plan
 

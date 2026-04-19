@@ -36,6 +36,38 @@ import {
 const logger = pino({ name: 'sign-in.handler' });
 
 // ---------------------------------------------------------------------------
+// Admin email set — parsed once at module load time (T006)
+// ---------------------------------------------------------------------------
+
+/**
+ * Set of lowercase email addresses that should receive role=admin on
+ * Google sign-in. Parsed from the ADMIN_EMAILS environment variable:
+ * a comma-separated list, whitespace-trimmed, lowercased. Empty entries
+ * are filtered out. An absent or empty ADMIN_EMAILS yields an empty set,
+ * meaning no user gets role=admin via this path.
+ *
+ * The set is intentionally module-level so it is constructed once per
+ * process (not per request), and can be replaced in tests via the
+ * re-exported setter.
+ */
+let _adminEmails: Set<string> = _parseAdminEmails(process.env.ADMIN_EMAILS);
+
+/** @internal Visible for testing only. */
+export function _parseAdminEmails(raw: string | undefined): Set<string> {
+  return new Set(
+    (raw ?? '')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+/** @internal Replaces the module-level set; used in tests to inject values. */
+export function _setAdminEmails(emails: Set<string>): void {
+  _adminEmails = emails;
+}
+
+// ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
@@ -167,7 +199,7 @@ export async function signInHandler(
   //   - getUserOU() throws StaffOULookupError → emit auth_denied audit event,
   //     log at ERROR, and re-throw so the caller denies sign-in (RD-001).
 
-  if (provider === 'google' && providerEmail?.endsWith('@jointheleague.org')) {
+  if (provider === 'google' && providerEmail?.toLowerCase().endsWith('@jointheleague.org')) {
     const adminDirClient = options?.adminDirClient;
     const staffOuPath = process.env.GOOGLE_STAFF_OU_PATH ?? '/League Staff';
 
@@ -210,12 +242,44 @@ export async function signInHandler(
       throw err;
     }
 
-    // Determine role from OU path
+    // Determine role from OU path.
+    // We always apply the OU result explicitly so that a returning user whose
+    // admin status was revoked (email removed from ADMIN_EMAILS) has their role
+    // reset to the OU-based value here, before the admin check below.
     if (ouPath.startsWith(staffOuPath)) {
-      // Staff OU matched → promote to staff
+      // Staff OU matched → promote/keep staff
       user = await userService.updateRole(user.id, 'staff');
+    } else if (user.role !== 'student') {
+      // OU does not match → ensure role is student (RD-003).
+      // This also demotes any user who was previously admin/staff but whose OU
+      // no longer qualifies, so that the admin check in step 5 starts from the
+      // correct OU-derived baseline.
+      user = await userService.updateRole(user.id, 'student');
     }
-    // else: OU does not match → role stays 'student' (RD-003)
+    // else: role is already 'student', no write needed
+
+    // --- Step 5: Admin email check (T006) ---
+    //
+    // After the staff OU determination, check whether the user's email is in
+    // ADMIN_EMAILS. If so, elevate role to 'admin' regardless of OU membership.
+    // This check runs only for @jointheleague.org accounts (already inside the
+    // `provider === 'google' && endsWith('@jointheleague.org')` branch).
+    //
+    // The check is case-insensitive; _adminEmails stores lowercased values.
+    //
+    // On a returning user whose role was previously non-admin but whose email
+    // is now in ADMIN_EMAILS, the role is promoted and a role_changed audit
+    // event is emitted. If the email is REMOVED from ADMIN_EMAILS, the role
+    // reverts to the OU-based value determined in step 4.
+    const emailLower = providerEmail.toLowerCase();
+    if (_adminEmails.has(emailLower)) {
+      if (user.role !== 'admin') {
+        const previousRole = user.role;
+        user = await userService.updateRole(user.id, 'admin');
+        // Emit role_changed audit event (best-effort)
+        await _writeRoleChangedEvent(options, user.id, previousRole, 'admin');
+      }
+    }
   }
 
   return user;
@@ -224,6 +288,37 @@ export async function signInHandler(
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Write a role_changed AuditEvent when the admin email check promotes a user
+ * to admin on sign-in. Best-effort: if audit write fails, log the error but
+ * do not block the sign-in.
+ */
+async function _writeRoleChangedEvent(
+  options: SignInOptions | undefined,
+  userId: number,
+  previousRole: string,
+  newRole: string,
+): Promise<void> {
+  if (!options?.auditService || !options?.prisma) {
+    return;
+  }
+  try {
+    await options.auditService.record(options.prisma, {
+      actor_user_id: null,
+      action: 'role_changed',
+      target_user_id: userId,
+      target_entity_type: 'User',
+      target_entity_id: String(userId),
+      details: { previous_role: previousRole, new_role: newRole, reason: 'admin_emails_match' },
+    });
+  } catch (auditErr) {
+    logger.error(
+      { userId, err: auditErr },
+      '[sign-in.handler] Failed to write role_changed audit event.',
+    );
+  }
+}
 
 /**
  * Write an auth_denied AuditEvent if auditService and prisma are available
