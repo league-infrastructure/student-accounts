@@ -1,11 +1,13 @@
 ---
-id: "001"
-title: "ProvisioningRequestService: CRUD + Claude-requires-League-email constraint"
-status: todo
-use-cases: [SUC-004, SUC-005]
+id: '001'
+title: 'ProvisioningRequestService: CRUD + Claude-requires-League-email constraint'
+status: done
+use-cases:
+- SUC-004
+- SUC-005
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 
 # ProvisioningRequestService: CRUD + Claude-requires-League-email constraint
@@ -24,34 +26,34 @@ possible.
 
 ## Acceptance Criteria
 
-- [ ] `ProvisioningRequestService.create(userId, requestType, actorId)` creates
+- [x] `ProvisioningRequestService.create(userId, requestType, actorId)` creates
       a pending ProvisioningRequest (or two, for `workspace_and_claude`).
-- [ ] `create` with `requestType='workspace'` returns a single ProvisioningRequest
+- [x] `create` with `requestType='workspace'` returns a single ProvisioningRequest
       row with `requested_type='workspace'` and `status='pending'`.
-- [ ] `create` with `requestType='workspace_and_claude'` returns two rows:
+- [x] `create` with `requestType='workspace_and_claude'` returns two rows:
       one `type=workspace` and one `type=claude`, both `status='pending'`,
       created atomically in one transaction.
-- [ ] `create` returns a ConflictError (409) if the user already has a pending
+- [x] `create` returns a ConflictError (409) if the user already has a pending
       or active ExternalAccount of type=workspace, OR a ProvisioningRequest
       of type=workspace in status pending/approved, when requestType includes
       workspace.
-- [ ] `create` returns an UnprocessableError (422) if requestType would include
+- [x] `create` returns an UnprocessableError (422) if requestType would include
       a claude request but the user has neither a pending/active workspace
       ExternalAccount nor a pending/approved workspace ProvisioningRequest.
-- [ ] `create` records a `create_provisioning_request` AuditEvent for each
+- [x] `create` records a `create_provisioning_request` AuditEvent for each
       ProvisioningRequest created, atomically within the same transaction.
-- [ ] `approve(requestId, deciderId)` sets status=approved, decided_by,
+- [x] `approve(requestId, deciderId)` sets status=approved, decided_by,
       decided_at, records `approve_provisioning_request` AuditEvent. (Seam —
       no external API calls.)
-- [ ] `reject(requestId, deciderId)` sets status=rejected, decided_by,
+- [x] `reject(requestId, deciderId)` sets status=rejected, decided_by,
       decided_at, records `reject_provisioning_request` AuditEvent. (Seam.)
-- [ ] `findByUser(userId)` returns all ProvisioningRequests for the user,
+- [x] `findByUser(userId)` returns all ProvisioningRequests for the user,
       ordered by created_at desc.
-- [ ] `findPending()` returns all ProvisioningRequests with status=pending,
+- [x] `findPending()` returns all ProvisioningRequests with status=pending,
       ordered by created_at asc.
-- [ ] A `notifyAdmin` hook is called after the transaction commits in `create`
+- [x] A `notifyAdmin` hook is called after the transaction commits in `create`
       but is a no-op this sprint (logs a message; Sprint 004+ will implement).
-- [ ] Integration tests cover all constraint scenarios listed above.
+- [x] Integration tests cover all constraint scenarios listed above.
 
 ## Implementation Plan
 

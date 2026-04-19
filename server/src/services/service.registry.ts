@@ -41,7 +41,7 @@ export class ServiceRegistry {
     this.cohorts = new CohortService(defaultPrisma, this.audit);
     this.logins = new LoginService(defaultPrisma, this.audit);
     this.externalAccounts = new ExternalAccountService(defaultPrisma, this.audit);
-    this.provisioningRequests = new ProvisioningRequestService(defaultPrisma);
+    this.provisioningRequests = new ProvisioningRequestService(defaultPrisma, this.audit, this.externalAccounts);
     this.mergeSuggestions = new MergeSuggestionService(defaultPrisma);
     this.scheduler = new SchedulerService(defaultPrisma);
     this.backups = new BackupService(defaultPrisma);

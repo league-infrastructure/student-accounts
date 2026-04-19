@@ -41,6 +41,13 @@ export class ValidationError extends AppError {
   }
 }
 
+export class UnprocessableError extends AppError {
+  constructor(message: string) {
+    super(message, 422);
+    this.name = 'UnprocessableError';
+  }
+}
+
 export class ForbiddenError extends AppError {
   constructor(message = 'Insufficient permissions') {
     super(message, 403);
