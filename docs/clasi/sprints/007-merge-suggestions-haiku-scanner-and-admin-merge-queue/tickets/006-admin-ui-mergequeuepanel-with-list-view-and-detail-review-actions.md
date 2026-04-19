@@ -1,7 +1,7 @@
 ---
 id: "006"
 title: "Admin UI — MergeQueuePanel with list view and detail review actions"
-status: todo
+status: done
 use-cases: [SUC-007-002, SUC-007-003]
 depends-on: ["005"]
 github-issue: ""
@@ -38,20 +38,20 @@ The page has two views:
 
 ## Acceptance Criteria
 
-- [ ] `MergeQueuePanel.tsx` exists at `client/src/pages/admin/MergeQueuePanel.tsx`.
-- [ ] Route `/admin/merge-queue` renders the panel.
-- [ ] List view renders table with all required columns.
-- [ ] List view shows empty state message when queue is empty.
-- [ ] "Review" button navigates to detail view for that suggestion.
-- [ ] Detail view shows side-by-side User comparison with Logins and ExternalAccounts.
-- [ ] "Approve Merge" button is disabled until a survivor is selected.
-- [ ] Approve calls `POST /admin/merge-queue/:id/approve` with `{ survivorId }`.
-- [ ] Reject calls `POST /admin/merge-queue/:id/reject`.
-- [ ] Defer calls `POST /admin/merge-queue/:id/defer`.
-- [ ] On approve / reject: UI navigates back to the queue list.
-- [ ] API error response is displayed to the user.
-- [ ] `ADMIN_NAV` in `AppLayout.tsx` includes "Merge Queue" linking to `/admin/merge-queue`.
-- [ ] `App.tsx` includes route `/admin/merge-queue` → `MergeQueuePanel`.
+- [x] `MergeQueuePanel.tsx` exists at `client/src/pages/admin/MergeQueuePanel.tsx`.
+- [x] Route `/admin/merge-queue` renders the panel.
+- [x] List view renders table with all required columns.
+- [x] List view shows empty state message when queue is empty.
+- [x] "Review" button navigates to detail view for that suggestion.
+- [x] Detail view shows side-by-side User comparison with Logins and ExternalAccounts.
+- [x] "Approve Merge" button is disabled until a survivor is selected.
+- [x] Approve calls `POST /admin/merge-queue/:id/approve` with `{ survivorId }`.
+- [x] Reject calls `POST /admin/merge-queue/:id/reject`.
+- [x] Defer calls `POST /admin/merge-queue/:id/defer`.
+- [x] On approve / reject: UI navigates back to the queue list.
+- [x] API error response is displayed to the user.
+- [x] `ADMIN_NAV` in `AppLayout.tsx` includes "Merge Queue" linking to `/admin/merge-queue`.
+- [x] `App.tsx` includes route `/admin/merge-queue` → `MergeQueuePanel`.
 
 ## Implementation Plan
 
