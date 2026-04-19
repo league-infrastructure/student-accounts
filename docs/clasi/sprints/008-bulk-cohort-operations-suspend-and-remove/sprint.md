@@ -1,7 +1,7 @@
 ---
 id: "008"
 title: "Bulk Cohort Operations — Suspend and Remove"
-status: roadmap
+status: active
 branch: sprint/008-bulk-cohort-operations-suspend-and-remove
 use-cases: [UC-013, UC-014]
 ---
@@ -65,4 +65,15 @@ path before the bulk path amplifies any bugs across an entire cohort.
 
 ## Tickets
 
-_(To be created when this sprint enters Detail Mode.)_
+| # | Title | Depends On | Group |
+|---|-------|-----------|-------|
+| 001 | BulkCohortService — iterate cohort members and dispatch lifecycle operations | — | 1 |
+| 002 | Bulk cohort API routes — preview, bulk-suspend, bulk-remove | 001 | 2 |
+| 003 | Cohorts UI — bulk action dropdown and confirmation dialog | 002 | 3 |
+| 004 | Integration test — bulk suspend and bulk remove end-to-end via API | 001, 002 | 2 |
+
+**Execution groups:**
+
+- **Group 1** (no dependencies): T001
+- **Group 2** (after T001): T002, T004 (parallel)
+- **Group 3** (after T002): T003
