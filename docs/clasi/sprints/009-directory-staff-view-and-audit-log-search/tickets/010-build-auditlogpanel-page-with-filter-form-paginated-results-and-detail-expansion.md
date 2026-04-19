@@ -1,7 +1,7 @@
 ---
 id: "010"
 title: "Build AuditLogPanel page with filter form, paginated results, and detail expansion"
-status: todo
+status: done
 use-cases: [SUC-009-008]
 depends-on: ["005"]
 github-issue: ""
@@ -18,24 +18,24 @@ endpoint. Clicking a row expands the full `details` JSON inline.
 
 ## Acceptance Criteria
 
-- [ ] Page renders at `/admin/audit-log` (admin-only via `AdminLayout`).
-- [ ] Filter form contains: target user text input, actor text input, action
+- [x] Page renders at `/admin/audit-log` (admin-only via `AdminLayout`).
+- [x] Filter form contains: target user text input, actor text input, action
       type dropdown (known action strings + "All"), date range (start date
       input, end date input).
-- [ ] Filter is applied on form submit (or on change — ticket engineer's
+- [x] Filter is applied on form submit (or on change — ticket engineer's
       discretion, submit is simpler).
-- [ ] Results table columns: Timestamp, Actor, Action, Target User, Details
+- [x] Results table columns: Timestamp, Actor, Action, Target User, Details
       summary (first 80 chars of stringified details).
-- [ ] Results are in reverse chronological order (server-side).
-- [ ] Pagination: "Page N of M — Previous / Next" controls below the table.
+- [x] Results are in reverse chronological order (server-side).
+- [x] Pagination: "Page N of M — Previous / Next" controls below the table.
       Page size: 50.
-- [ ] Clicking a row toggles an expanded detail section below it showing the
+- [x] Clicking a row toggles an expanded detail section below it showing the
       raw `details` JSON formatted with `JSON.stringify(details, null, 2)` in
       a `<pre>` block.
-- [ ] Empty state: "No audit records match the current filters." when
+- [x] Empty state: "No audit records match the current filters." when
       `total === 0`.
-- [ ] Loading spinner while fetching.
-- [ ] Error banner if the fetch fails.
+- [x] Loading spinner while fetching.
+- [x] Error banner if the fetch fails.
 
 ## Implementation Plan
 
