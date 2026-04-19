@@ -3,10 +3,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Load environment
+# Load environment.
+# Relax errexit around .env sourcing: values may contain unquoted spaces
+# (e.g. APP_NAME=League Web App), which bash would otherwise try to execute.
+set +e
 set -a
-. ./.env 2>/dev/null || true
+. ./.env 2>/dev/null
 set +a
+set -e
 
 # SQLite mode — no Docker needed
 exec npx concurrently -n server,client -c green,magenta \
