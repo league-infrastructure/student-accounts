@@ -90,6 +90,40 @@ export class WorkspaceApiError extends Error {
   }
 }
 
+/**
+ * Thrown when a write method is called but GOOGLE_WORKSPACE_WRITE_ENABLED is
+ * not set to exactly "1". This is a safety gate that prevents accidental writes
+ * in development or misconfigured environments.
+ *
+ * Read methods (getUserOU, listUsersInOU) are NOT affected by this gate.
+ */
+export class WorkspaceWriteDisabledError extends Error {
+  constructor() {
+    super(
+      'Google Workspace write operations are disabled. ' +
+        'Set GOOGLE_WORKSPACE_WRITE_ENABLED=1 to enable them.',
+    );
+    this.name = 'WorkspaceWriteDisabledError';
+  }
+}
+
+/**
+ * Thrown by createUser when the primaryEmail domain or orgUnitPath violates
+ * the student domain/OU guardrails. This is a defence-in-depth check that fires
+ * even if the caller has already validated the values.
+ *
+ * @param reason - Human-readable explanation of which guard triggered.
+ */
+export class WorkspaceDomainGuardError extends Error {
+  readonly reason: string;
+
+  constructor(reason: string) {
+    super(`Google Workspace domain/OU guard triggered: ${reason}`);
+    this.name = 'WorkspaceDomainGuardError';
+    this.reason = reason;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -389,11 +423,56 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
   }
 
   // ---------------------------------------------------------------------------
+  // Guard helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Throws WorkspaceWriteDisabledError if GOOGLE_WORKSPACE_WRITE_ENABLED is not "1".
+   * Must be called as the first step of every write method.
+   */
+  private assertWriteEnabled(methodName: string): void {
+    const flag = process.env.GOOGLE_WORKSPACE_WRITE_ENABLED;
+    if (flag !== '1') {
+      logger.error(
+        { method: methodName, flag },
+        '[google-workspace-admin] Write operation attempted but GOOGLE_WORKSPACE_WRITE_ENABLED is not "1".',
+      );
+      throw new WorkspaceWriteDisabledError();
+    }
+  }
+
+  /**
+   * Throws WorkspaceDomainGuardError if the email domain or OU path are outside
+   * the configured student domain/OU root. Must be called in createUser.
+   */
+  private assertStudentDomainAndOU(primaryEmail: string, orgUnitPath: string): void {
+    const studentDomain = process.env.GOOGLE_STUDENT_DOMAIN ?? '';
+    const studentOuRoot = process.env.GOOGLE_STUDENT_OU_ROOT ?? '/Students';
+
+    if (studentDomain) {
+      const expectedSuffix = `@${studentDomain}`;
+      if (!primaryEmail.endsWith(expectedSuffix)) {
+        const reason = `primaryEmail "${primaryEmail}" does not end with "${expectedSuffix}"`;
+        logger.error({ primaryEmail, studentDomain }, `[google-workspace-admin] Domain guard: ${reason}`);
+        throw new WorkspaceDomainGuardError(reason);
+      }
+    }
+
+    if (!orgUnitPath.startsWith(studentOuRoot)) {
+      const reason = `orgUnitPath "${orgUnitPath}" does not start with GOOGLE_STUDENT_OU_ROOT "${studentOuRoot}"`;
+      logger.error({ orgUnitPath, studentOuRoot }, `[google-workspace-admin] OU guard: ${reason}`);
+      throw new WorkspaceDomainGuardError(reason);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Write methods (new in Sprint 004)
   // ---------------------------------------------------------------------------
 
   async createUser(params: CreateUserParams): Promise<CreatedUser> {
+    this.assertWriteEnabled('createUser');
     const { primaryEmail, orgUnitPath, givenName, familyName } = params;
+    this.assertStudentDomainAndOU(primaryEmail, orgUnitPath);
     // Note: sendNotificationEmail from params is recorded for callers' use but the
     // Admin SDK users.insert does not expose this as a direct parameter. Welcome
     // email delivery is governed by domain-level Google Workspace settings.
@@ -426,7 +505,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
       return { id: data.id, primaryEmail: data.primaryEmail };
     } catch (err) {
-      if (err instanceof WorkspaceApiError) {
+      if (err instanceof WorkspaceApiError || err instanceof WorkspaceWriteDisabledError || err instanceof WorkspaceDomainGuardError) {
         throw err;
       }
       const apiErr = err as any;
@@ -442,6 +521,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
   }
 
   async createOU(name: string): Promise<CreatedOU> {
+    this.assertWriteEnabled('createOU');
     const studentOuRoot = process.env.GOOGLE_STUDENT_OU_ROOT ?? '/Students';
     const auth = this.buildAuthClient(`createOU:${name}`);
 
@@ -471,7 +551,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
       return { ouPath };
     } catch (err) {
-      if (err instanceof WorkspaceApiError) {
+      if (err instanceof WorkspaceApiError || err instanceof WorkspaceWriteDisabledError) {
         throw err;
       }
       const apiErr = err as any;
@@ -487,6 +567,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
   }
 
   async suspendUser(email: string): Promise<void> {
+    this.assertWriteEnabled('suspendUser');
     const auth = this.buildAuthClient(email);
 
     try {
@@ -498,6 +579,9 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
       logger.info({ email }, '[google-workspace-admin] suspendUser: user suspended successfully.');
     } catch (err) {
+      if (err instanceof WorkspaceWriteDisabledError) {
+        throw err;
+      }
       const apiErr = err as any;
       const statusCode: number | undefined = apiErr?.response?.status ?? apiErr?.code;
       logger.error({ email, err }, '[google-workspace-admin] suspendUser failed.');
@@ -511,6 +595,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
   }
 
   async deleteUser(email: string): Promise<void> {
+    this.assertWriteEnabled('deleteUser');
     const auth = this.buildAuthClient(email);
 
     try {
@@ -521,6 +606,9 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
       logger.info({ email }, '[google-workspace-admin] deleteUser: user deleted successfully.');
     } catch (err) {
+      if (err instanceof WorkspaceWriteDisabledError) {
+        throw err;
+      }
       const apiErr = err as any;
       const statusCode: number | undefined = apiErr?.response?.status ?? apiErr?.code;
       logger.error({ email, err }, '[google-workspace-admin] deleteUser failed.');
