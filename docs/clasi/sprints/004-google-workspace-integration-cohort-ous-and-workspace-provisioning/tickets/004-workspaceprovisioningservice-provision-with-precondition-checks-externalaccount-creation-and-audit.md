@@ -1,11 +1,16 @@
 ---
-id: "004"
-title: "WorkspaceProvisioningService — provision with precondition checks, ExternalAccount creation, and audit"
-status: todo
-use-cases: [UC-005]
-depends-on: ["001", "002", "003"]
-github-issue: ""
-todo: ""
+id: '004'
+title: "WorkspaceProvisioningService \u2014 provision with precondition checks, ExternalAccount\
+  \ creation, and audit"
+status: done
+use-cases:
+- UC-005
+depends-on:
+- '001'
+- '002'
+- '003'
+github-issue: ''
+todo: ''
 ---
 
 # WorkspaceProvisioningService — provision with precondition checks, ExternalAccount creation, and audit
@@ -31,15 +36,15 @@ The caller owns the transaction boundary. This service does not open its own
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/workspace-provisioning.service.ts` is created.
-- [ ] Class `WorkspaceProvisioningService` is exported.
-- [ ] Constructor accepts:
+- [x] `server/src/services/workspace-provisioning.service.ts` is created.
+- [x] Class `WorkspaceProvisioningService` is exported.
+- [x] Constructor accepts:
       - `googleClient: GoogleWorkspaceAdminClient`
       - `externalAccountRepo: ExternalAccountRepository`
       - `auditService: AuditService`
       - `userRepo: UserRepository`
       - `cohortRepo: CohortRepository`
-- [ ] Method `provision(userId: number, actorId: number, tx: Prisma.TransactionClient): Promise<ExternalAccount>`:
+- [x] Method `provision(userId: number, actorId: number, tx: Prisma.TransactionClient): Promise<ExternalAccount>`:
       - Fetches the User by `userId` using `userRepo.findById(tx, userId)`.
       - Validates `user.role === 'student'`. If not, throws `UnprocessableError`.
       - Validates `user.cohort_id` is set and the Cohort has a non-null
@@ -74,13 +79,13 @@ The caller owns the transaction boundary. This service does not open its own
           details: { email: workspaceEmail, googleUserId: createdUser.id }
         })`.
       - Returns the created `ExternalAccount`.
-- [ ] SDK failure (`WorkspaceApiError`) propagates to the caller; no
+- [x] SDK failure (`WorkspaceApiError`) propagates to the caller; no
       ExternalAccount row is created (transaction rolled back by caller).
-- [ ] Guard errors (`WorkspaceDomainGuardError`, `WorkspaceWriteDisabledError`)
+- [x] Guard errors (`WorkspaceDomainGuardError`, `WorkspaceWriteDisabledError`)
       propagate to the caller.
-- [ ] `WorkspaceProvisioningService` is registered in `ServiceRegistry` and
+- [x] `WorkspaceProvisioningService` is registered in `ServiceRegistry` and
       receives its dependencies via constructor injection.
-- [ ] `npm test` passes.
+- [x] `npm test` passes.
 
 ## Implementation Plan
 
