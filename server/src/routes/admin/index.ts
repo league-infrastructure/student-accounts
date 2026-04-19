@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { requireAdmin } from '../../middleware/requireAdmin';
+import { requireAuth } from '../../middleware/requireAuth';
+import { requireRole } from '../../middleware/requireRole';
 import { adminAuthRouter } from './auth';
 import { adminEnvRouter } from './env';
 import { adminDbRouter } from './db';
@@ -15,8 +16,8 @@ export const adminRouter = Router();
 // Auth routes (login/check don't require admin, logout does but is harmless)
 adminRouter.use(adminAuthRouter);
 
-// All other admin routes require authentication
-adminRouter.use('/admin', requireAdmin);
+// All other admin routes require authentication and admin role
+adminRouter.use('/admin', requireAuth, requireRole('admin'));
 
 // Protected admin routes
 adminRouter.use('/admin', adminEnvRouter);

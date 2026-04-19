@@ -33,6 +33,7 @@ export class LoginService {
     providerUserId: string,
     providerEmail?: string | null,
     actorId: number | null = null,
+    providerUsername?: string | null,
   ): Promise<Login> {
     // Pre-check for duplicate — surfaces a domain error before hitting the DB
     // constraint so the caller gets a ConflictError rather than a Prisma error.
@@ -49,6 +50,7 @@ export class LoginService {
         provider,
         provider_user_id: providerUserId,
         provider_email: providerEmail ?? null,
+        provider_username: providerUsername ?? null,
       });
       await this.audit.record(tx, {
         actor_user_id: actorId,

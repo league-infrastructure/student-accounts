@@ -102,7 +102,7 @@ describe('OAuth initiate routes — link mode (authenticated)', () => {
     });
 
     const res = await agent.get('/api/auth/github?link=1');
-    // Should not be 401 (auth check passed); will be 501 because OAuth not implemented
+    // Should not be 401 (auth check passed); will be 501 because OAuth not implemented (T003)
     expect(res.status).not.toBe(401);
 
     delete process.env.GITHUB_CLIENT_ID;

@@ -47,7 +47,7 @@ describe('Admin Sessions API', () => {
     });
     const res = await userAgent.get('/api/admin/sessions');
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('Admin access required');
+    expect(res.body.error).toBe('Forbidden');
   });
 
   it('returns 401 for unauthenticated', async () => {

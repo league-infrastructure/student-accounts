@@ -15,6 +15,7 @@ import { createMcpHandler } from './mcp/handler';
 import { errorHandler } from './middleware/errorHandler';
 import { attachServices } from './middleware/services';
 import { ServiceRegistry } from './services/service.registry';
+import { configurePassport } from './services/auth/passport.config';
 import { logBuffer } from './services/logBuffer';
 import { prisma } from './services/prisma';
 
@@ -62,27 +63,16 @@ if (process.env.NODE_ENV !== 'test') {
 
 app.use(session(sessionConfig));
 
-// Passport authentication
-passport.serializeUser((user: any, done) => {
-  done(null, user.id);
-});
-passport.deserializeUser(async (id: number, done) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-    done(null, user);
-  } catch (err) {
-    done(err);
-  }
-});
-app.use(passport.initialize());
-app.use(passport.session());
-app.use(impersonateMiddleware);
-
 // Service registry — provides req.services to all route handlers
 const registry = ServiceRegistry.create('API');
 app.use(attachServices(registry));
+
+// Passport authentication — serialize/deserialize and strategy registration.
+// configurePassport is called after the registry so UserService and LoginService are available.
+configurePassport(passport, registry.users, registry.logins, prisma);
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(impersonateMiddleware);
 
 // Routes
 app.use('/api', healthRouter);
@@ -91,6 +81,22 @@ app.use('/api', adminRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());
+
+// ---------------------------------------------------------------------------
+// Stub landing routes (content provided by Sprint 003)
+// ---------------------------------------------------------------------------
+
+// GET /account — student account page placeholder.
+// Returns 200 with placeholder text. Sprint 003 replaces this with the real UI.
+app.get('/account', (_req: express.Request, res: express.Response) => {
+  res.status(200).send('Account page — coming in Sprint 003');
+});
+
+// GET /staff — staff directory placeholder.
+// Returns 200 with placeholder text. Sprint 003 replaces this with the real UI.
+app.get('/staff', (_req: express.Request, res: express.Response) => {
+  res.status(200).send('Staff directory — coming in Sprint 003');
+});
 
 app.use(errorHandler);
 
