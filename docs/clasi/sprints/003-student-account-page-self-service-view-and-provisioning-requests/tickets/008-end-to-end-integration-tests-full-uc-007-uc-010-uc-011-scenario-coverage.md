@@ -1,11 +1,23 @@
 ---
-id: "008"
-title: "End-to-end integration tests — full UC-007, UC-010, UC-011 scenario coverage"
-status: todo
-use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005]
-depends-on: ["001", "002", "003", "004", "005", "006", "007"]
-github-issue: ""
-todo: ""
+id: 008
+title: "End-to-end integration tests \u2014 full UC-007, UC-010, UC-011 scenario coverage"
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+depends-on:
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
+- '007'
+github-issue: ''
+todo: ''
 ---
 
 # End-to-end integration tests — full UC-007, UC-010, UC-011 scenario coverage
@@ -27,12 +39,12 @@ of operations across multiple endpoints.
 
 ## Acceptance Criteria
 
-- [ ] All scenarios listed below pass against the real SQLite test DB.
-- [ ] No test file imports or mocks service internals — tests drive via HTTP
+- [x] All scenarios listed below pass against the real SQLite test DB.
+- [x] No test file imports or mocks service internals — tests drive via HTTP
       (Supertest) and verify via DB queries or subsequent GET /api/account.
-- [ ] Tests are independent (each creates its own user and test data;
+- [x] Tests are independent (each creates its own user and test data;
       global-setup truncates between runs).
-- [ ] The complete test suite (`npm test` or `npx vitest`) passes with no
+- [x] The complete test suite (`npm test` or `npx vitest`) passes with no
       failures, including all Sprint 001 and Sprint 002 tests.
 
 ## Scenarios
