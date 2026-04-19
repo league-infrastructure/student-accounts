@@ -22,6 +22,7 @@
  */
 
 import fs from 'fs';
+import path from 'path';
 import pino from 'pino';
 import { google } from 'googleapis';
 
@@ -99,7 +100,7 @@ const ADMIN_SDK_SCOPE =
  *     new GoogleAdminDirectoryClient(
  *       '',   // serviceAccountJson ignored when file path is provided
  *       process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL!,
- *       process.env.GOOGLE_SERVICE_ACCOUNT_JSON_FILE,
+ *       process.env.GOOGLE_SERVICE_ACCOUNT_FILE,
  *     );
  *
  *   Option 2 — inline JSON string (preferred for Docker Swarm secrets):
@@ -115,12 +116,30 @@ const ADMIN_SDK_SCOPE =
 export class GoogleAdminDirectoryClient implements AdminDirectoryClient {
   private readonly serviceAccountJson: string;
   private readonly delegatedUser: string;
-  private readonly serviceAccountJsonFile: string;
+  private readonly serviceAccountFile: string;
 
-  constructor(serviceAccountJson: string, delegatedUser: string, serviceAccountJsonFile = '') {
+  constructor(serviceAccountJson: string, delegatedUser: string, serviceAccountFile = '') {
     this.serviceAccountJson = serviceAccountJson;
     this.delegatedUser = delegatedUser;
-    this.serviceAccountJsonFile = serviceAccountJsonFile;
+    this.serviceAccountFile = serviceAccountFile;
+  }
+
+  /**
+   * Resolve the filesystem path from GOOGLE_SERVICE_ACCOUNT_FILE.
+   *
+   * Rules:
+   *  - If the value contains a path separator (absolute or relative path),
+   *    use it as-is (resolved against process.cwd() for relative paths).
+   *  - If the value is a bare filename (no path separator), prepend
+   *    `config/files/` relative to the project root (process.cwd()).
+   */
+  static resolveServiceAccountFilePath(fileValue: string): string {
+    if (fileValue.includes('/') || fileValue.includes(path.sep)) {
+      // Has path separators — use as-is (path.resolve handles relative vs absolute)
+      return path.resolve(process.cwd(), fileValue);
+    }
+    // Bare filename — resolve against config/files/
+    return path.resolve(process.cwd(), 'config', 'files', fileValue);
   }
 
   /**
@@ -132,15 +151,18 @@ export class GoogleAdminDirectoryClient implements AdminDirectoryClient {
    * @throws StaffOULookupError(MISSING_CREDENTIALS) if neither is provided.
    */
   private resolveServiceAccountJson(email: string): string {
-    if (this.serviceAccountJsonFile) {
-      // File path wins. Read and validate before returning.
+    if (this.serviceAccountFile) {
+      // File path wins. Resolve to absolute path then read and validate.
+      const resolvedPath = GoogleAdminDirectoryClient.resolveServiceAccountFilePath(
+        this.serviceAccountFile,
+      );
       let raw: string;
       try {
-        raw = fs.readFileSync(this.serviceAccountJsonFile, 'utf-8');
+        raw = fs.readFileSync(resolvedPath, 'utf-8');
       } catch (readErr) {
         const msg =
-          `[google-admin-directory] Cannot read GOOGLE_SERVICE_ACCOUNT_JSON_FILE ` +
-          `'${this.serviceAccountJsonFile}'. ` +
+          `[google-admin-directory] Cannot read GOOGLE_SERVICE_ACCOUNT_FILE ` +
+          `'${this.serviceAccountFile}' (resolved: '${resolvedPath}'). ` +
           `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
         logger.error({ email, err: readErr }, msg);
         throw new StaffOULookupError(
@@ -155,8 +177,8 @@ export class GoogleAdminDirectoryClient implements AdminDirectoryClient {
         JSON.parse(raw);
       } catch (parseErr) {
         const msg =
-          `[google-admin-directory] GOOGLE_SERVICE_ACCOUNT_JSON_FILE ` +
-          `'${this.serviceAccountJsonFile}' is not valid JSON. ` +
+          `[google-admin-directory] GOOGLE_SERVICE_ACCOUNT_FILE ` +
+          `'${this.serviceAccountFile}' (resolved: '${resolvedPath}') is not valid JSON. ` +
           `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
         logger.error({ email, err: parseErr }, msg);
         throw new StaffOULookupError(
@@ -167,7 +189,7 @@ export class GoogleAdminDirectoryClient implements AdminDirectoryClient {
         );
       }
       logger.info(
-        { email, source: 'GOOGLE_SERVICE_ACCOUNT_JSON_FILE', path: this.serviceAccountJsonFile },
+        { email, source: 'GOOGLE_SERVICE_ACCOUNT_FILE', resolvedPath },
         '[google-admin-directory] Using service account credentials from file.',
       );
       return raw;
@@ -183,7 +205,7 @@ export class GoogleAdminDirectoryClient implements AdminDirectoryClient {
 
     // Neither is set — fail-secure.
     const msg =
-      '[google-admin-directory] Neither GOOGLE_SERVICE_ACCOUNT_JSON_FILE nor ' +
+      '[google-admin-directory] Neither GOOGLE_SERVICE_ACCOUNT_FILE nor ' +
       'GOOGLE_SERVICE_ACCOUNT_JSON is set. ' +
       `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
     logger.error({ email }, msg);
@@ -196,10 +218,10 @@ export class GoogleAdminDirectoryClient implements AdminDirectoryClient {
 
   async getUserOU(email: string): Promise<string> {
     // --- Credential validation (fail-secure per RD-001) ---
-    if (!this.serviceAccountJsonFile && !this.serviceAccountJson) {
+    if (!this.serviceAccountFile && !this.serviceAccountJson) {
       const msg =
         '[google-admin-directory] GOOGLE_SERVICE_ACCOUNT_JSON or ' +
-        'GOOGLE_SERVICE_ACCOUNT_JSON_FILE and GOOGLE_ADMIN_DELEGATED_USER_EMAIL are missing. ' +
+        'GOOGLE_SERVICE_ACCOUNT_FILE and GOOGLE_ADMIN_DELEGATED_USER_EMAIL are missing. ' +
         `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
       logger.error({ email }, msg);
       throw new StaffOULookupError(

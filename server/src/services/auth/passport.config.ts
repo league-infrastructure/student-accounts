@@ -45,13 +45,13 @@ import {
  */
 function buildAdminDirectoryClient(): AdminDirectoryClient {
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '';
-  const serviceAccountJsonFile = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_FILE ?? '';
+  const serviceAccountFile = process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '';
   const delegatedUser = process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '';
 
-  if (!serviceAccountJson && !serviceAccountJsonFile) {
+  if (!serviceAccountJson && !serviceAccountFile) {
     console.warn(
       '[passport.config] Google Admin Directory client: ' +
-        'Neither GOOGLE_SERVICE_ACCOUNT_JSON nor GOOGLE_SERVICE_ACCOUNT_JSON_FILE is set. ' +
+        'Neither GOOGLE_SERVICE_ACCOUNT_JSON nor GOOGLE_SERVICE_ACCOUNT_FILE is set. ' +
         '@jointheleague.org sign-ins will be rejected (fail-secure RD-001).',
     );
   }
@@ -63,7 +63,7 @@ function buildAdminDirectoryClient(): AdminDirectoryClient {
     );
   }
 
-  return new GoogleAdminDirectoryClient(serviceAccountJson, delegatedUser, serviceAccountJsonFile);
+  return new GoogleAdminDirectoryClient(serviceAccountJson, delegatedUser, serviceAccountFile);
 }
 
 // ---------------------------------------------------------------------------
