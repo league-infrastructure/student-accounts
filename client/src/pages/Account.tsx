@@ -435,9 +435,10 @@ export default function Account() {
     },
   });
 
-  // Staff and admin redirect — rendered after all hooks are called.
-  if (isNonStudent) {
-    return <Navigate to="/staff" replace />;
+  // Admin redirect — to the provisioning-requests page (has actual admin UI).
+  // Staff falls through and renders the account page (empty but won't 404).
+  if (user?.role === 'admin') {
+    return <Navigate to="/admin/provisioning-requests" replace />;
   }
 
   if (isLoading) {
