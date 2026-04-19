@@ -1,11 +1,14 @@
 ---
-id: "005"
-title: "Link-mode OAuth — attach new Login to current user instead of creating a new user"
-status: todo
-use-cases: [SUC-002]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: '005'
+title: "Link-mode OAuth \u2014 attach new Login to current user instead of creating\
+  \ a new user"
+status: done
+use-cases:
+- SUC-002
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # Link-mode OAuth — attach new Login to current user instead of creating a new user
@@ -23,27 +26,27 @@ side (the Add button) is in T006.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/auth/google?link=1` sets `session.link = true` and
+- [x] `GET /api/auth/google?link=1` sets `session.link = true` and
       `session.linkReturnTo = '/account'` before redirecting to Google OAuth.
-- [ ] `GET /api/auth/github?link=1` does the same for GitHub.
-- [ ] In the OAuth callback, when `session.link === true` and `session.userId`
+- [x] `GET /api/auth/github?link=1` does the same for GitHub.
+- [x] In the OAuth callback, when `session.link === true` and `session.userId`
       is set, the handler attaches the new Login to the current user instead
       of running the normal sign-in handler.
-- [ ] If the provider_user_id is already attached to the current user (same
+- [x] If the provider_user_id is already attached to the current user (same
       user clicking Add again), the flow is idempotent — no error, redirects
       to `/account`.
-- [ ] If the provider_user_id is already attached to a DIFFERENT user, the
+- [x] If the provider_user_id is already attached to a DIFFERENT user, the
       link is rejected; redirects to `/account?error=already_linked`.
-- [ ] A new Login record is created with correct provider, provider_user_id,
+- [x] A new Login record is created with correct provider, provider_user_id,
       provider_email, provider_username fields.
-- [ ] `add_login` AuditEvent is recorded atomically with Login creation,
+- [x] `add_login` AuditEvent is recorded atomically with Login creation,
       actor_user_id = the current session user.
-- [ ] After the link flow, `session.link` and `session.linkReturnTo` flags
+- [x] After the link flow, `session.link` and `session.linkReturnTo` flags
       are cleared.
-- [ ] If `session.link === true` but `session.userId` is absent (unauthenticated
+- [x] If `session.link === true` but `session.userId` is absent (unauthenticated
       user somehow hitting the link path), fall through to normal sign-in
       (treat as if `?link=1` was not present).
-- [ ] Existing Sprint 002 sign-in tests still pass (normal flow unchanged).
+- [x] Existing Sprint 002 sign-in tests still pass (normal flow unchanged).
 
 ## Implementation Plan
 
