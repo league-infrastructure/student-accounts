@@ -25,6 +25,7 @@ import { linkHandler } from './link.handler.js';
 import type { User } from '../../generated/prisma/client.js';
 import {
   GoogleWorkspaceAdminClientImpl,
+  resolveCredentialsFileEnvVar,
   type GoogleWorkspaceAdminClient,
 } from '../google-workspace/google-workspace-admin.client.js';
 
@@ -42,13 +43,15 @@ import {
  */
 function buildAdminDirectoryClient(): GoogleWorkspaceAdminClient {
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '';
-  const serviceAccountFile = process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '';
+  // Accept GOOGLE_CREDENTIALS_FILE (preferred) or GOOGLE_SERVICE_ACCOUNT_FILE (legacy alias).
+  const serviceAccountFile = resolveCredentialsFileEnvVar();
   const delegatedUser = process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '';
 
   if (!serviceAccountJson && !serviceAccountFile) {
     console.warn(
       '[passport.config] Google Admin Directory client: ' +
-        'Neither GOOGLE_SERVICE_ACCOUNT_JSON nor GOOGLE_SERVICE_ACCOUNT_FILE is set. ' +
+        'Neither GOOGLE_SERVICE_ACCOUNT_JSON nor GOOGLE_CREDENTIALS_FILE ' +
+        '(or legacy GOOGLE_SERVICE_ACCOUNT_FILE) is set. ' +
         '@jointheleague.org sign-ins will be rejected (fail-secure RD-001).',
     );
   }

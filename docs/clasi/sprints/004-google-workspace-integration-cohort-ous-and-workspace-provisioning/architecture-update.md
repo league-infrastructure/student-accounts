@@ -723,3 +723,50 @@ suite. This is documented here for clarity.
 
 None from this sprint at draft time. OQ-001 and OQ-002 from Sprint 003 remain
 open; see Open Questions above.
+
+---
+
+## Post-Sprint OOP Fix: Credentials File Alias and League Defaults
+
+The following changes were applied out-of-process after the sprint was
+executed (no ticket; committed on the open `sprint/004-*` branch).
+
+### Credentials file env var alias
+
+`GOOGLE_CREDENTIALS_FILE` is now accepted as an alias for
+`GOOGLE_SERVICE_ACCOUNT_FILE`. When both are set, `GOOGLE_CREDENTIALS_FILE`
+wins. The resolution helper `resolveCredentialsFileEnvVar()` is exported from
+`google-workspace-admin.client.ts` and used in `passport.config.ts`.
+
+Operators can use either name. The legacy name continues to work unchanged.
+
+### League-specific defaults (logged at INFO)
+
+Three env vars now have League-specific defaults that apply when the var is
+unset. Each default is logged at INFO level once per process so operators can
+see in server logs whether defaults are active.
+
+| Env Var | Default | Module |
+|---|---|---|
+| `GOOGLE_STUDENT_DOMAIN` | `students.jointheleague.org` | `google-workspace-admin.client.ts` |
+| `GOOGLE_STUDENT_OU_ROOT` | `/Students` | `google-workspace-admin.client.ts` |
+| `GOOGLE_STAFF_OU_PATH` | `/League Staff` | `sign-in.handler.ts` |
+
+The following vars must remain explicit (no default):
+- `GOOGLE_ADMIN_DELEGATED_USER_EMAIL` — no safe default
+- `ADMIN_EMAILS` — no safe default
+- `GOOGLE_WORKSPACE_WRITE_ENABLED` — must be explicit opt-in; absent = writes disabled
+
+Updated secrets table:
+
+| Env Var | Required | Default | Description |
+|---|---|---|---|
+| `GOOGLE_CREDENTIALS_FILE` | No (preferred alias) | — | Service account JSON file path (wins over legacy name) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | No (legacy alias) | — | Same as above; use `GOOGLE_CREDENTIALS_FILE` instead |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | No | — | Inline service account JSON string (Docker Swarm) |
+| `GOOGLE_ADMIN_DELEGATED_USER_EMAIL` | Yes | — | Admin account for domain-wide delegation |
+| `GOOGLE_STUDENT_DOMAIN` | No | `students.jointheleague.org` | Student email domain guard |
+| `GOOGLE_STUDENT_OU_ROOT` | No | `/Students` | Student OU root for createOU and domain guard |
+| `GOOGLE_STAFF_OU_PATH` | No | `/League Staff` | OU prefix that identifies staff accounts |
+| `GOOGLE_WORKSPACE_WRITE_ENABLED` | Yes (for writes) | — | Must be exactly `"1"` to allow write calls |
+| `ADMIN_EMAILS` | Yes (for admin login) | — | Comma-separated admin email list |

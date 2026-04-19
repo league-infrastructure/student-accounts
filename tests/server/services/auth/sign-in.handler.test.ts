@@ -18,6 +18,8 @@ import {
   signInHandler,
   _parseAdminEmails,
   _setAdminEmails,
+  resolveStaffOuPath,
+  DEFAULT_STAFF_OU_PATH,
 } from '../../../../server/src/services/auth/sign-in.handler.js';
 import { StaffOULookupError } from '../../../../server/src/services/google-workspace/google-workspace-admin.client.js';
 import { FakeGoogleWorkspaceAdminClient } from '../../helpers/fake-google-workspace-admin.client.js';
@@ -926,6 +928,97 @@ describe('signInHandler — ADMIN_EMAILS admin role assignment (T006)', () => {
       userService,
       loginService,
       // No adminDirClient needed — students.jointheleague.org skips OU branch
+    );
+
+    expect(user.role).toBe('student');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OOP fix: resolveStaffOuPath — League default
+// ---------------------------------------------------------------------------
+
+describe('resolveStaffOuPath — League default', () => {
+  const savedEnv: { value: string | undefined } = { value: undefined };
+
+  beforeEach(() => {
+    savedEnv.value = process.env.GOOGLE_STAFF_OU_PATH;
+  });
+
+  afterEach(() => {
+    if (savedEnv.value === undefined) {
+      delete process.env.GOOGLE_STAFF_OU_PATH;
+    } else {
+      process.env.GOOGLE_STAFF_OU_PATH = savedEnv.value;
+    }
+  });
+
+  it('returns the League default when GOOGLE_STAFF_OU_PATH is not set', () => {
+    delete process.env.GOOGLE_STAFF_OU_PATH;
+    expect(resolveStaffOuPath()).toBe(DEFAULT_STAFF_OU_PATH);
+  });
+
+  it('returns the configured value when GOOGLE_STAFF_OU_PATH is set', () => {
+    process.env.GOOGLE_STAFF_OU_PATH = '/Custom Staff OU';
+    expect(resolveStaffOuPath()).toBe('/Custom Staff OU');
+  });
+
+  it('DEFAULT_STAFF_OU_PATH constant is /League Staff', () => {
+    expect(DEFAULT_STAFF_OU_PATH).toBe('/League Staff');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OOP fix: signInHandler uses League default when GOOGLE_STAFF_OU_PATH is unset
+// ---------------------------------------------------------------------------
+
+describe('signInHandler — uses League default for GOOGLE_STAFF_OU_PATH when unset', () => {
+  beforeEach(async () => {
+    // Ensure the env var is absent — the handler should apply the default
+    delete process.env.GOOGLE_STAFF_OU_PATH;
+    _setAdminEmails(new Set());
+  });
+
+  afterEach(() => {
+    delete process.env.GOOGLE_STAFF_OU_PATH;
+    _setAdminEmails(new Set());
+  });
+
+  it('grants role=staff when OU starts with default /League Staff and GOOGLE_STAFF_OU_PATH is unset', async () => {
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff/Engineering');
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-default-staff-001',
+        providerEmail: 'staff@jointheleague.org',
+        displayName: 'Default Staff Path User',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    expect(user.role).toBe('staff');
+  });
+
+  it('keeps role=student when OU does NOT match default /League Staff and GOOGLE_STAFF_OU_PATH is unset', async () => {
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/Students/Spring2025');
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-default-student-002',
+        providerEmail: 'notstaff@jointheleague.org',
+        displayName: 'Not Staff OU',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+      { adminDirClient },
     );
 
     expect(user.role).toBe('student');
