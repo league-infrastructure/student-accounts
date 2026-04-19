@@ -14,7 +14,7 @@ interface NavItem {
 }
 
 const MAIN_NAV: NavItem[] = [
-  { to: '/', label: 'Home', end: true },
+  { to: '/account', label: 'Account' },
 ];
 
 const ADMIN_NAV: NavItem[] = [
