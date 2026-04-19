@@ -119,6 +119,7 @@ model User {
   role          UserRole   @default(student)
   created_via   CreatedVia
   cohort_id     Int?
+  is_active     Boolean    @default(true)
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
 

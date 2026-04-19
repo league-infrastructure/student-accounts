@@ -56,6 +56,7 @@ adminUsersRouter.get('/users/:id', async (req, res, next) => {
 adminUsersRouter.get('/users', async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
+      where: { is_active: true },
       orderBy: { created_at: 'desc' },
       include: {
         logins: { select: { provider: true, provider_username: true } },

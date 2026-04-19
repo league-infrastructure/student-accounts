@@ -1,7 +1,7 @@
 ---
 id: "001"
 title: "Schema migration — add is_active to User model and update listing queries"
-status: todo
+status: done
 use-cases: [SUC-007-004]
 depends-on: []
 github-issue: ""
@@ -24,14 +24,14 @@ This is a foundation ticket. All other tickets in this sprint depend on the
 
 ## Acceptance Criteria
 
-- [ ] `User` model in `schema.prisma` has `is_active Boolean @default(true)`.
-- [ ] `prisma db push` (dev) succeeds; all existing users have `is_active = true`.
-- [ ] `UserRepository.findAll()` / `UserService.findAll()` filters `is_active = true`
+- [x] `User` model in `schema.prisma` has `is_active Boolean @default(true)`.
+- [x] `prisma db push` (dev) succeeds; all existing users have `is_active = true`.
+- [x] `UserRepository.findAll()` / `UserService.findAll()` filters `is_active = true`
       by default.
-- [ ] `UserRepository.findById()` returns null for inactive users.
-- [ ] A new `findByIdIncludingInactive(id)` method or `{ includeInactive: true }`
+- [x] `UserRepository.findById()` returns null for inactive users.
+- [x] A new `findByIdIncludingInactive(id)` method or `{ includeInactive: true }`
       option exists to fetch inactive users for admin views.
-- [ ] All existing tests continue to pass.
+- [x] All existing tests continue to pass.
 
 ## Implementation Plan
 
