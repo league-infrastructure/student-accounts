@@ -1,7 +1,7 @@
 ---
 id: "003"
 title: "Student Account Page — Self-Service View and Provisioning Requests"
-status: roadmap
+status: planning
 branch: sprint/003-student-account-page-self-service-view-and-provisioning-requests
 use-cases: [UC-007, UC-010, UC-011]
 ---
@@ -58,4 +58,20 @@ so the data model path is exercised early.
 
 ## Tickets
 
-_(To be created when this sprint enters Detail Mode.)_
+| ID | Title | Depends On | Group |
+|---|---|---|---|
+| T001 | ProvisioningRequestService: CRUD + Claude-requires-League-email constraint | — | 1 |
+| T002 | GET /api/account — aggregate profile/logins/accounts/requests endpoint | T001 | 2 |
+| T003 | DELETE /api/account/logins/:id — remove Login with at-least-one guard and audit | T002 | 2 |
+| T004 | POST /api/account/provisioning-requests — create request(s) with constraint and audit | T001, T002 | 2 |
+| T005 | Link-mode OAuth — attach new Login to current user instead of creating a new user | T002 | 2 |
+| T006 | AccountPage React component — four sections replacing template Account.tsx stub | T002, T003, T004, T005 | 3 |
+| T007 | Staff redirect — redirect staff users from /account to /staff | T006 | 3 |
+| T008 | End-to-end integration tests — full UC-007, UC-010, UC-011 scenario coverage | T001–T007 | 4 |
+
+**Execution groups:**
+
+- **Group 1:** T001 — no dependencies; must complete first.
+- **Group 2:** T002, T003, T004, T005 — all depend on T001; T003/T004/T005 also depend on T002 (which itself depends on T001, so these are all Group 2 sequentially after T001; T003/T004/T005 can run in parallel with each other once T002 is done).
+- **Group 3:** T006, T007 — depend on all of Group 2.
+- **Group 4:** T008 — final validation after everything is built.
