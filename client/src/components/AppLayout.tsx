@@ -19,6 +19,7 @@ const MAIN_NAV: NavItem[] = [
 
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin/provisioning-requests', label: 'Provisioning Requests' },
+  { to: '/admin/cohorts', label: 'Cohorts' },
   { to: '/admin/users', label: 'Users' },
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },
