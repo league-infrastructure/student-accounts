@@ -390,3 +390,288 @@ describe('GET /api/account — data scoping', () => {
     expect(res.body.profile.id).toBe(userA.id);
   });
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/account/provisioning-requests tests (T004)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Test: POST workspace — 201 with one request row
+// ---------------------------------------------------------------------------
+
+describe('POST /api/account/provisioning-requests — workspace', () => {
+  it('returns 201 with one request object and creates a DB row', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-workspace@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+
+    const agent = await loginAs('pr-workspace@example.com', 'student');
+    const res = await agent
+      .post('/api/account/provisioning-requests')
+      .send({ requestType: 'workspace' });
+
+    expect(res.status).toBe(201);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({
+      requestedType: 'workspace',
+      status: 'pending',
+    });
+    expect(res.body[0].id).toBeDefined();
+    expect(res.body[0].createdAt).toBeDefined();
+    expect(res.body[0].decidedAt).toBeNull();
+
+    // Verify row exists in DB
+    const rows = await (prisma as any).provisioningRequest.findMany({
+      where: { user_id: user.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].requested_type).toBe('workspace');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: POST workspace_and_claude with no workspace baseline — 422
+// ---------------------------------------------------------------------------
+
+describe('POST /api/account/provisioning-requests — workspace_and_claude (no baseline)', () => {
+  it('returns 201 with two request rows when no baseline exists (workspace created in same tx)', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-wac@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+
+    const agent = await loginAs('pr-wac@example.com', 'student');
+    const res = await agent
+      .post('/api/account/provisioning-requests')
+      .send({ requestType: 'workspace_and_claude' });
+
+    expect(res.status).toBe(201);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(2);
+
+    const types = res.body.map((r: any) => r.requestedType).sort();
+    expect(types).toEqual(['claude', 'workspace']);
+
+    // Verify both rows in DB
+    const rows = await (prisma as any).provisioningRequest.findMany({
+      where: { user_id: user.id },
+    });
+    expect(rows).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: POST claude alone without workspace baseline — 422
+// ---------------------------------------------------------------------------
+
+describe('POST /api/account/provisioning-requests — claude alone, no workspace', () => {
+  it('returns 422 when claude is requested but no workspace baseline exists', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-claude-no-ws@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+
+    const agent = await loginAs('pr-claude-no-ws@example.com', 'student');
+    const res = await agent
+      .post('/api/account/provisioning-requests')
+      .send({ requestType: 'claude' });
+
+    expect(res.status).toBe(422);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: POST claude alone with active workspace ExternalAccount — 201
+// ---------------------------------------------------------------------------
+
+describe('POST /api/account/provisioning-requests — claude alone with active workspace', () => {
+  it('returns 201 with one claude request when the user has an active workspace account', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-claude-with-ws@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+    await makeExternalAccount(user, { type: 'workspace', status: 'active' });
+
+    const agent = await loginAs('pr-claude-with-ws@example.com', 'student');
+    const res = await agent
+      .post('/api/account/provisioning-requests')
+      .send({ requestType: 'claude' });
+
+    expect(res.status).toBe(201);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].requestedType).toBe('claude');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: POST duplicate pending workspace — 409
+// ---------------------------------------------------------------------------
+
+describe('POST /api/account/provisioning-requests — duplicate pending workspace', () => {
+  it('returns 409 when the user already has a pending workspace request', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-dup-ws@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+    // Create an existing pending workspace request
+    await makeProvisioningRequest(user, { requested_type: 'workspace', status: 'pending' });
+
+    const agent = await loginAs('pr-dup-ws@example.com', 'student');
+    const res = await agent
+      .post('/api/account/provisioning-requests')
+      .send({ requestType: 'workspace' });
+
+    expect(res.status).toBe(409);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: POST invalid requestType — 400
+// ---------------------------------------------------------------------------
+
+describe('POST /api/account/provisioning-requests — invalid requestType', () => {
+  it('returns 400 for an unrecognized requestType', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-invalid@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+
+    const agent = await loginAs('pr-invalid@example.com', 'student');
+    const res = await agent
+      .post('/api/account/provisioning-requests')
+      .send({ requestType: 'notreal' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when requestType is missing', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-missing@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+
+    const agent = await loginAs('pr-missing@example.com', 'student');
+    const res = await agent
+      .post('/api/account/provisioning-requests')
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: POST unauthenticated — 401
+// ---------------------------------------------------------------------------
+
+describe('POST /api/account/provisioning-requests — unauthenticated', () => {
+  it('returns 401 when no session exists', async () => {
+    const res = await request(app)
+      .post('/api/account/provisioning-requests')
+      .send({ requestType: 'workspace' });
+    expect(res.status).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: POST staff role — 403
+// ---------------------------------------------------------------------------
+
+describe('POST /api/account/provisioning-requests — staff role', () => {
+  it('returns 403 for a user with role=staff', async () => {
+    await makeUser({ primary_email: 'pr-staff@example.com', role: 'staff' });
+
+    const agent = await loginAs('pr-staff@example.com', 'staff');
+    const res = await agent
+      .post('/api/account/provisioning-requests')
+      .send({ requestType: 'workspace' });
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/account/provisioning-requests tests (T004)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Test: GET returns student's own requests, newest first
+// ---------------------------------------------------------------------------
+
+describe('GET /api/account/provisioning-requests — authenticated student', () => {
+  it('returns all requests for the signed-in student, newest first', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-get-list@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+    const req1 = await makeProvisioningRequest(user, { requested_type: 'workspace', status: 'pending' });
+    const req2 = await makeProvisioningRequest(user, { requested_type: 'claude', status: 'pending' });
+
+    const agent = await loginAs('pr-get-list@example.com', 'student');
+    const res = await agent.get('/api/account/provisioning-requests');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(2);
+
+    // Newest first: req2 has a higher id (created after req1)
+    expect(res.body[0].id).toBe(req2.id);
+    expect(res.body[1].id).toBe(req1.id);
+
+    expect(res.body[0]).toMatchObject({
+      requestedType: 'claude',
+      status: 'pending',
+      decidedAt: null,
+    });
+  });
+
+  it('returns an empty array when the student has no requests', async () => {
+    const user = await makeUser({
+      primary_email: 'pr-get-empty@example.com',
+      role: 'student',
+    });
+    await makeLogin(user);
+
+    const agent = await loginAs('pr-get-empty@example.com', 'student');
+    const res = await agent.get('/api/account/provisioning-requests');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: GET unauthenticated — 401
+// ---------------------------------------------------------------------------
+
+describe('GET /api/account/provisioning-requests — unauthenticated', () => {
+  it('returns 401 when no session exists', async () => {
+    const res = await request(app).get('/api/account/provisioning-requests');
+    expect(res.status).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test: GET staff role — 403
+// ---------------------------------------------------------------------------
+
+describe('GET /api/account/provisioning-requests — staff role', () => {
+  it('returns 403 for a user with role=staff', async () => {
+    await makeUser({ primary_email: 'pr-get-staff@example.com', role: 'staff' });
+
+    const agent = await loginAs('pr-get-staff@example.com', 'staff');
+    const res = await agent.get('/api/account/provisioning-requests');
+
+    expect(res.status).toBe(403);
+  });
+});

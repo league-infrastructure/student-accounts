@@ -7,16 +7,15 @@
  * Routes provided by this module (mounted at /api):
  *   GET    /api/account               — aggregate profile/logins/externalAccounts/provisioningRequests
  *   DELETE /api/account/logins/:id    — remove one of the student's own Logins
- *
- * Routes reserved for T004:
- *   POST   /api/account/provisioning-requests
- *   GET    /api/account/provisioning-requests
+ *   POST   /api/account/provisioning-requests — create one or two provisioning request rows
+ *   GET    /api/account/provisioning-requests — list the signed-in student's requests (newest first)
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
-import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
+import { ConflictError, NotFoundError, UnprocessableError, ValidationError } from '../errors.js';
+import type { CreateRequestType } from '../services/provisioning-request.service.js';
 
 export const accountRouter = Router();
 
@@ -140,5 +139,106 @@ accountRouter.delete(
     }
 
     res.status(204).end();
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Valid request types accepted by the POST endpoint.
+// 'claude' alone is valid at the HTTP layer; the service enforces the
+// workspace-baseline constraint.
+// ---------------------------------------------------------------------------
+
+const VALID_REQUEST_TYPES: CreateRequestType[] = ['workspace', 'claude', 'workspace_and_claude'];
+
+// ---------------------------------------------------------------------------
+// POST /api/account/provisioning-requests — create a provisioning request
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates one or two ProvisioningRequest rows on behalf of the signed-in
+ * student by delegating entirely to ProvisioningRequestService.create.
+ *
+ * Body: { requestType: "workspace" | "claude" | "workspace_and_claude" }
+ *
+ * 201 — one or two request objects created.
+ * 400 — requestType is missing or not one of the valid values.
+ * 409 — ConflictError: a pending/active workspace account or request already exists.
+ * 422 — UnprocessableError: claude requested without a workspace baseline.
+ * 401 — not authenticated.
+ * 403 — role is not 'student'.
+ */
+accountRouter.post(
+  '/account/provisioning-requests',
+  requireAuth,
+  requireRole('student'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    const userId: number = (req.session as any).userId;
+    const { requestType } = req.body;
+
+    // Validate requestType before touching the service.
+    if (!requestType || !VALID_REQUEST_TYPES.includes(requestType as CreateRequestType)) {
+      return res.status(400).json({
+        error: `Invalid requestType. Must be one of: ${VALID_REQUEST_TYPES.join(', ')}.`,
+      });
+    }
+
+    const { provisioningRequests } = req.services;
+
+    try {
+      const created = await provisioningRequests.create(userId, requestType as CreateRequestType, userId);
+
+      // Serialize: snake_case DB fields → camelCase HTTP response.
+      const body = created.map((r) => ({
+        id: r.id,
+        requestedType: r.requested_type,
+        status: r.status,
+        createdAt: r.created_at,
+        decidedAt: r.decided_at ?? null,
+      }));
+
+      res.status(201).json(body);
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        return next(err); // 409
+      }
+      if (err instanceof UnprocessableError) {
+        return next(err); // 422
+      }
+      return next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/account/provisioning-requests — list student's provisioning requests
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns all ProvisioningRequest rows for the signed-in student,
+ * ordered most-recent-first.
+ *
+ * 200 — array of provisioning request objects (may be empty).
+ * 401 — not authenticated.
+ * 403 — role is not 'student'.
+ */
+accountRouter.get(
+  '/account/provisioning-requests',
+  requireAuth,
+  requireRole('student'),
+  async (req: Request, res: Response) => {
+    const userId: number = (req.session as any).userId;
+    const { provisioningRequests } = req.services;
+
+    const requests = await provisioningRequests.findByUser(userId);
+
+    const body = requests.map((r) => ({
+      id: r.id,
+      requestedType: r.requested_type,
+      status: r.status,
+      createdAt: r.created_at,
+      decidedAt: r.decided_at ?? null,
+    }));
+
+    res.json(body);
   },
 );
