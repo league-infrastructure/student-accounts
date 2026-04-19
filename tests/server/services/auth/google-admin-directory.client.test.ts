@@ -501,20 +501,31 @@ describe('GoogleWorkspaceAdminClientImpl — file path (GOOGLE_SERVICE_ACCOUNT_F
 // ---------------------------------------------------------------------------
 
 describe('GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath', () => {
-  it('resolves a bare filename against <cwd>/config/files/', () => {
+  it('falls back to <cwd>/config/files/ for a bare filename that does not exist', () => {
+    const result = GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath(
+      'does-not-exist-test-fixture.json',
+    );
+    expect(result).toBe(
+      path.resolve(process.cwd(), 'config', 'files', 'does-not-exist-test-fixture.json'),
+    );
+  });
+
+  it('probes <parent>/config/files/ for a bare filename that exists there', () => {
+    // The real credentials fixture lives at repo-root/config/files/ but
+    // the server cwd is server/ — the resolver probes both.
     const result = GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath(
       'gapps-integrations-fc9a96a0f34a.json',
     );
     expect(result).toBe(
-      path.resolve(process.cwd(), 'config', 'files', 'gapps-integrations-fc9a96a0f34a.json'),
+      path.resolve(process.cwd(), '..', 'config', 'files', 'gapps-integrations-fc9a96a0f34a.json'),
     );
   });
 
-  it('uses an explicit relative path (with slashes) as-is via path.resolve', () => {
+  it('uses an explicit relative path (with slashes) as-is via path.resolve (cwd anchor)', () => {
     const result = GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath(
-      './config/files/my-key.json',
+      './config/files/does-not-exist.json',
     );
-    expect(result).toBe(path.resolve(process.cwd(), './config/files/my-key.json'));
+    expect(result).toBe(path.resolve(process.cwd(), './config/files/does-not-exist.json'));
   });
 
   it('uses an absolute path unchanged', () => {
