@@ -1,5 +1,5 @@
 /**
- * Integration tests for ProvisioningRequestService (Sprint 003 T001 + Sprint 004 T007).
+ * Integration tests for ProvisioningRequestService (Sprint 003 T001 + Sprint 004 T007 + Sprint 005 T007).
  *
  * Covers:
  *  - create('workspace') happy path: one row, audit recorded
@@ -14,7 +14,9 @@
  *  - create('claude') alone: pending workspace ProvisioningRequest present → succeeds
  *  - approve (workspace): calls WorkspaceProvisioningService.provision, status=approved, ExternalAccount created
  *  - approve (workspace): provision throws → transaction rolled back, status stays pending
- *  - approve (claude): status=approved, no provision call made (Sprint 005 TODO)
+ *  - approve (claude): calls ClaudeProvisioningService.provision, status=approved, ExternalAccount created
+ *  - approve (claude): provision throws → transaction rolled back, status stays pending
+ *  - approve (claude): claudeProvisioningService not injected → throws Error
  *  - approve (already-approved): throws ConflictError
  *  - approve (rejected): throws ConflictError
  *  - approve: throws NotFoundError for unknown request
@@ -29,12 +31,15 @@ import { AuditService } from '../../../server/src/services/audit.service.js';
 import { ExternalAccountService } from '../../../server/src/services/external-account.service.js';
 import { ProvisioningRequestService } from '../../../server/src/services/provisioning-request.service.js';
 import { WorkspaceProvisioningService } from '../../../server/src/services/workspace-provisioning.service.js';
+import { ClaudeProvisioningService } from '../../../server/src/services/claude-provisioning.service.js';
 import { ExternalAccountRepository } from '../../../server/src/services/repositories/external-account.repository.js';
 import { UserRepository } from '../../../server/src/services/repositories/user.repository.js';
 import { CohortRepository } from '../../../server/src/services/repositories/cohort.repository.js';
 import { WorkspaceApiError } from '../../../server/src/services/google-workspace/google-workspace-admin.client.js';
+import { ClaudeTeamApiError } from '../../../server/src/services/claude-team/claude-team-admin.client.js';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../../server/src/errors.js';
 import { FakeGoogleWorkspaceAdminClient } from '../helpers/fake-google-workspace-admin.client.js';
+import { FakeClaudeTeamAdminClient } from '../helpers/fake-claude-team-admin.client.js';
 import { vi } from 'vitest';
 import {
   makeCohort,
@@ -71,16 +76,29 @@ function makeWorkspaceProvisioningService(
   );
 }
 
+function makeClaudeProvisioningService(
+  fake: FakeClaudeTeamAdminClient,
+): ClaudeProvisioningService {
+  return new ClaudeProvisioningService(
+    fake,
+    ExternalAccountRepository,
+    new AuditService(),
+    UserRepository,
+  );
+}
+
 function makeService(
   auditOverride?: AuditService,
   workspaceProvSvc?: WorkspaceProvisioningService,
+  claudeProvSvc?: ClaudeProvisioningService,
 ): ProvisioningRequestService {
   const audit = auditOverride ?? new AuditService();
   const externalAccounts = new ExternalAccountService(prisma, audit);
-  return new ProvisioningRequestService(prisma, audit, externalAccounts, workspaceProvSvc);
+  return new ProvisioningRequestService(prisma, audit, externalAccounts, workspaceProvSvc, claudeProvSvc);
 }
 
 let fakeClient: FakeGoogleWorkspaceAdminClient;
+let fakeClaudeClient: FakeClaudeTeamAdminClient;
 let originalDomain: string | undefined;
 
 // ---------------------------------------------------------------------------
@@ -90,6 +108,7 @@ let originalDomain: string | undefined;
 beforeEach(async () => {
   await clearDb();
   fakeClient = new FakeGoogleWorkspaceAdminClient();
+  fakeClaudeClient = new FakeClaudeTeamAdminClient();
   originalDomain = process.env.GOOGLE_STUDENT_DOMAIN;
   process.env.GOOGLE_STUDENT_DOMAIN = STUDENT_DOMAIN;
 });
@@ -442,16 +461,24 @@ describe('ProvisioningRequestService.approve — workspace request', () => {
 });
 
 // ---------------------------------------------------------------------------
-// approve — claude request (no provisioning; Sprint 005 TODO)
+// approve — claude request wired to ClaudeProvisioningService (Sprint 005 T007)
 // ---------------------------------------------------------------------------
 
 describe('ProvisioningRequestService.approve — claude request', () => {
-  it('sets status=approved without calling WorkspaceProvisioningService', async () => {
+  it('sets status=approved, decided_by, decided_at and creates ExternalAccount', async () => {
     const user = await makeUser({ role: 'student' });
     const admin = await makeUser({ role: 'staff' });
-    // Give the user an active workspace account so a claude request is valid
-    await makeExternalAccount(user, { type: 'workspace', status: 'active' });
-    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+    // Give the user an active workspace account (hard gate for ClaudeProvisioningService)
+    await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+    const svc = makeService(
+      undefined,
+      makeWorkspaceProvisioningService(fakeClient),
+      makeClaudeProvisioningService(fakeClaudeClient),
+    );
 
     const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
 
@@ -461,15 +488,28 @@ describe('ProvisioningRequestService.approve — claude request', () => {
     expect(updated.decided_by).toBe(admin.id);
     expect(updated.decided_at).not.toBeNull();
 
-    // No Google API call for claude requests
-    expect(fakeClient.calls.createUser).toHaveLength(0);
+    // ExternalAccount should have been created by ClaudeProvisioningService
+    const accounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'claude' },
+    });
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].status).toBe('active');
+    expect(accounts[0].external_id).toBe('fake-claude-member-id');
   });
 
   it('records an approve_provisioning_request audit event for claude', async () => {
     const user = await makeUser({ role: 'student' });
     const admin = await makeUser({ role: 'staff' });
-    await makeExternalAccount(user, { type: 'workspace', status: 'active' });
-    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+    await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+    const svc = makeService(
+      undefined,
+      makeWorkspaceProvisioningService(fakeClient),
+      makeClaudeProvisioningService(fakeClaudeClient),
+    );
 
     const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
     await svc.approve(req.id, admin.id);
@@ -479,6 +519,98 @@ describe('ProvisioningRequestService.approve — claude request', () => {
     });
     expect(events).toHaveLength(1);
     expect(events[0].actor_user_id).toBe(admin.id);
+    expect(events[0].target_user_id).toBe(user.id);
+  });
+
+  it('calls ClaudeTeamAdminClient.inviteMember with the workspace email', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+    const svc = makeService(
+      undefined,
+      makeWorkspaceProvisioningService(fakeClient),
+      makeClaudeProvisioningService(fakeClaudeClient),
+    );
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+    await svc.approve(req.id, admin.id);
+
+    expect(fakeClaudeClient.calls.inviteMember).toHaveLength(1);
+    expect(fakeClaudeClient.calls.inviteMember[0].email).toBe(
+      'alice@students.jointheleague.org',
+    );
+    // No Google Workspace API call should have been made
+    expect(fakeClient.calls.createUser).toHaveLength(0);
+  });
+
+  it('rolls back entire transaction when ClaudeProvisioningService.provision throws', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+
+    fakeClaudeClient.configureError(
+      'inviteMember',
+      new ClaudeTeamApiError('SDK error', 'inviteMember', 500),
+    );
+    const svc = makeService(
+      undefined,
+      makeWorkspaceProvisioningService(fakeClient),
+      makeClaudeProvisioningService(fakeClaudeClient),
+    );
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+
+    await expect(svc.approve(req.id, admin.id)).rejects.toThrow(ClaudeTeamApiError);
+
+    // Request should still be pending — transaction rolled back
+    const stillPending = await (prisma as any).provisioningRequest.findUnique({
+      where: { id: req.id },
+    });
+    expect(stillPending.status).toBe('pending');
+
+    // No claude ExternalAccount should have been created
+    const accounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'claude' },
+    });
+    expect(accounts).toHaveLength(0);
+
+    // No audit event should exist for this approval attempt
+    const approveEvents = await (prisma as any).auditEvent.findMany({
+      where: { action: 'approve_provisioning_request', target_entity_id: String(req.id) },
+    });
+    expect(approveEvents).toHaveLength(0);
+  });
+
+  it('throws Error when claudeProvisioningService is not injected', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+    // Construct service without claudeProvisioningService
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+
+    await expect(svc.approve(req.id, admin.id)).rejects.toThrow(
+      'claudeProvisioningService is required',
+    );
+
+    // Request should still be pending
+    const stillPending = await (prisma as any).provisioningRequest.findUnique({
+      where: { id: req.id },
+    });
+    expect(stillPending.status).toBe('pending');
   });
 });
 

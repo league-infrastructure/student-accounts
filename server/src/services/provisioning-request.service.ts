@@ -1,5 +1,5 @@
 /**
- * ProvisioningRequestService — full implementation (Sprint 003 + Sprint 004 T007).
+ * ProvisioningRequestService — full implementation (Sprint 003 + Sprint 004 T007 + Sprint 005 T007).
  *
  * Manages the lifecycle of provisioning requests from creation through
  * administrative decision.
@@ -17,8 +17,12 @@
  *    workspaceProvisioningService.provision(userId, deciderId, tx) inside
  *    the same transaction. If provision() throws, the whole transaction rolls
  *    back and the request stays 'pending'.
- *  - If request.requested_type === 'claude', approve() remains a pure status
- *    update (Sprint 005 will wire claude provisioning).
+ *
+ * Sprint 005 T007 — approve() wired to ClaudeProvisioningService:
+ *  - If request.requested_type === 'claude', approve() calls
+ *    claudeProvisioningService.provision(userId, deciderId, tx) inside
+ *    the same transaction. If provision() throws, the whole transaction rolls
+ *    back and the request stays 'pending'.
  *  - notifyAdmin() is a no-op this sprint; Sprint 004+ will implement it.
  */
 
@@ -27,6 +31,7 @@ import { ConflictError, NotFoundError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import type { ExternalAccountService } from './external-account.service.js';
 import type { WorkspaceProvisioningService } from './workspace-provisioning.service.js';
+import type { ClaudeProvisioningService } from './claude-provisioning.service.js';
 import { ProvisioningRequestRepository } from './repositories/provisioning-request.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { ProvisioningRequest } from '../generated/prisma/client.js';
@@ -42,6 +47,7 @@ export class ProvisioningRequestService {
     private audit: AuditService,
     private externalAccountService: ExternalAccountService,
     private workspaceProvisioningService?: WorkspaceProvisioningService,
+    private claudeProvisioningService?: ClaudeProvisioningService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -207,9 +213,10 @@ export class ProvisioningRequestService {
    * inside the same transaction. If provisioning fails, the entire transaction is rolled
    * back and the request stays 'pending'.
    *
-   * If the request type is 'claude', approval remains a pure status update.
-   * Claude seat provisioning is handled by Sprint 005's WorkspaceClaudeService.
-   * TODO(Sprint 005): wire claude provisioning here when WorkspaceClaudeService is available.
+   * If the request type is 'claude', approve() calls
+   * ClaudeProvisioningService.provision inside the same transaction. If
+   * provisioning fails, the entire transaction is rolled back and the request
+   * stays 'pending'.
    *
    * @throws NotFoundError if the request does not exist.
    * @throws ConflictError if the request is not in 'pending' status.
@@ -253,11 +260,16 @@ export class ProvisioningRequestService {
         await this.workspaceProvisioningService.provision(existing.user_id, deciderId, tx);
       } else {
         // requested_type === 'claude'
-        // TODO(Sprint 005): call WorkspaceClaudeService.provision here when it is available.
+        if (!this.claudeProvisioningService) {
+          throw new Error(
+            'ProvisioningRequestService: claudeProvisioningService is required to approve claude requests but was not injected',
+          );
+        }
         logger.info(
           { requestId, userId: existing.user_id, deciderId },
-          '[provisioning-request] Claude request approved — provisioning deferred to Sprint 005 (WorkspaceClaudeService)',
+          '[provisioning-request] Calling ClaudeProvisioningService.provision for claude request',
         );
+        await this.claudeProvisioningService.provision(existing.user_id, deciderId, tx);
       }
 
       return updated;

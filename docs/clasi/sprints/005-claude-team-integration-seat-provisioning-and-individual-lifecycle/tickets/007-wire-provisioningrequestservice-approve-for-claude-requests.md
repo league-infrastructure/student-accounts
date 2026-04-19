@@ -1,7 +1,7 @@
 ---
 id: "007"
 title: "Wire ProvisioningRequestService.approve for Claude requests"
-status: todo
+status: done
 use-cases: [SUC-001]
 depends-on: ["004"]
 ---
@@ -25,12 +25,12 @@ the existing `WorkspaceProvisioningService`.
 
 ## Acceptance Criteria
 
-- [ ] `ProvisioningRequestService` constructor accepts an optional `ClaudeProvisioningService` parameter.
-- [ ] `approve()` for claude requests calls `claudeProvisioningService.provision(...)`.
-- [ ] If `ClaudeProvisioningService` is not injected and a claude request is approved, an error is thrown (same guard pattern as workspace).
-- [ ] `ServiceRegistry` passes `ClaudeProvisioningService` to `ProvisioningRequestService`.
-- [ ] Existing workspace approval tests continue to pass.
-- [ ] Integration tests for claude approval pass.
+- [x] `ProvisioningRequestService` constructor accepts an optional `ClaudeProvisioningService` parameter.
+- [x] `approve()` for claude requests calls `claudeProvisioningService.provision(...)`.
+- [x] If `ClaudeProvisioningService` is not injected and a claude request is approved, an error is thrown (same guard pattern as workspace).
+- [x] `ServiceRegistry` passes `ClaudeProvisioningService` to `ProvisioningRequestService`.
+- [x] Existing workspace approval tests continue to pass.
+- [x] Integration tests for claude approval pass.
 
 ## Implementation Plan
 
