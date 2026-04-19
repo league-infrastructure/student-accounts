@@ -46,6 +46,8 @@ export type AuditAction =
   | 'create_provisioning_request'
   | 'approve_provisioning_request'
   | 'reject_provisioning_request'
+  | 'auth_denied'
+  | 'role_changed'
   // Allow any string so future actions are not blocked at compile time
   | (string & {});
 
