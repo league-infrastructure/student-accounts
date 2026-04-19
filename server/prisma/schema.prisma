@@ -156,15 +156,16 @@ model Login {
 // is added as raw SQL in the migration file because Prisma's DSL does not support
 // partial indexes. The @@index directives below cover plain (non-partial) indexes only.
 model ExternalAccount {
-  id                Int                   @id @default(autoincrement())
-  user_id           Int
-  type              ExternalAccountType
-  external_id       String?
-  status            ExternalAccountStatus @default(pending)
-  created_at        DateTime              @default(now())
-  status_changed_at DateTime?
+  id                    Int                   @id @default(autoincrement())
+  user_id               Int
+  type                  ExternalAccountType
+  external_id           String?
+  status                ExternalAccountStatus @default(pending)
+  created_at            DateTime              @default(now())
+  status_changed_at     DateTime?
+  scheduled_delete_at   DateTime?
 
-  user              User                  @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  user                  User                  @relation(fields: [user_id], references: [id], onDelete: Restrict)
 
   @@index([user_id])
   @@index([type, status])
