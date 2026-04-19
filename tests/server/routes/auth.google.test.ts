@@ -352,30 +352,23 @@ describe('GET /account', () => {
 });
 
 // ---------------------------------------------------------------------------
-// mergeScan stub: called for new users
+// mergeScan: called for new users
 // ---------------------------------------------------------------------------
 
-describe('mergeScan stub', () => {
-  it('logs "merge-scan deferred to Sprint 007" when a new user is created', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
+describe('mergeScan', () => {
+  it('runs without error when a new user is created (no candidates)', async () => {
+    // With no existing users in the DB, mergeScan short-circuits immediately.
+    // Verify the OAuth callback still succeeds (not a 500).
     mockStrategy.setProfile({
       id: 'google-uid-mergescan',
       displayName: 'Merge Scan User',
       emails: [{ value: 'mergescan@example.com' }],
     });
 
-    await request(app).get('/api/auth/google/callback');
+    const res = await request(app).get('/api/auth/google/callback');
 
-    const mergeLogCalled = consoleSpy.mock.calls.some((args) =>
-      args.some(
-        (arg) =>
-          typeof arg === 'string' && arg.includes('merge-scan deferred to Sprint 007'),
-      ),
-    );
-    expect(mergeLogCalled).toBe(true);
-
-    consoleSpy.mockRestore();
+    // OAuth callback should redirect (3xx) — not 500
+    expect(res.status).not.toBe(500);
   });
 });
 

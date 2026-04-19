@@ -1,9 +1,11 @@
 ---
-id: "007"
-title: "Merge Suggestions — Haiku Scanner and Admin Merge Queue"
-status: roadmap
+id: '007'
+title: "Merge Suggestions \u2014 Haiku Scanner and Admin Merge Queue"
+status: done
 branch: sprint/007-merge-suggestions-haiku-scanner-and-admin-merge-queue
-use-cases: [UC-018, UC-019]
+use-cases:
+- UC-018
+- UC-019
 ---
 
 # Sprint 007: Merge Suggestions — Haiku Scanner and Admin Merge Queue
@@ -68,4 +70,24 @@ this point in the sequence.
 
 ## Tickets
 
-_(To be created when this sprint enters Detail Mode.)_
+| # | Title | Depends On | Group |
+|---|-------|-----------|-------|
+| 001 | Schema migration — add `is_active` to User model and update listing queries | — | 1 |
+| 002 | HaikuClient — Anthropic SDK wrapper for merge similarity evaluation | — | 1 |
+| 003 | MergeScanService — replace stub with real Haiku-powered similarity scanner | 002 | 2 |
+| 004 | MergeSuggestionService — implement approve, reject, and defer methods | 001 | 2 |
+| 005 | Admin merge-queue API routes — list, detail, approve, reject, defer | 004 | 3 |
+| 006 | Admin UI — MergeQueuePanel with list view and detail review actions | 005 | 4 |
+| 007 | Integration test — end-to-end merge scan and admin queue workflow | 003, 005 | 4 |
+
+### Execution Groups
+
+**Group 1 (parallel):** T001, T002 — foundation work with no dependencies between them.
+
+**Group 2 (parallel):** T003, T004 — T003 depends on T002; T004 depends on T001.
+Run in parallel after Group 1 completes.
+
+**Group 3 (serial):** T005 — depends on T004.
+
+**Group 4 (parallel):** T006, T007 — both depend on T005 (T007 also depends on T003).
+Run in parallel after T005 completes.

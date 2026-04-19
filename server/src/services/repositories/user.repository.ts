@@ -22,6 +22,7 @@ export type UpdateUserInput = Partial<{
   primary_email: string;
   role: 'student' | 'staff' | 'admin';
   cohort_id: number | null;
+  is_active: boolean;
 }>;
 
 export type FindAllUsersFilter = {
@@ -35,6 +36,10 @@ export class UserRepository {
   }
 
   static async findById(db: DbClient, id: number): Promise<User | null> {
+    return (db as any).user.findUnique({ where: { id, is_active: true } });
+  }
+
+  static async findByIdIncludingInactive(db: DbClient, id: number): Promise<User | null> {
     return (db as any).user.findUnique({ where: { id } });
   }
 
@@ -43,7 +48,7 @@ export class UserRepository {
   }
 
   static async findAll(db: DbClient, filter?: FindAllUsersFilter): Promise<User[]> {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { is_active: true };
     if (filter?.role !== undefined) where['role'] = filter.role;
     if (filter?.cohort_id !== undefined) where['cohort_id'] = filter.cohort_id;
     return (db as any).user.findMany({ where, orderBy: { created_at: 'desc' } });

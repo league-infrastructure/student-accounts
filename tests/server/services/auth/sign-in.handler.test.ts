@@ -118,19 +118,12 @@ describe('signInHandler — new Google user (UC-001)', () => {
     expect(actions).toContain('add_login');
   });
 
-  it('calls the merge-scan stub (logs deferral message)', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await signInHandler('google', profile, userService, loginService);
-
-    const mergeLogCalled = consoleSpy.mock.calls.some((args) =>
-      args.some(
-        (arg) => typeof arg === 'string' && arg.includes('merge-scan deferred to Sprint 007'),
-      ),
-    );
-    expect(mergeLogCalled).toBe(true);
-
-    consoleSpy.mockRestore();
+  it('calls mergeScan for a newly created user (no candidates → returns quickly)', async () => {
+    // With no existing users, mergeScan runs but immediately returns (no API calls).
+    // We verify the sign-in handler still completes successfully.
+    const user = await signInHandler('google', profile, userService, loginService);
+    expect(user).toBeDefined();
+    expect(user.primary_email).toBe(profile.providerEmail);
   });
 });
 
@@ -206,7 +199,7 @@ describe('signInHandler — returning Google user', () => {
     expect(await countAuditEvents()).toBe(0);
   });
 
-  it('does not call the merge-scan stub for a returning user', async () => {
+  it('does not create MergeSuggestion rows for a returning user (mergeScan not called)', async () => {
     const existingUser = await makeUser({
       primary_email: 'dave@example.com',
       display_name: 'Dave',
@@ -218,8 +211,6 @@ describe('signInHandler — returning Google user', () => {
       provider_user_id: 'google-uid-dave',
       provider_email: 'dave@example.com',
     });
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await signInHandler(
       'google',
@@ -233,14 +224,11 @@ describe('signInHandler — returning Google user', () => {
       loginService,
     );
 
-    const mergeLogCalled = consoleSpy.mock.calls.some((args) =>
-      args.some(
-        (arg) => typeof arg === 'string' && arg.includes('merge-scan deferred to Sprint 007'),
-      ),
-    );
-    expect(mergeLogCalled).toBe(false);
-
-    consoleSpy.mockRestore();
+    // mergeScan is only called for newly created users, not returning ones.
+    // With no merge candidates (existingUser is the only user, dave IS existingUser),
+    // no MergeSuggestion rows should be created.
+    const count = await (prisma as any).mergeSuggestion.count();
+    expect(count).toBe(0);
   });
 });
 

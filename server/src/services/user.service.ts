@@ -68,6 +68,17 @@ export class UserService {
   }
 
   /**
+   * Find a User by primary key, including inactive users.
+   * Used by admin detail views that need to inspect deactivated/merged users.
+   * Throws NotFoundError if no record exists at all.
+   */
+  async findByIdIncludingInactive(id: number): Promise<User> {
+    const user = await UserRepository.findByIdIncludingInactive(this.prisma, id);
+    if (!user) throw new NotFoundError(`User ${id} not found`);
+    return user;
+  }
+
+  /**
    * Find a User by primary email address.
    * Returns null if no matching user exists.
    */

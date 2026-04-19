@@ -19,6 +19,7 @@ const MAIN_NAV: NavItem[] = [
 
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin/provisioning-requests', label: 'Provisioning Requests' },
+  { to: '/admin/merge-queue', label: 'Merge Queue' },
   { to: '/admin/cohorts', label: 'Cohorts' },
   { to: '/admin/sync', label: 'Sync' },
   { to: '/admin/users', label: 'Users' },

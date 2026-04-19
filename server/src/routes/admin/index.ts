@@ -16,6 +16,7 @@ import { adminUserLoginsRouter } from './user-logins';
 import { adminDeprovisionRouter } from './deprovision';
 import { adminExternalAccountsRouter } from './external-accounts';
 import { adminSyncRouter } from './sync';
+import { adminMergeQueueRouter } from './merge-queue';
 
 export const adminRouter = Router();
 
@@ -40,3 +41,4 @@ adminRouter.use('/admin', adminUserLoginsRouter);
 adminRouter.use('/admin', adminDeprovisionRouter);
 adminRouter.use('/admin', adminExternalAccountsRouter);
 adminRouter.use('/admin', adminSyncRouter);
+adminRouter.use('/admin', adminMergeQueueRouter);
