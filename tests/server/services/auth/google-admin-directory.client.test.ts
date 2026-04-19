@@ -11,12 +11,19 @@
  *    when delegatedUser is empty.
  *  - GoogleAdminDirectoryClient: throws StaffOULookupError (MALFORMED_CREDENTIALS)
  *    when serviceAccountJson is not valid JSON.
+ *  - GoogleAdminDirectoryClient (file path): happy path — reads credentials from file.
+ *  - GoogleAdminDirectoryClient (file path): MALFORMED_CREDENTIALS when file missing.
+ *  - GoogleAdminDirectoryClient (file path): MALFORMED_CREDENTIALS when file not valid JSON.
+ *  - GoogleAdminDirectoryClient (file path): file wins when both file and inline JSON are set.
  *
  * The real Admin SDK endpoint is NOT exercised in CI (requires live credentials).
  * Integration coverage for the real API path is deferred to T005.
  */
 
-import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   StaffOULookupError,
   FakeAdminDirectoryClient,
@@ -177,5 +184,140 @@ describe('GoogleAdminDirectoryClient — malformed credentials', () => {
 
     expect(caught).toBeInstanceOf(StaffOULookupError);
     expect((caught as StaffOULookupError).cause).toBeInstanceOf(SyntaxError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GoogleAdminDirectoryClient — GOOGLE_SERVICE_ACCOUNT_JSON_FILE path
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper: write content to a temp file and return its path.
+ * The caller is responsible for deleting the file after the test.
+ */
+function writeTempFile(content: string): string {
+  const tmpPath = path.join(os.tmpdir(), `gad-test-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  fs.writeFileSync(tmpPath, content, 'utf-8');
+  return tmpPath;
+}
+
+describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_JSON_FILE)', () => {
+  // Track temp files created so we can clean them up.
+  const tempFiles: string[] = [];
+
+  afterEach(() => {
+    for (const f of tempFiles) {
+      try { fs.unlinkSync(f); } catch { /* ignore */ }
+    }
+    tempFiles.length = 0;
+  });
+
+  it('happy path: constructs JWT auth from a valid service account JSON file', async () => {
+    // A minimal service account JSON that passes parsing and JWT construction.
+    // Note: this does NOT make a real API call — the test only verifies the
+    // credentials are loaded and the JWT client is built. The API call itself
+    // would fail with an auth error (no real key), but that's beyond MISSING/
+    // MALFORMED paths that this unit test covers.
+    const serviceAccountJson = JSON.stringify({
+      type: 'service_account',
+      client_email: 'test@project.iam.gserviceaccount.com',
+      private_key: '-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n',
+      project_id: 'test-project',
+    });
+    const tmpPath = writeTempFile(serviceAccountJson);
+    tempFiles.push(tmpPath);
+
+    const client = new GoogleAdminDirectoryClient(
+      '', // inline JSON is empty
+      'admin@jointheleague.org',
+      tmpPath, // file path takes precedence
+    );
+
+    // getUserOU will fail at the API call stage (AUTH_INIT_FAILED or API_ERROR),
+    // not at MISSING/MALFORMED credential loading — that's what we verify here.
+    let caught: unknown;
+    try {
+      await client.getUserOU('alice@jointheleague.org');
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(StaffOULookupError);
+    // Should NOT be MISSING_CREDENTIALS or MALFORMED_CREDENTIALS —
+    // credentials were loaded successfully from the file.
+    expect((caught as StaffOULookupError).code).not.toBe('MISSING_CREDENTIALS');
+    expect((caught as StaffOULookupError).code).not.toBe('MALFORMED_CREDENTIALS');
+  });
+
+  it('throws MALFORMED_CREDENTIALS when the file path does not exist', async () => {
+    const nonExistentPath = path.join(os.tmpdir(), 'does-not-exist-abc123.json');
+
+    const client = new GoogleAdminDirectoryClient(
+      '',
+      'admin@jointheleague.org',
+      nonExistentPath,
+    );
+
+    await expect(client.getUserOU('alice@jointheleague.org')).rejects.toMatchObject({
+      name: 'StaffOULookupError',
+      code: 'MALFORMED_CREDENTIALS',
+      email: 'alice@jointheleague.org',
+    });
+  });
+
+  it('throws MALFORMED_CREDENTIALS when the file exists but contains invalid JSON', async () => {
+    const tmpPath = writeTempFile('this is not json {{{');
+    tempFiles.push(tmpPath);
+
+    const client = new GoogleAdminDirectoryClient(
+      '',
+      'admin@jointheleague.org',
+      tmpPath,
+    );
+
+    await expect(client.getUserOU('alice@jointheleague.org')).rejects.toMatchObject({
+      name: 'StaffOULookupError',
+      code: 'MALFORMED_CREDENTIALS',
+      email: 'alice@jointheleague.org',
+    });
+  });
+
+  it('includes the underlying read/parse error as cause when file is invalid JSON', async () => {
+    const tmpPath = writeTempFile('{broken');
+    tempFiles.push(tmpPath);
+
+    const client = new GoogleAdminDirectoryClient(
+      '',
+      'admin@jointheleague.org',
+      tmpPath,
+    );
+
+    let caught: unknown;
+    try {
+      await client.getUserOU('alice@jointheleague.org');
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(StaffOULookupError);
+    expect((caught as StaffOULookupError).cause).toBeInstanceOf(SyntaxError);
+  });
+
+  it('file path wins (precedence) when both file path and inline JSON are set', async () => {
+    // Both are set, but the file takes precedence.
+    // The inline JSON is valid but the file does not exist → MALFORMED (file tried first).
+    const nonExistentPath = path.join(os.tmpdir(), 'precedence-test-nonexistent.json');
+    const validInlineJson = JSON.stringify({ type: 'service_account', client_email: 'x@x.iam.gserviceaccount.com', private_key: 'k' });
+
+    const client = new GoogleAdminDirectoryClient(
+      validInlineJson, // valid inline — would succeed loading
+      'admin@jointheleague.org',
+      nonExistentPath, // file takes precedence; this file does not exist → MALFORMED
+    );
+
+    await expect(client.getUserOU('alice@jointheleague.org')).rejects.toMatchObject({
+      name: 'StaffOULookupError',
+      code: 'MALFORMED_CREDENTIALS', // file was tried first and failed
+    });
   });
 });

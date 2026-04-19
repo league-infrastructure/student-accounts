@@ -147,12 +147,12 @@ async function cleanDb() {
 const SAVED_ENV: Record<string, string | undefined> = {};
 
 beforeAll(() => {
-  SAVED_ENV.GOOGLE_OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  SAVED_ENV.GOOGLE_OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  SAVED_ENV.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+  SAVED_ENV.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
   SAVED_ENV.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
 
-  process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client-id';
-  process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-client-secret';
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
   process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/api/auth/google/callback';
 
   auditService = new AuditService();
@@ -189,16 +189,16 @@ beforeEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /api/auth/google', () => {
-  it('returns 501 when GOOGLE_OAUTH_CLIENT_ID is not set', async () => {
-    const savedId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-    delete process.env.GOOGLE_OAUTH_CLIENT_ID;
+  it('returns 501 when GOOGLE_CLIENT_ID is not set', async () => {
+    const savedId = process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_ID;
 
     const res = await request(app).get('/api/auth/google');
     expect(res.status).toBe(501);
     expect(res.body.error).toMatch(/not configured/i);
     expect(res.body).toHaveProperty('docs');
 
-    process.env.GOOGLE_OAUTH_CLIENT_ID = savedId;
+    process.env.GOOGLE_CLIENT_ID = savedId;
   });
 });
 

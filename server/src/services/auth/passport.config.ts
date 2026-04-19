@@ -45,17 +45,25 @@ import {
  */
 function buildAdminDirectoryClient(): AdminDirectoryClient {
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '';
+  const serviceAccountJsonFile = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_FILE ?? '';
   const delegatedUser = process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '';
 
-  if (!serviceAccountJson || !delegatedUser) {
+  if (!serviceAccountJson && !serviceAccountJsonFile) {
     console.warn(
       '[passport.config] Google Admin Directory client: ' +
-        'GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_ADMIN_DELEGATED_USER_EMAIL is missing. ' +
+        'Neither GOOGLE_SERVICE_ACCOUNT_JSON nor GOOGLE_SERVICE_ACCOUNT_JSON_FILE is set. ' +
+        '@jointheleague.org sign-ins will be rejected (fail-secure RD-001).',
+    );
+  }
+  if (!delegatedUser) {
+    console.warn(
+      '[passport.config] Google Admin Directory client: ' +
+        'GOOGLE_ADMIN_DELEGATED_USER_EMAIL is missing. ' +
         '@jointheleague.org sign-ins will be rejected (fail-secure RD-001).',
     );
   }
 
-  return new GoogleAdminDirectoryClient(serviceAccountJson, delegatedUser);
+  return new GoogleAdminDirectoryClient(serviceAccountJson, delegatedUser, serviceAccountJsonFile);
 }
 
 // ---------------------------------------------------------------------------
@@ -68,8 +76,8 @@ function readGoogleConfig(): {
   clientSecret: string;
   callbackURL: string;
 } | null {
-  const clientID = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const clientID = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const callbackURL = process.env.GOOGLE_CALLBACK_URL;
 
   if (!clientID || !clientSecret || !callbackURL) {
@@ -84,8 +92,8 @@ function readGitHubConfig(): {
   clientSecret: string;
   callbackURL: string;
 } | null {
-  const clientID = process.env.GITHUB_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+  const clientID = process.env.GITHUB_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
   const callbackURL = process.env.GITHUB_CALLBACK_URL;
 
   if (!clientID || !clientSecret || !callbackURL) {
@@ -187,7 +195,7 @@ export function configurePassport(
   } else {
     console.warn(
       '[passport.config] Google OAuth strategy NOT registered — ' +
-        'GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, or GOOGLE_CALLBACK_URL is missing.',
+        'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, or GOOGLE_CALLBACK_URL is missing.',
     );
   }
 
@@ -233,7 +241,7 @@ export function configurePassport(
   } else {
     console.warn(
       '[passport.config] GitHub OAuth strategy NOT registered — ' +
-        'GITHUB_OAUTH_CLIENT_ID, GITHUB_OAUTH_CLIENT_SECRET, or GITHUB_CALLBACK_URL is missing.',
+        'GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, or GITHUB_CALLBACK_URL is missing.',
     );
   }
 

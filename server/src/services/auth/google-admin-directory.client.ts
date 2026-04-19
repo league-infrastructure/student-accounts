@@ -21,6 +21,7 @@
  * Workspace.
  */
 
+import fs from 'fs';
 import pino from 'pino';
 import { google } from 'googleapis';
 
@@ -92,12 +93,20 @@ const ADMIN_SDK_SCOPE =
  * The service account must have the Admin SDK read scope granted in Google
  * Workspace.
  *
- * Usage in production (wired in passport.config.ts):
+ * Credentials can be provided in two ways (file path wins if both are set):
  *
- *   const client = new GoogleAdminDirectoryClient(
- *     process.env.GOOGLE_SERVICE_ACCOUNT_JSON!,
- *     process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL!,
- *   );
+ *   Option 1 — file path (preferred for local dev):
+ *     new GoogleAdminDirectoryClient(
+ *       '',   // serviceAccountJson ignored when file path is provided
+ *       process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL!,
+ *       process.env.GOOGLE_SERVICE_ACCOUNT_JSON_FILE,
+ *     );
+ *
+ *   Option 2 — inline JSON string (preferred for Docker Swarm secrets):
+ *     new GoogleAdminDirectoryClient(
+ *       process.env.GOOGLE_SERVICE_ACCOUNT_JSON!,
+ *       process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL!,
+ *     );
  *
  * Missing or malformed credentials do NOT prevent app startup. The error is
  * deferred to the first getUserOU() call, where it is thrown as
@@ -106,18 +115,102 @@ const ADMIN_SDK_SCOPE =
 export class GoogleAdminDirectoryClient implements AdminDirectoryClient {
   private readonly serviceAccountJson: string;
   private readonly delegatedUser: string;
+  private readonly serviceAccountJsonFile: string;
 
-  constructor(serviceAccountJson: string, delegatedUser: string) {
+  constructor(serviceAccountJson: string, delegatedUser: string, serviceAccountJsonFile = '') {
     this.serviceAccountJson = serviceAccountJson;
     this.delegatedUser = delegatedUser;
+    this.serviceAccountJsonFile = serviceAccountJsonFile;
+  }
+
+  /**
+   * Resolve service account JSON string from either a file path or an inline
+   * JSON string. File path takes precedence over inline JSON.
+   *
+   * @throws StaffOULookupError(MALFORMED_CREDENTIALS) if the file cannot be
+   *         read or parsed.
+   * @throws StaffOULookupError(MISSING_CREDENTIALS) if neither is provided.
+   */
+  private resolveServiceAccountJson(email: string): string {
+    if (this.serviceAccountJsonFile) {
+      // File path wins. Read and validate before returning.
+      let raw: string;
+      try {
+        raw = fs.readFileSync(this.serviceAccountJsonFile, 'utf-8');
+      } catch (readErr) {
+        const msg =
+          `[google-admin-directory] Cannot read GOOGLE_SERVICE_ACCOUNT_JSON_FILE ` +
+          `'${this.serviceAccountJsonFile}'. ` +
+          `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
+        logger.error({ email, err: readErr }, msg);
+        throw new StaffOULookupError(
+          'Admin Directory service account JSON file cannot be read',
+          'MALFORMED_CREDENTIALS',
+          email,
+          readErr,
+        );
+      }
+      // Validate it's parseable JSON before returning.
+      try {
+        JSON.parse(raw);
+      } catch (parseErr) {
+        const msg =
+          `[google-admin-directory] GOOGLE_SERVICE_ACCOUNT_JSON_FILE ` +
+          `'${this.serviceAccountJsonFile}' is not valid JSON. ` +
+          `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
+        logger.error({ email, err: parseErr }, msg);
+        throw new StaffOULookupError(
+          'Admin Directory service account JSON file is malformed',
+          'MALFORMED_CREDENTIALS',
+          email,
+          parseErr,
+        );
+      }
+      logger.info(
+        { email, source: 'GOOGLE_SERVICE_ACCOUNT_JSON_FILE', path: this.serviceAccountJsonFile },
+        '[google-admin-directory] Using service account credentials from file.',
+      );
+      return raw;
+    }
+
+    if (this.serviceAccountJson) {
+      logger.info(
+        { email, source: 'GOOGLE_SERVICE_ACCOUNT_JSON' },
+        '[google-admin-directory] Using service account credentials from inline JSON.',
+      );
+      return this.serviceAccountJson;
+    }
+
+    // Neither is set — fail-secure.
+    const msg =
+      '[google-admin-directory] Neither GOOGLE_SERVICE_ACCOUNT_JSON_FILE nor ' +
+      'GOOGLE_SERVICE_ACCOUNT_JSON is set. ' +
+      `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
+    logger.error({ email }, msg);
+    throw new StaffOULookupError(
+      'Admin Directory credentials are not configured',
+      'MISSING_CREDENTIALS',
+      email,
+    );
   }
 
   async getUserOU(email: string): Promise<string> {
     // --- Credential validation (fail-secure per RD-001) ---
-    if (!this.serviceAccountJson || !this.delegatedUser) {
+    if (!this.serviceAccountJsonFile && !this.serviceAccountJson) {
       const msg =
         '[google-admin-directory] GOOGLE_SERVICE_ACCOUNT_JSON or ' +
-        'GOOGLE_ADMIN_DELEGATED_USER_EMAIL is missing. ' +
+        'GOOGLE_SERVICE_ACCOUNT_JSON_FILE and GOOGLE_ADMIN_DELEGATED_USER_EMAIL are missing. ' +
+        `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
+      logger.error({ email }, msg);
+      throw new StaffOULookupError(
+        'Admin Directory credentials are not configured',
+        'MISSING_CREDENTIALS',
+        email,
+      );
+    }
+    if (!this.delegatedUser) {
+      const msg =
+        '[google-admin-directory] GOOGLE_ADMIN_DELEGATED_USER_EMAIL is missing. ' +
         `Cannot look up OU for ${email}. @jointheleague.org sign-in denied (RD-001).`;
       logger.error({ email }, msg);
       throw new StaffOULookupError(
@@ -127,10 +220,13 @@ export class GoogleAdminDirectoryClient implements AdminDirectoryClient {
       );
     }
 
-    // --- Parse service account JSON ---
+    // --- Resolve and parse service account JSON ---
+    // resolveServiceAccountJson throws StaffOULookupError on read/parse failure.
+    const resolvedJson = this.resolveServiceAccountJson(email);
+
     let serviceAccountKey: Record<string, unknown>;
     try {
-      serviceAccountKey = JSON.parse(this.serviceAccountJson) as Record<string, unknown>;
+      serviceAccountKey = JSON.parse(resolvedJson) as Record<string, unknown>;
     } catch (parseErr) {
       const msg =
         '[google-admin-directory] GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. ' +

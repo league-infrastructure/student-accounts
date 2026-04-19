@@ -193,8 +193,17 @@ Single method: `getUserOU(email: string): Promise<string>`.
 Nothing outside it imports from `googleapis` for OU lookups.
 
 **Implementation:**
-- Uses a Google service account JSON key loaded from
-  `GOOGLE_SERVICE_ACCOUNT_JSON` (the full JSON object as a string).
+- Uses a Google service account JSON key loaded via one of two env vars:
+  - `GOOGLE_SERVICE_ACCOUNT_JSON_FILE` — filesystem path to a JSON key file.
+    Preferred for local development. File path is not a secret (set in
+    `public.env`); the file contents are secret (never committed).
+  - `GOOGLE_SERVICE_ACCOUNT_JSON` — the full JSON object as an inline string.
+    Preferred for Docker Swarm environments where secrets are mounted as files
+    and parsed inline.
+  - When both are set, `GOOGLE_SERVICE_ACCOUNT_JSON_FILE` wins.
+  - When neither is set, `getUserOU()` throws `StaffOULookupError` (MISSING_CREDENTIALS).
+  - When `_FILE` is set but the file is missing or contains invalid JSON, throws
+    `StaffOULookupError` (MALFORMED_CREDENTIALS).
 - Impersonates `GOOGLE_ADMIN_DELEGATED_USER_EMAIL` for domain-wide delegation
   (the impersonated account must have Admin SDK read access).
 - Scope required: `https://www.googleapis.com/auth/admin.directory.user.readonly`.
@@ -202,6 +211,8 @@ Nothing outside it imports from `googleapis` for OU lookups.
 - Throws a typed `StaffOULookupError` on failure (network error, API error,
   or missing credentials). Callers treat this as access denied for
   `@jointheleague.org` accounts.
+- Logs at INFO which credential source was used (`_FILE` or `_JSON`) on the first
+  successful credential resolution.
 
 **Interface (not executable code):**
 
@@ -373,20 +384,27 @@ HTTP 501 with a setup message, not a crash.
 
 | Secret / Env Var | Used By | Notes |
 |---|---|---|
-| `GOOGLE_OAUTH_CLIENT_ID` | passport-google-oauth20 | Google Cloud Console OAuth 2.0 client |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | passport-google-oauth20 | |
+| `GOOGLE_CLIENT_ID` | passport-google-oauth20 | Google Cloud Console OAuth 2.0 client |
+| `GOOGLE_CLIENT_SECRET` | passport-google-oauth20 | |
 | `GOOGLE_CALLBACK_URL` | passport-google-oauth20 | Dev: `http://localhost:5173/api/auth/google/callback` |
-| `GITHUB_OAUTH_CLIENT_ID` | passport-github2 | GitHub Developer Settings OAuth App |
-| `GITHUB_OAUTH_CLIENT_SECRET` | passport-github2 | |
+| `GITHUB_CLIENT_ID` | passport-github2 | GitHub Developer Settings OAuth App |
+| `GITHUB_CLIENT_SECRET` | passport-github2 | |
 | `GITHUB_CALLBACK_URL` | passport-github2 | Dev: `http://localhost:5173/api/auth/github/callback` |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | GoogleAdminDirectoryClient | Full service account JSON as a string |
+| `GOOGLE_SERVICE_ACCOUNT_JSON_FILE` | GoogleAdminDirectoryClient | Path to service account JSON key file (preferred for local dev; not a secret — file contents are) |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | GoogleAdminDirectoryClient | Full service account JSON as an inline string (preferred for Docker Swarm secrets). Fallback when `_FILE` is not set. |
 | `GOOGLE_ADMIN_DELEGATED_USER_EMAIL` | GoogleAdminDirectoryClient | Admin email for impersonation |
 | `GOOGLE_STAFF_OU_PATH` | sign-in handler | OU prefix for staff detection (e.g., `/League Staff`) |
 | `SESSION_SECRET` | express-session | Already required from Sprint 001 |
 
-`GOOGLE_SERVICE_ACCOUNT_JSON` and `GOOGLE_ADMIN_DELEGATED_USER_EMAIL` are only
-required in production (or any environment where UC-003 must work). In dev/test,
-the `GoogleAdminDirectoryClient` is replaced by a fake via dependency injection.
+`GOOGLE_SERVICE_ACCOUNT_JSON_FILE` / `GOOGLE_SERVICE_ACCOUNT_JSON` and
+`GOOGLE_ADMIN_DELEGATED_USER_EMAIL` are only required in production (or any
+environment where UC-003 must work). In dev/test, the `GoogleAdminDirectoryClient`
+is replaced by a fake via dependency injection.
+
+For local development the preferred approach is `GOOGLE_SERVICE_ACCOUNT_JSON_FILE`
+pointing to `config/files/gapps-integrations-fc9a96a0f34a.json`. Set the path in
+`config/dev/public.env` — the file path is not a secret. The file itself is
+gitignored (must not be committed).
 
 ---
 
