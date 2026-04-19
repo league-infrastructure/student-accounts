@@ -17,7 +17,7 @@
 
 import { Router } from 'express';
 import { AppError } from '../../errors.js';
-import * as pike13WritebackStub from '../../services/pike13-writeback.stub.js';
+import * as pike13Writeback from '../../services/pike13/pike13-writeback.service.js';
 import { ExternalAccountRepository } from '../../services/repositories/external-account.repository.js';
 import { prisma } from '../../services/prisma.js';
 
@@ -68,7 +68,7 @@ adminUserLoginsRouter.post('/users/:id/logins', async (req, res, next) => {
       );
       if (pike13Account) {
         const handle = providerUsername ?? providerUserId;
-        await pike13WritebackStub.githubHandle(userId, handle);
+        await pike13Writeback.githubHandle(userId, handle);
       }
     }
 

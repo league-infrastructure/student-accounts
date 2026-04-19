@@ -1,7 +1,7 @@
 ---
 id: "004"
 title: "Pike13 write-back service: replace stub with real implementation"
-status: todo
+status: done
 use-cases: [UC-020]
 depends-on: ["001"]
 github-issue: ""
@@ -25,23 +25,23 @@ write-back failure.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/pike13/pike13-writeback.service.ts` exists.
-- [ ] `leagueEmail(userId, email)` — looks up active Pike13 ExternalAccount for
+- [x] `server/src/services/pike13/pike13-writeback.service.ts` exists.
+- [x] `leagueEmail(userId, email)` — looks up active Pike13 ExternalAccount for
   the user; if found, calls `Pike13ApiClient.updateCustomField` with
   `PIKE13_CUSTOM_FIELD_EMAIL_ID` and the email address; records
   action=pike13_writeback_email AuditEvent.
-- [ ] `githubHandle(userId, handle)` — same flow, uses
+- [x] `githubHandle(userId, handle)` — same flow, uses
   `PIKE13_CUSTOM_FIELD_GITHUB_ID` and the GitHub username; records
   action=pike13_writeback_github.
-- [ ] No Pike13 ExternalAccount: function returns without error (no-op).
-- [ ] Pike13 API failure: error is caught, logged at ERROR, AuditEvent records
+- [x] No Pike13 ExternalAccount: function returns without error (no-op).
+- [x] Pike13 API failure: error is caught, logged at ERROR, AuditEvent records
   the failure; function returns (does not re-throw).
-- [ ] Old stub `server/src/services/pike13-writeback.stub.ts` is deleted.
-- [ ] `server/src/services/workspace-provisioning.service.ts` import updated to
+- [x] Old stub `server/src/services/pike13-writeback.stub.ts` is deleted.
+- [x] `server/src/services/workspace-provisioning.service.ts` import updated to
   new path.
-- [ ] `server/src/routes/admin/user-logins.ts` import updated to new path.
-- [ ] TypeScript compiles cleanly after path update.
-- [ ] Integration tests: leagueEmail with active Pike13 account (calls
+- [x] `server/src/routes/admin/user-logins.ts` import updated to new path.
+- [x] TypeScript compiles cleanly after path update.
+- [x] Integration tests: leagueEmail with active Pike13 account (calls
   updateCustomField), leagueEmail with no Pike13 account (no-op),
   githubHandle with API failure (no throw, error logged).
 

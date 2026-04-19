@@ -1,36 +1,39 @@
 /**
- * Unit tests for pike13-writeback.stub (Sprint 004 T003).
+ * Basic contract tests for the pike13 write-back module-level exports.
  *
- * Verifies the no-op behaviour required by UC-005 / UC-020:
- *  - leagueEmail resolves without throwing.
+ * These tests verify the no-throw contract that existed in the old stub
+ * and must remain stable in the real service:
+ *  - leagueEmail resolves without throwing (no pike13 ExternalAccount exists
+ *    in the test DB, so both calls are no-ops).
  *  - githubHandle resolves without throwing.
  *
- * Sprint 006 will replace the stub implementation at the same import path.
- * These tests verify only the contract that must be stable across that swap.
+ * Full integration tests covering API calls and audit events are in
+ * tests/server/services/pike13/pike13-writeback.service.test.ts.
  */
 
 import {
   leagueEmail,
   githubHandle,
-} from '../../../server/src/services/pike13-writeback.stub.js';
+} from '../../../server/src/services/pike13/pike13-writeback.service.js';
 
-describe('pike13-writeback stub — leagueEmail', () => {
+describe('pike13-writeback service — leagueEmail (no-op: no pike13 account)', () => {
   it('resolves without throwing for a valid userId and email', async () => {
-    await expect(leagueEmail(42, 'student@jointheleague.org')).resolves.toBeUndefined();
+    // userId 999999 has no pike13 ExternalAccount in the DB — no-op path
+    await expect(leagueEmail(999999, 'student@jointheleague.org')).resolves.toBeUndefined();
   });
 
-  it('returns undefined (no-op — no value produced)', async () => {
+  it('returns undefined (no value produced)', async () => {
     const result = await leagueEmail(1, 'a@jointheleague.org');
     expect(result).toBeUndefined();
   });
 });
 
-describe('pike13-writeback stub — githubHandle', () => {
+describe('pike13-writeback service — githubHandle (no-op: no pike13 account)', () => {
   it('resolves without throwing for a valid userId and handle', async () => {
-    await expect(githubHandle(42, 'octocat')).resolves.toBeUndefined();
+    await expect(githubHandle(999999, 'octocat')).resolves.toBeUndefined();
   });
 
-  it('returns undefined (no-op — no value produced)', async () => {
+  it('returns undefined (no value produced)', async () => {
     const result = await githubHandle(1, 'someuser');
     expect(result).toBeUndefined();
   });
