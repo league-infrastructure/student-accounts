@@ -1,7 +1,7 @@
 ---
 id: "008"
 title: "Admin API routes — external account lifecycle and Claude provisioning"
-status: todo
+status: done
 use-cases: [SUC-001, SUC-004, SUC-005]
 depends-on: ["004", "005"]
 ---
@@ -26,17 +26,17 @@ All routes require `requireAuth` + `requireRole('admin')`.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/routes/admin/external-accounts.ts` created with suspend and remove routes.
-- [ ] POST /admin/external-accounts/:id/suspend: calls lifecycle service suspend, returns 200 with updated account.
-- [ ] POST /admin/external-accounts/:id/remove: calls lifecycle service remove, returns 200 with updated account.
-- [ ] POST /admin/users/:id/provision-claude: calls ClaudeProvisioningService.provision (wrapping in prisma.$transaction), returns 201.
-- [ ] All routes: 403 returned for non-admin callers.
-- [ ] All routes: 404 returned when account/user does not exist.
-- [ ] Suspend: 422 returned when account is already suspended/removed (service throws UnprocessableError).
-- [ ] Provision-claude: 422 returned when workspace account missing.
-- [ ] Provision-claude: 409 returned when claude account already exists.
-- [ ] New external-accounts router mounted in `server/src/app.ts` at `/admin`.
-- [ ] Route integration tests pass.
+- [x] `server/src/routes/admin/external-accounts.ts` created with suspend and remove routes.
+- [x] POST /admin/external-accounts/:id/suspend: calls lifecycle service suspend, returns 200 with updated account.
+- [x] POST /admin/external-accounts/:id/remove: calls lifecycle service remove, returns 200 with updated account.
+- [x] POST /admin/users/:id/provision-claude: calls ClaudeProvisioningService.provision (wrapping in prisma.$transaction), returns 201.
+- [x] All routes: 403 returned for non-admin callers.
+- [x] All routes: 404 returned when account/user does not exist.
+- [x] Suspend: 422 returned when account is already suspended/removed (service throws UnprocessableError).
+- [x] Provision-claude: 422 returned when workspace account missing.
+- [x] Provision-claude: 409 returned when claude account already exists.
+- [x] New external-accounts router mounted in `server/src/routes/admin/index.ts` at `/admin`.
+- [x] Route integration tests pass.
 
 ## Implementation Plan
 

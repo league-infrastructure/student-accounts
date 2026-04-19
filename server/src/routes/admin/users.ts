@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../services/prisma.js';
 import { requireAuth } from '../../middleware/requireAuth.js';
+import { AppError } from '../../errors.js';
 
 export const adminUsersRouter = Router();
 
@@ -116,6 +117,43 @@ adminUsersRouter.post('/stop-impersonating', requireAuth, async (req, res, next)
       res.json({ ok: true });
     });
   } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/users/:id/provision-claude
+// Calls ClaudeProvisioningService.provision(userId, actorId, tx) inside a
+// prisma.$transaction. Returns 201 with the new ExternalAccount on success.
+// Returns 404 if the user does not exist.
+// Returns 409 if the user already has an active claude ExternalAccount.
+// Returns 422 if the user has no active workspace ExternalAccount.
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+    const actorId = (req.session as any).userId as number;
+
+    const account = await (prisma as any).$transaction(async (tx: any) => {
+      return req.services.claudeProvisioning.provision(userId, actorId, tx);
+    });
+
+    return res.status(201).json({
+      id: account.id,
+      userId: account.user_id,
+      type: account.type,
+      status: account.status,
+      externalId: account.external_id,
+      statusChangedAt: account.status_changed_at,
+    });
+  } catch (err: any) {
+    if (err instanceof AppError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     next(err);
   }
 });
