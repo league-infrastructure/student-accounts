@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 interface UserProvider {
@@ -138,6 +139,7 @@ export default function UsersPanel() {
             <th style={thStyle}>Admin</th>
             <th style={thStyle}>Joined</th>
             <th style={thStyle}>Actions</th>
+            <th style={thStyle}>Detail</th>
           </tr>
         </thead>
         <tbody>
@@ -180,6 +182,11 @@ export default function UsersPanel() {
                       {impersonating === user.id ? 'Working...' : 'Impersonate'}
                     </button>
                   )}
+                </td>
+                <td style={tdStyle}>
+                  <Link to={`/admin/users/${user.id}`} style={viewLinkStyle}>
+                    View
+                  </Link>
                 </td>
               </tr>
             );
@@ -224,4 +231,15 @@ const impersonateButtonStyle: React.CSSProperties = {
   borderRadius: 4,
   cursor: 'pointer',
   fontWeight: 600,
+};
+
+const viewLinkStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 12,
+  background: '#0ea5e9',
+  color: '#fff',
+  borderRadius: 4,
+  fontWeight: 600,
+  textDecoration: 'none',
+  display: 'inline-block',
 };
