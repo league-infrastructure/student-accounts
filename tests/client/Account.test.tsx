@@ -1,275 +1,636 @@
+/**
+ * Tests for AccountPage — T006
+ *
+ * Tests: loading state, happy-path render, section content, Logins add/remove,
+ * Services request buttons, Claude constraint enforcement, staff redirect,
+ * error state.
+ */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import Account from '../../client/src/pages/Account';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import Account, { type AccountData } from '../../client/src/pages/Account';
 
-// ---- Mock AuthContext ----
+// ---------------------------------------------------------------------------
+// Mock AuthContext
+// ---------------------------------------------------------------------------
 
-const mockRefresh = vi.fn();
+vi.mock('../../client/src/context/AuthContext', () => ({
+  useAuth: () => mockAuthReturn,
+}));
 
-function makeAuthUser(overrides: Partial<{
-  linkedProviders: string[];
-  provider: string | null;
-}> = {}) {
-  return {
+let mockAuthReturn = {
+  user: {
     id: 1,
-    email: 'user@example.com',
-    displayName: 'Test User',
-    role: 'user',
+    email: 'student@example.com',
+    displayName: 'Alice',
+    role: 'student',
     avatarUrl: null,
-    provider: overrides.provider ?? null,
+    provider: 'google',
     providerId: null,
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
-    linkedProviders: overrides.linkedProviders ?? [],
-  };
-}
-
-let mockUser = makeAuthUser();
-
-vi.mock('../../client/src/context/AuthContext', () => ({
-  useAuth: () => ({
-    user: mockUser,
-    loading: false,
-    login: vi.fn(),
-    logout: vi.fn(),
-    loginWithCredentials: vi.fn(),
-    refresh: mockRefresh,
-  }),
-}));
-
-// ---- Mock useProviderStatus ----
-
-let mockProviderStatus = {
-  github: true,
-  google: true,
-  pike13: true,
+    linkedProviders: ['google'],
+  },
   loading: false,
+  login: vi.fn(),
+  logout: vi.fn(),
+  loginWithCredentials: vi.fn(),
+  refresh: vi.fn(),
 };
+
+// ---------------------------------------------------------------------------
+// Mock useProviderStatus
+// ---------------------------------------------------------------------------
 
 vi.mock('../../client/src/hooks/useProviderStatus', () => ({
   useProviderStatus: () => mockProviderStatus,
 }));
 
-// ---- Mock lib/roles ----
+let mockProviderStatus = {
+  github: true,
+  google: true,
+  pike13: false,
+  loading: false,
+};
 
-vi.mock('../../client/src/lib/roles', () => ({
-  roleBadgeStyle: () => ({ background: '#e0e7ff', color: '#3730a3' }),
-  roleShortLabel: (role: string) => role,
-}));
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-// ---- Helpers ----
+function makeQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+}
 
-function renderAccount() {
+function renderAccount(fetchMock: ReturnType<typeof vi.fn>) {
+  globalThis.fetch = fetchMock;
+  const qc = makeQueryClient();
   return render(
-    <MemoryRouter>
-      <Account />
+    <MemoryRouter initialEntries={['/account']}>
+      <QueryClientProvider client={qc}>
+        <Account />
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 }
 
-/** Build a fetch mock that handles /api/auth/unlink/:provider */
-function mockFetchUnlink(provider: string, response: { ok: boolean; body?: object }) {
-  globalThis.fetch = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
-    if (url === `/api/auth/unlink/${provider}` && options?.method === 'POST') {
+/** Build a standard AccountData fixture. */
+function makeAccountData(overrides: Partial<AccountData> = {}): AccountData {
+  return {
+    profile: {
+      id: 1,
+      displayName: 'Alice',
+      primaryEmail: 'alice@example.com',
+      cohort: { id: 2, name: 'Spring 2025' },
+      role: 'student',
+      createdAt: '2024-01-01T00:00:00.000Z',
+    },
+    logins: [
+      {
+        id: 10,
+        provider: 'google',
+        providerEmail: 'alice@gmail.com',
+        providerUsername: null,
+        createdAt: '2024-01-01T00:00:00.000Z',
+      },
+    ],
+    externalAccounts: [],
+    provisioningRequests: [],
+    ...overrides,
+  };
+}
+
+/** Fetch mock that resolves GET /api/account with the given data. */
+function accountFetch(data: AccountData): ReturnType<typeof vi.fn> {
+  return vi.fn((url: string) => {
+    if (url === '/api/account') {
       return Promise.resolve({
-        ok: response.ok,
-        json: () => Promise.resolve(response.body ?? {}),
+        ok: true,
+        json: () => Promise.resolve(data),
       });
     }
     return Promise.reject(new Error(`Unexpected fetch: ${url}`));
   });
 }
 
-// ---- Tests ----
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
-describe('Account — Sign-in methods section', () => {
+describe('AccountPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProviderStatus = { github: true, google: true, pike13: true, loading: false };
-    mockRefresh.mockResolvedValue(undefined);
+    mockProviderStatus = { github: true, google: true, pike13: false, loading: false };
+    mockAuthReturn = {
+      user: {
+        id: 1,
+        email: 'student@example.com',
+        displayName: 'Alice',
+        role: 'student',
+        avatarUrl: null,
+        provider: 'google',
+        providerId: null,
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+        linkedProviders: ['google'],
+      },
+      loading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      loginWithCredentials: vi.fn(),
+      refresh: vi.fn(),
+    };
   });
 
-  describe('Add buttons', () => {
-    it('shows Add buttons for all three providers when user has no linked providers', () => {
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
+  // -------------------------------------------------------------------------
+  // 1. Loading state
+  // -------------------------------------------------------------------------
 
-      expect(screen.getByText('Add GitHub')).toBeInTheDocument();
-      expect(screen.getByText('Add Google')).toBeInTheDocument();
-      expect(screen.getByText('Add Pike 13')).toBeInTheDocument();
+  it('renders loading skeleton while query is pending', () => {
+    const fetchMock = vi.fn(() => new Promise(() => {})); // never resolves
+    renderAccount(fetchMock);
+
+    // Should show an aria-busy loading region
+    expect(screen.getByLabelText('Loading account data')).toBeTruthy();
+  });
+
+  it('renders aria-busy element during loading', () => {
+    const fetchMock = vi.fn(() => new Promise(() => {}));
+    renderAccount(fetchMock);
+    const busy = document.querySelector('[aria-busy="true"]');
+    expect(busy).not.toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // 2. Happy-path render — all four sections
+  // -------------------------------------------------------------------------
+
+  it('renders all four section headings after data loads', async () => {
+    renderAccount(accountFetch(makeAccountData()));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /profile/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /sign-in methods/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /services/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /help/i })).toBeInTheDocument();
     });
+  });
 
-    it('shows "No OAuth providers linked." message when no providers linked', () => {
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
-      expect(screen.getByText('No OAuth providers linked.')).toBeInTheDocument();
+  // -------------------------------------------------------------------------
+  // 3. Profile section
+  // -------------------------------------------------------------------------
+
+  it('shows display name and email in profile section', async () => {
+    renderAccount(accountFetch(makeAccountData()));
+
+    await waitFor(() => {
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      expect(screen.getByText('alice@example.com')).toBeInTheDocument();
     });
+  });
 
-    it('shows Add buttons only for unlinked providers when user has github linked', () => {
-      mockUser = makeAuthUser({ linkedProviders: ['github'] });
-      renderAccount();
+  it('shows cohort name when cohort is set', async () => {
+    renderAccount(accountFetch(makeAccountData()));
 
-      expect(screen.queryByText('Add GitHub')).not.toBeInTheDocument();
-      expect(screen.getByText('Add Google')).toBeInTheDocument();
-      expect(screen.getByText('Add Pike 13')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Spring 2025')).toBeInTheDocument();
     });
+  });
 
-    it('shows no Add buttons when only GitHub is globally configured and it is already linked', () => {
-      mockProviderStatus = { github: true, google: false, pike13: false, loading: false };
-      mockUser = makeAuthUser({ linkedProviders: ['github'] });
-      renderAccount();
+  it('shows "No cohort assigned" when cohort is null', async () => {
+    const data = makeAccountData({ profile: { ...makeAccountData().profile, cohort: null } });
+    renderAccount(accountFetch(data));
 
-      expect(screen.queryByText(/Add/)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('No cohort assigned')).toBeInTheDocument();
     });
+  });
 
-    it('does not show Add buttons for providers not globally configured', () => {
-      mockProviderStatus = { github: true, google: false, pike13: false, loading: false };
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
+  // -------------------------------------------------------------------------
+  // 4. Logins section — provider listing
+  // -------------------------------------------------------------------------
 
-      expect(screen.getByText('Add GitHub')).toBeInTheDocument();
-      expect(screen.queryByText('Add Google')).not.toBeInTheDocument();
-      expect(screen.queryByText('Add Pike 13')).not.toBeInTheDocument();
+  it('lists all connected providers in the logins table', async () => {
+    const data = makeAccountData({
+      logins: [
+        { id: 10, provider: 'google', providerEmail: 'alice@gmail.com', providerUsername: null, createdAt: '2024-01-01T00:00:00.000Z' },
+        { id: 11, provider: 'github', providerEmail: null, providerUsername: 'alice-gh', createdAt: '2024-06-01T00:00:00.000Z' },
+      ],
     });
+    renderAccount(accountFetch(data));
 
-    it('Add GitHub link navigates to /api/auth/github?link=1', () => {
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
-
-      const link = screen.getByText('Add GitHub').closest('a');
-      expect(link).toHaveAttribute('href', '/api/auth/github?link=1');
+    await waitFor(() => {
+      expect(screen.getByText('Google')).toBeInTheDocument();
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
     });
+  });
 
-    it('Add Google link navigates to /api/auth/google?link=1', () => {
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
+  // -------------------------------------------------------------------------
+  // 5. Logins section — Add buttons
+  // -------------------------------------------------------------------------
 
+  it('shows Add Google link when google is configured and not yet linked', async () => {
+    // logins only has github — google is unlinked
+    const data = makeAccountData({
+      logins: [
+        { id: 11, provider: 'github', providerEmail: null, providerUsername: 'alice-gh', createdAt: '2024-06-01T00:00:00.000Z' },
+      ],
+    });
+    renderAccount(accountFetch(data));
+
+    await waitFor(() => {
       const link = screen.getByText('Add Google').closest('a');
       expect(link).toHaveAttribute('href', '/api/auth/google?link=1');
     });
+  });
 
-    it('Add Pike 13 link navigates to /api/auth/pike13?link=1', () => {
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
+  it('shows Add GitHub link when github is configured and not yet linked', async () => {
+    // logins only has google — github is unlinked
+    const data = makeAccountData({
+      logins: [
+        { id: 10, provider: 'google', providerEmail: 'alice@gmail.com', providerUsername: null, createdAt: '2024-01-01T00:00:00.000Z' },
+      ],
+    });
+    renderAccount(accountFetch(data));
 
-      const link = screen.getByText('Add Pike 13').closest('a');
-      expect(link).toHaveAttribute('href', '/api/auth/pike13?link=1');
+    await waitFor(() => {
+      const link = screen.getByText('Add GitHub').closest('a');
+      expect(link).toHaveAttribute('href', '/api/auth/github?link=1');
     });
   });
 
-  describe('Unlink buttons', () => {
-    it('shows Unlink button for linked provider', () => {
-      mockUser = makeAuthUser({ linkedProviders: ['github'] });
-      renderAccount();
+  it('hides Add GitHub when github is not configured', async () => {
+    mockProviderStatus = { github: false, google: true, pike13: false, loading: false };
+    const data = makeAccountData({
+      logins: [
+        { id: 10, provider: 'google', providerEmail: 'alice@gmail.com', providerUsername: null, createdAt: '2024-01-01T00:00:00.000Z' },
+      ],
+    });
+    renderAccount(accountFetch(data));
 
-      expect(screen.getByRole('button', { name: /unlink github/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Add GitHub')).not.toBeInTheDocument();
+    });
+  });
+
+  it('hides Add Google when google is already linked', async () => {
+    // both google and github are configured; google is already linked
+    const data = makeAccountData({
+      logins: [
+        { id: 10, provider: 'google', providerEmail: 'alice@gmail.com', providerUsername: null, createdAt: '2024-01-01T00:00:00.000Z' },
+      ],
+    });
+    renderAccount(accountFetch(data));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Add Google')).not.toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 6. Logins section — Remove button
+  // -------------------------------------------------------------------------
+
+  it('Remove button is disabled when only one login remains', async () => {
+    const data = makeAccountData({
+      logins: [
+        { id: 10, provider: 'google', providerEmail: 'alice@gmail.com', providerUsername: null, createdAt: '2024-01-01T00:00:00.000Z' },
+      ],
+    });
+    renderAccount(accountFetch(data));
+
+    await waitFor(() => {
+      const removeBtn = screen.getByRole('button', { name: /remove google login/i });
+      expect(removeBtn).toBeDisabled();
+    });
+  });
+
+  it('Remove button is enabled when more than one login exists', async () => {
+    const data = makeAccountData({
+      logins: [
+        { id: 10, provider: 'google', providerEmail: 'alice@gmail.com', providerUsername: null, createdAt: '2024-01-01T00:00:00.000Z' },
+        { id: 11, provider: 'github', providerEmail: null, providerUsername: 'alice-gh', createdAt: '2024-06-01T00:00:00.000Z' },
+      ],
+    });
+    renderAccount(accountFetch(data));
+
+    await waitFor(() => {
+      const removeGoogle = screen.getByRole('button', { name: /remove google login/i });
+      const removeGitHub = screen.getByRole('button', { name: /remove github login/i });
+      expect(removeGoogle).not.toBeDisabled();
+      expect(removeGitHub).not.toBeDisabled();
+    });
+  });
+
+  it('clicking Remove calls DELETE /api/account/logins/:id', async () => {
+    const user = userEvent.setup();
+    const data = makeAccountData({
+      logins: [
+        { id: 10, provider: 'google', providerEmail: 'alice@gmail.com', providerUsername: null, createdAt: '2024-01-01T00:00:00.000Z' },
+        { id: 11, provider: 'github', providerEmail: null, providerUsername: 'alice-gh', createdAt: '2024-06-01T00:00:00.000Z' },
+      ],
     });
 
-    it('Unlink button is disabled when user has only one linked provider', () => {
-      mockUser = makeAuthUser({ linkedProviders: ['github'] });
-      renderAccount();
-
-      const btn = screen.getByRole('button', { name: /unlink github/i });
-      expect(btn).toBeDisabled();
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/account') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+      }
+      if (url === '/api/account/logins/11' && options?.method === 'DELETE') {
+        return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve({}) });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     });
 
-    it('both Unlink buttons are enabled when user has two linked providers', () => {
-      mockUser = makeAuthUser({ linkedProviders: ['github', 'google'] });
-      renderAccount();
+    renderAccount(fetchMock);
 
-      const githubBtn = screen.getByRole('button', { name: /unlink github/i });
-      const googleBtn = screen.getByRole('button', { name: /unlink google/i });
-      expect(githubBtn).not.toBeDisabled();
-      expect(googleBtn).not.toBeDisabled();
+    await waitFor(() => screen.getByRole('button', { name: /remove github login/i }));
+
+    await user.click(screen.getByRole('button', { name: /remove github login/i }));
+
+    await waitFor(() => {
+      const deleteCalls = fetchMock.mock.calls.filter(
+        ([url, opts]: [string, RequestInit | undefined]) =>
+          url === '/api/account/logins/11' && opts?.method === 'DELETE',
+      );
+      expect(deleteCalls).toHaveLength(1);
+    });
+  });
+
+  it('shows inline error when Remove returns 409', async () => {
+    const user = userEvent.setup();
+    const data = makeAccountData({
+      logins: [
+        { id: 10, provider: 'google', providerEmail: 'alice@gmail.com', providerUsername: null, createdAt: '2024-01-01T00:00:00.000Z' },
+        { id: 11, provider: 'github', providerEmail: null, providerUsername: 'alice-gh', createdAt: '2024-06-01T00:00:00.000Z' },
+      ],
     });
 
-    it('clicking Unlink POSTs to /api/auth/unlink/:provider', async () => {
-      mockUser = makeAuthUser({ linkedProviders: ['github', 'google'] });
-      mockFetchUnlink('github', { ok: true });
-      const user = userEvent.setup();
-
-      renderAccount();
-
-      const btn = screen.getByRole('button', { name: /unlink github/i });
-      await user.click(btn);
-
-      await waitFor(() => {
-        expect(fetch).toHaveBeenCalledWith('/api/auth/unlink/github', { method: 'POST' });
-      });
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/account') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+      }
+      if (url === '/api/account/logins/11' && options?.method === 'DELETE') {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ error: 'Cannot remove the last login' }),
+        });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     });
 
-    it('calls refresh() after successful unlink', async () => {
-      mockUser = makeAuthUser({ linkedProviders: ['github', 'google'] });
-      mockFetchUnlink('github', { ok: true });
-      const user = userEvent.setup();
+    renderAccount(fetchMock);
 
-      renderAccount();
+    await waitFor(() => screen.getByRole('button', { name: /remove github login/i }));
 
-      await user.click(screen.getByRole('button', { name: /unlink github/i }));
+    await user.click(screen.getByRole('button', { name: /remove github login/i }));
 
-      await waitFor(() => {
-        expect(mockRefresh).toHaveBeenCalledTimes(1);
-      });
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Cannot remove the last login');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 7. Services section — workspace / claude / combined buttons
+  // -------------------------------------------------------------------------
+
+  it('shows combined "Request League Email + Claude Seat" button when neither exists', async () => {
+    const data = makeAccountData({
+      externalAccounts: [],
+      provisioningRequests: [],
+    });
+    renderAccount(accountFetch(data));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /request league email \+ claude seat/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('shows "Request League Email" button when no workspace exists but claude is pending', async () => {
+    const data = makeAccountData({
+      externalAccounts: [],
+      provisioningRequests: [
+        { id: 5, requestedType: 'claude', status: 'pending', createdAt: '2024-06-01T00:00:00.000Z', decidedAt: null },
+      ],
+    });
+    renderAccount(accountFetch(data));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /request league email$/i })).toBeInTheDocument();
+      expect(screen.queryByText(/request league email \+ claude seat/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows "Request Claude Seat" button (enabled) when workspace baseline met', async () => {
+    const data = makeAccountData({
+      externalAccounts: [
+        { id: 20, type: 'workspace', status: 'active', externalId: 'ws-001', createdAt: '2024-03-01T00:00:00.000Z' },
+      ],
+      provisioningRequests: [],
+    });
+    renderAccount(accountFetch(data));
+
+    await waitFor(() => {
+      const btn = screen.getByRole('button', { name: /request claude seat/i });
+      expect(btn).toBeInTheDocument();
+      expect(btn).not.toBeDisabled();
+    });
+  });
+
+  it('shows disabled hint for Claude Seat when workspace constraint is not met', async () => {
+    // No workspace, but claude is not pending either — normally the combined button appears.
+    // To test the "requires league email" hint we need: workspace is missing but claude IS pending
+    // (so the combined button is hidden, workspace button shows, and claude row shows the hint).
+    const data = makeAccountData({
+      externalAccounts: [],
+      provisioningRequests: [
+        { id: 5, requestedType: 'claude', status: 'pending', createdAt: '2024-06-01T00:00:00.000Z', decidedAt: null },
+      ],
+    });
+    renderAccount(accountFetch(data));
+
+    await waitFor(() => {
+      // The Claude row should have a "Requires League Email" hint, not a button
+      expect(screen.getByLabelText(/claude seat requires a league email account first/i)).toBeInTheDocument();
+    });
+  });
+
+  it('Request mutation POSTs workspace_and_claude correctly', async () => {
+    const user = userEvent.setup();
+    const data = makeAccountData({ externalAccounts: [], provisioningRequests: [] });
+
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/account') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+      }
+      if (url === '/api/account/provisioning-requests' && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([
+            { id: 30, requestedType: 'workspace', status: 'pending', createdAt: '2024-06-01T00:00:00.000Z', decidedAt: null },
+            { id: 31, requestedType: 'claude', status: 'pending', createdAt: '2024-06-01T00:00:00.000Z', decidedAt: null },
+          ]),
+        });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     });
 
-    it('shows error message when unlink returns non-OK response (409)', async () => {
-      mockUser = makeAuthUser({ linkedProviders: ['github', 'google'] });
-      mockFetchUnlink('github', {
+    renderAccount(fetchMock);
+
+    await waitFor(() =>
+      screen.getByRole('button', { name: /request league email \+ claude seat/i }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /request league email \+ claude seat/i }));
+
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find(
+        ([url, opts]: [string, RequestInit | undefined]) =>
+          url === '/api/account/provisioning-requests' && opts?.method === 'POST',
+      );
+      expect(postCall).toBeDefined();
+      const bodyParsed = JSON.parse(postCall![1]!.body as string);
+      expect(bodyParsed.requestType).toBe('workspace_and_claude');
+    });
+  });
+
+  it('shows inline error when provisioning request fails', async () => {
+    const user = userEvent.setup();
+    const data = makeAccountData({ externalAccounts: [], provisioningRequests: [] });
+
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/account') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+      }
+      if (url === '/api/account/provisioning-requests' && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ error: 'A workspace request already exists' }),
+        });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderAccount(fetchMock);
+
+    await waitFor(() =>
+      screen.getByRole('button', { name: /request league email \+ claude seat/i }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /request league email \+ claude seat/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('A workspace request already exists');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. Help section
+  // -------------------------------------------------------------------------
+
+  it('renders a mailto link in the Help section', async () => {
+    renderAccount(accountFetch(makeAccountData()));
+
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: /admin@jointheleague\.org/i });
+      expect(link).toHaveAttribute('href', 'mailto:admin@jointheleague.org');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 9. Staff redirect
+  // -------------------------------------------------------------------------
+
+  it('redirects staff to /staff without fetching account data', () => {
+    mockAuthReturn = {
+      ...mockAuthReturn,
+      user: { ...mockAuthReturn.user, role: 'staff' },
+    };
+
+    const fetchMock = vi.fn();
+    renderAccount(fetchMock);
+
+    // fetch should NOT have been called for /api/account
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/account', expect.anything());
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/account');
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. Error state
+  // -------------------------------------------------------------------------
+
+  it('shows error message and retry button when fetch fails', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
         ok: false,
-        body: { error: 'Cannot unlink your only login method' },
-      });
-      const user = userEvent.setup();
+        status: 500,
+        json: () => Promise.resolve({ error: 'Internal server error' }),
+      }),
+    );
 
-      renderAccount();
+    renderAccount(fetchMock);
 
-      await user.click(screen.getByRole('button', { name: /unlink github/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole('alert')).toHaveTextContent(
-          'Cannot unlink your only login method',
-        );
-      });
-      expect(mockRefresh).not.toHaveBeenCalled();
-    });
-
-    it('shows generic error when unlink response has no error field', async () => {
-      mockUser = makeAuthUser({ linkedProviders: ['github', 'google'] });
-      mockFetchUnlink('github', { ok: false, body: {} });
-      const user = userEvent.setup();
-
-      renderAccount();
-
-      await user.click(screen.getByRole('button', { name: /unlink github/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole('alert')).toHaveTextContent('Failed to unlink provider');
-      });
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
     });
   });
 
-  describe('Section visibility', () => {
-    it('Sign-in methods heading is visible', () => {
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
-      expect(screen.getByRole('heading', { name: /sign-in methods/i })).toBeInTheDocument();
+  it('error alert shows the server error message', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 503,
+        json: () => Promise.resolve({ error: 'Service unavailable' }),
+      }),
+    );
+
+    renderAccount(fetchMock);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Service unavailable');
     });
+  });
 
-    it('existing account info fields are still rendered', () => {
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
+  // -------------------------------------------------------------------------
+  // 11. Pending workspace request enables Claude button
+  // -------------------------------------------------------------------------
 
-      expect(screen.getByText('Test User')).toBeInTheDocument();
-      expect(screen.getByText('user@example.com')).toBeInTheDocument();
+  it('enables Claude Seat button when workspace request is pending', async () => {
+    const data = makeAccountData({
+      externalAccounts: [],
+      provisioningRequests: [
+        { id: 5, requestedType: 'workspace', status: 'pending', createdAt: '2024-06-01T00:00:00.000Z', decidedAt: null },
+      ],
     });
+    renderAccount(accountFetch(data));
 
-    it('Add section is absent when no providers are globally configured', () => {
-      mockProviderStatus = { github: false, google: false, pike13: false, loading: false };
-      mockUser = makeAuthUser({ linkedProviders: [] });
-      renderAccount();
+    await waitFor(() => {
+      // workspace is pending → combined button should NOT appear
+      // claude row should show an enabled "Request Claude Seat" button
+      const claudeBtn = screen.getByRole('button', { name: /request claude seat/i });
+      expect(claudeBtn).not.toBeDisabled();
+    });
+  });
 
-      expect(screen.queryByText(/Add/)).not.toBeInTheDocument();
+  // -------------------------------------------------------------------------
+  // 12. Pike13 row shown as read-only
+  // -------------------------------------------------------------------------
+
+  it('shows Pike13 row with "Managed by staff" text', async () => {
+    renderAccount(accountFetch(makeAccountData()));
+
+    await waitFor(() => {
+      expect(screen.getByText('Managed by staff')).toBeInTheDocument();
     });
   });
 });
