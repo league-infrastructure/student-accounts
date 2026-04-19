@@ -1,7 +1,7 @@
 ---
 id: "003"
 title: "Cohorts UI — bulk action dropdown and confirmation dialog"
-status: todo
+status: done
 use-cases: [SUC-008-001, SUC-008-002, SUC-008-003, SUC-008-005, SUC-008-006]
 depends-on: ["002"]
 ---
@@ -18,27 +18,27 @@ confirm, and (4) shows a result panel with per-user failure details.
 
 ## Acceptance Criteria
 
-- [ ] Each cohort row has a `<select>` (or equivalent) with four options:
+- [x] Each cohort row has a `<select>` (or equivalent) with four options:
       "Suspend Workspace", "Suspend Claude", "Remove Workspace", "Remove Claude".
-- [ ] Selecting an option and triggering the action opens a `BulkActionDialog`
+- [x] Selecting an option and triggering the action opens a `BulkActionDialog`
       modal for the selected cohort and action.
-- [ ] The dialog fetches `GET /api/admin/cohorts/:id/bulk-preview` and displays
+- [x] The dialog fetches `GET /api/admin/cohorts/:id/bulk-preview` and displays
       the affected count in the message ("Suspend 12 Workspace accounts for
       [Cohort Name]?").
-- [ ] Suspend dialog message notes the action can be reversed by re-provisioning.
-- [ ] Remove dialog includes an irreversibility warning ("Workspace accounts will
+- [x] Suspend dialog message notes the action can be reversed by re-provisioning.
+- [x] Remove dialog includes an irreversibility warning ("Workspace accounts will
       be deleted after 3 days. This action cannot be undone.").
-- [ ] The Confirm button is disabled while the preview fetch is in-flight.
-- [ ] On Confirm, the appropriate `POST /api/admin/cohorts/:id/bulk-suspend` or
+- [x] The Confirm button is disabled while the preview fetch is in-flight.
+- [x] On Confirm, the appropriate `POST /api/admin/cohorts/:id/bulk-suspend` or
       `bulk-remove` is called. A spinner is shown; the Confirm button is disabled.
-- [ ] On completion (200 or 207), the dialog transitions to a result panel showing:
+- [x] On completion (200 or 207), the dialog transitions to a result panel showing:
       - Number of succeeded accounts.
       - For each failed account: user name and error message.
-- [ ] A "Done" / "Close" button dismisses the dialog and invalidates the cohorts
+- [x] A "Done" / "Close" button dismisses the dialog and invalidates the cohorts
       query so the list refreshes.
-- [ ] On full failure (500), an error message is shown in the dialog.
-- [ ] The existing cohort list and create-cohort form remain unchanged.
-- [ ] Component tests cover: dialog opens with correct count, suspend message
+- [x] On full failure (500), an error message is shown in the dialog.
+- [x] The existing cohort list and create-cohort form remain unchanged.
+- [x] Component tests cover: dialog opens with correct count, suspend message
       shown, remove warning shown, result panel shown on success, failure list
       shown on 207.
 
