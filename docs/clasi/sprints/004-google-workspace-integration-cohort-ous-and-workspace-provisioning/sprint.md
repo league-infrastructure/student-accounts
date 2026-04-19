@@ -1,7 +1,7 @@
 ---
 id: "004"
 title: "Google Workspace Integration — Cohort OUs and Workspace Provisioning"
-status: roadmap
+status: planning
 branch: sprint/004-google-workspace-integration-cohort-ous-and-workspace-provisioning
 use-cases: [UC-005, UC-012]
 ---
@@ -66,4 +66,37 @@ Workspace account existing, and adding it here would over-load the sprint.
 
 ## Tickets
 
-_(To be created when this sprint enters Detail Mode.)_
+| # | Title | Depends On |
+|---|---|---|
+| 001 | Extend GoogleAdminDirectoryClient to GoogleWorkspaceAdminClient with write methods and Fake | — |
+| 002 | Write-enable flag and domain/OU guard in GoogleWorkspaceAdminClient | 001 |
+| 003 | Pike13 write-back stub seam — no-op module at stable import path | — |
+| 004 | WorkspaceProvisioningService — provision with precondition checks, ExternalAccount creation, and audit | 001, 002, 003 |
+| 005 | CohortService.createWithOU — transactional Admin SDK createOU + Cohort row + audit | 001, 002 |
+| 006 | Admin role assignment — ADMIN_EMAILS env var check in sign-in handler | 001 |
+| 007 | ProvisioningRequestService.approve wired to WorkspaceProvisioningService — approval triggers provision | 004 |
+| 008 | Admin provisioning-requests page — list pending, approve, and reject actions (API + UI) | 006, 007 |
+| 009 | Admin cohort management page — list cohorts and create cohort form (API + UI) | 005, 006 |
+| 010 | Integration tests — UC-005 and UC-012 cross-cutting with FakeGoogleWorkspaceAdminClient | 004, 005, 007, 008, 009 |
+
+### Parallel Execution Groups
+
+**Group 1** (no dependencies — can run in parallel):
+- T001 — Extend client with write methods and Fake
+- T003 — Pike13 write-back stub
+
+**Group 2** (depends on T001; T002 and T006 can run in parallel, T005 needs T002):
+- T002 — Write-enable flag and domain guard (depends on T001)
+- T006 — Admin role assignment (depends on T001)
+
+**Group 3** (T004 and T005 depend on T002; T004 also needs T003):
+- T004 — WorkspaceProvisioningService (depends on T001, T002, T003)
+- T005 — CohortService.createWithOU (depends on T001, T002)
+
+**Group 4** (depends on T004 and T006 or T005 and T006):
+- T007 — ProvisioningRequestService.approve wired (depends on T004)
+- T008 — Admin provisioning-requests page (depends on T006, T007) — waits for T007
+- T009 — Admin cohort management page (depends on T005, T006)
+
+**Group 5** (all prior tickets done):
+- T010 — Cross-cutting integration tests
