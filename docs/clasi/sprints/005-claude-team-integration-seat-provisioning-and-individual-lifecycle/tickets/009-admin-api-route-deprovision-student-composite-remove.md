@@ -1,7 +1,7 @@
 ---
 id: "009"
 title: "Admin API route — deprovision student (composite remove)"
-status: todo
+status: done
 use-cases: [SUC-006]
 depends-on: ["005"]
 ---
@@ -26,16 +26,16 @@ collected and reported but do not block removal of other accounts.
 
 ## Acceptance Criteria
 
-- [ ] POST /admin/users/:id/deprovision iterates all active workspace and claude accounts.
-- [ ] Pike13 accounts are skipped.
-- [ ] Each account removed via ExternalAccountLifecycleService.remove.
-- [ ] Per-account failure does not stop the composite — other accounts continue.
-- [ ] Response body: `{ succeeded: [accountId, ...], failed: [{ accountId, error }, ...] }`.
-- [ ] HTTP 200 returned even if some accounts failed (partial success). HTTP 207 is acceptable.
-- [ ] HTTP 404 if user does not exist.
-- [ ] HTTP 403 for non-admin callers.
-- [ ] Multiple AuditEvents emitted (one per removed account — emitted by service layer).
-- [ ] Integration tests pass.
+- [x] POST /admin/users/:id/deprovision iterates all active workspace and claude accounts.
+- [x] Pike13 accounts are skipped.
+- [x] Each account removed via ExternalAccountLifecycleService.remove.
+- [x] Per-account failure does not stop the composite — other accounts continue.
+- [x] Response body: `{ succeeded: [accountId, ...], failed: [{ accountId, error }, ...] }`.
+- [x] HTTP 200 returned even if some accounts failed (partial success). HTTP 207 is acceptable.
+- [x] HTTP 404 if user does not exist.
+- [x] HTTP 403 for non-admin callers.
+- [x] Multiple AuditEvents emitted (one per removed account — emitted by service layer).
+- [x] Integration tests pass.
 
 ## Implementation Plan
 
