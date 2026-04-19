@@ -29,7 +29,7 @@ import {
 import { ConflictError, UnprocessableError } from '../../../server/src/errors.js';
 import { FakeGoogleWorkspaceAdminClient } from '../helpers/fake-google-workspace-admin.client.js';
 import { makeCohort, makeUser, makeExternalAccount } from '../helpers/factories.js';
-import * as pike13WritebackStub from '../../../server/src/services/pike13-writeback.stub.js';
+import * as pike13WritebackStub from '../../../server/src/services/pike13/pike13-writeback.service.js';
 import { vi } from 'vitest';
 import type { Prisma } from '../../../server/src/generated/prisma/client.js';
 

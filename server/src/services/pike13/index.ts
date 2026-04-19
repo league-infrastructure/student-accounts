@@ -13,3 +13,15 @@ export {
   type Pike13Person,
   type Pike13PeoplePage,
 } from './pike13-api.client.js';
+
+export {
+  Pike13WritebackService,
+  leagueEmail,
+  githubHandle,
+} from './pike13-writeback.service.js';
+
+export {
+  Pike13SyncService,
+  type SyncReport,
+  type MergeScanFn,
+} from './pike13-sync.service.js';

@@ -37,7 +37,7 @@ import { ExternalAccountRepository } from './repositories/external-account.repos
 import { UserRepository } from './repositories/user.repository.js';
 import { CohortRepository } from './repositories/cohort.repository.js';
 import { displayNameToSlug, splitDisplayName } from '../utils/email-slug.js';
-import * as pike13WritebackStub from './pike13-writeback.stub.js';
+import * as pike13Writeback from './pike13/pike13-writeback.service.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
 
 const logger = pino({ name: 'workspace-provisioning' });
@@ -159,8 +159,8 @@ export class WorkspaceProvisioningService {
       status_changed_at: new Date(),
     });
 
-    // --- 8. Call Pike13 write-back stub (no-op this sprint) ---
-    await pike13WritebackStub.leagueEmail(userId, workspaceEmail);
+    // --- 8. Call Pike13 write-back (updates League email field in Pike13) ---
+    await pike13Writeback.leagueEmail(userId, workspaceEmail);
 
     // --- 9. Record audit event inside the caller's transaction ---
     await this.auditService.record(tx, {
