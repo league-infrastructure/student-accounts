@@ -1,0 +1,272 @@
+/**
+ * ExternalAccountLifecycleService — suspend and remove operations on individual
+ * ExternalAccount records (Sprint 005, T005).
+ *
+ * This service routes API calls to the correct external client based on
+ * account type, updates the ExternalAccount row, and emits audit events.
+ * All database writes occur inside the caller-supplied transaction.
+ *
+ * The caller owns the transaction boundary. This service does NOT open its
+ * own prisma.$transaction.
+ *
+ * Dependency injection:
+ *  - googleClient          — GoogleWorkspaceAdminClient (real or fake)
+ *  - claudeTeamClient      — ClaudeTeamAdminClient (real or fake)
+ *  - externalAccountRepo   — ExternalAccountRepository (writes inside tx)
+ *  - auditService          — AuditService
+ *
+ * Environment variables consumed:
+ *  - WORKSPACE_DELETE_DELAY_DAYS — optional; number of days before a removed
+ *    workspace account is hard-deleted (default 3).
+ *
+ * Errors thrown:
+ *  - NotFoundError (404)       — accountId does not exist.
+ *  - UnprocessableError (422)  — account is already in status=removed.
+ *  - GoogleWorkspaceAdminClient errors — propagated as-is.
+ *  - ClaudeTeamAdminClient errors      — propagated as-is.
+ */
+
+import pino from 'pino';
+
+import { NotFoundError, UnprocessableError } from '../errors.js';
+import type { AuditService } from './audit.service.js';
+import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
+import type { ClaudeTeamAdminClient } from './claude-team/claude-team-admin.client.js';
+import { ExternalAccountRepository } from './repositories/external-account.repository.js';
+import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
+
+const logger = pino({ name: 'external-account-lifecycle' });
+
+/** Default number of days between workspace removal and hard-delete. */
+const DEFAULT_WORKSPACE_DELETE_DELAY_DAYS = 3;
+
+export class ExternalAccountLifecycleService {
+  constructor(
+    private readonly googleClient: GoogleWorkspaceAdminClient,
+    private readonly claudeTeamClient: ClaudeTeamAdminClient,
+    private readonly externalAccountRepo: typeof ExternalAccountRepository,
+    private readonly auditService: AuditService,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // suspend
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Suspend an external account.
+   *
+   * For workspace: calls GoogleWorkspaceAdminClient.suspendUser and sets
+   * status=suspended, status_changed_at=now.
+   *
+   * For claude: calls ClaudeTeamAdminClient.suspendMember (which is currently
+   * a documented no-op per OQ-003) and sets status=suspended, status_changed_at=now.
+   *
+   * @throws NotFoundError      if accountId does not exist.
+   * @throws UnprocessableError if the account is already status=removed.
+   */
+  async suspend(
+    accountId: number,
+    actorId: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<ExternalAccount> {
+    // --- 1. Fetch and validate ---
+    const account = await this.externalAccountRepo.findById(tx, accountId);
+    if (!account) {
+      throw new NotFoundError(`ExternalAccount ${accountId} not found`);
+    }
+    if (account.status === 'removed') {
+      throw new UnprocessableError(
+        `ExternalAccount ${accountId} is already removed and cannot be suspended`,
+      );
+    }
+
+    logger.info(
+      { accountId, actorId, type: account.type, currentStatus: account.status },
+      '[external-account-lifecycle] suspend: starting',
+    );
+
+    // --- 2. Call external API ---
+    if (account.type === 'workspace') {
+      const email = account.external_id;
+      if (!email) {
+        throw new UnprocessableError(
+          `ExternalAccount ${accountId} has no external_id (workspace email); cannot suspend`,
+        );
+      }
+      await this.googleClient.suspendUser(email);
+      logger.info({ accountId, email }, '[external-account-lifecycle] suspend: workspace user suspended');
+    } else if (account.type === 'claude') {
+      const memberId = account.external_id;
+      if (!memberId) {
+        throw new UnprocessableError(
+          `ExternalAccount ${accountId} has no external_id (Claude member id); cannot suspend`,
+        );
+      }
+      // OQ-003: suspendMember is currently a no-op in ClaudeTeamAdminClientImpl.
+      // We still call it so the behaviour can be swapped in without changing callers.
+      await this.claudeTeamClient.suspendMember(memberId);
+      logger.info({ accountId, memberId }, '[external-account-lifecycle] suspend: claude member suspend called (OQ-003 no-op)');
+    }
+
+    // --- 3. Persist status change ---
+    const now = new Date();
+    const updated = await this.externalAccountRepo.update(tx, accountId, {
+      status: 'suspended',
+      status_changed_at: now,
+    });
+
+    // --- 4. Emit audit event ---
+    const action = account.type === 'workspace' ? 'suspend_workspace' : 'suspend_claude';
+    await this.auditService.record(tx, {
+      actor_user_id: actorId,
+      action,
+      target_user_id: account.user_id,
+      target_entity_type: 'ExternalAccount',
+      target_entity_id: String(accountId),
+      details: {
+        previousStatus: account.status,
+        externalId: account.external_id,
+      },
+    });
+
+    logger.info(
+      { accountId, actorId, action },
+      '[external-account-lifecycle] suspend: complete',
+    );
+
+    return updated;
+  }
+
+  // ---------------------------------------------------------------------------
+  // remove
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Remove an external account.
+   *
+   * For workspace: calls suspendUser if not already suspended, sets
+   * scheduled_delete_at = now + WORKSPACE_DELETE_DELAY_DAYS, and sets
+   * status=removed, status_changed_at=now. The actual hard-delete is deferred
+   * to WorkspaceDeleteJob (T006).
+   *
+   * For claude: calls ClaudeTeamAdminClient.removeMember, then sets
+   * status=removed, status_changed_at=now.
+   *
+   * @throws NotFoundError      if accountId does not exist.
+   * @throws UnprocessableError if the account is already status=removed.
+   */
+  async remove(
+    accountId: number,
+    actorId: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<ExternalAccount> {
+    // --- 1. Fetch and validate ---
+    const account = await this.externalAccountRepo.findById(tx, accountId);
+    if (!account) {
+      throw new NotFoundError(`ExternalAccount ${accountId} not found`);
+    }
+    if (account.status === 'removed') {
+      throw new UnprocessableError(
+        `ExternalAccount ${accountId} is already removed`,
+      );
+    }
+
+    logger.info(
+      { accountId, actorId, type: account.type, currentStatus: account.status },
+      '[external-account-lifecycle] remove: starting',
+    );
+
+    // --- 2. Call external API ---
+    const now = new Date();
+    let scheduledDeleteAt: Date | undefined;
+
+    if (account.type === 'workspace') {
+      const email = account.external_id;
+      if (!email) {
+        throw new UnprocessableError(
+          `ExternalAccount ${accountId} has no external_id (workspace email); cannot remove`,
+        );
+      }
+
+      // Suspend first unless already suspended
+      if (account.status !== 'suspended') {
+        await this.googleClient.suspendUser(email);
+        logger.info({ accountId, email }, '[external-account-lifecycle] remove: workspace user suspended before removal');
+      }
+
+      // Compute deferred delete deadline
+      const delayDays = parseDelayDays();
+      scheduledDeleteAt = new Date(now.getTime() + delayDays * 86400000);
+      logger.info(
+        { accountId, delayDays, scheduledDeleteAt },
+        '[external-account-lifecycle] remove: scheduled_delete_at set',
+      );
+    } else if (account.type === 'claude') {
+      const memberId = account.external_id;
+      if (!memberId) {
+        throw new UnprocessableError(
+          `ExternalAccount ${accountId} has no external_id (Claude member id); cannot remove`,
+        );
+      }
+      await this.claudeTeamClient.removeMember(memberId);
+      logger.info({ accountId, memberId }, '[external-account-lifecycle] remove: claude member removed');
+    }
+
+    // --- 3. Persist status change ---
+    const updateData: {
+      status: 'removed';
+      status_changed_at: Date;
+      scheduled_delete_at?: Date;
+    } = {
+      status: 'removed',
+      status_changed_at: now,
+    };
+    if (scheduledDeleteAt !== undefined) {
+      updateData.scheduled_delete_at = scheduledDeleteAt;
+    }
+
+    const updated = await this.externalAccountRepo.update(tx, accountId, updateData);
+
+    // --- 4. Emit audit event ---
+    const action = account.type === 'workspace' ? 'remove_workspace' : 'remove_claude';
+    await this.auditService.record(tx, {
+      actor_user_id: actorId,
+      action,
+      target_user_id: account.user_id,
+      target_entity_type: 'ExternalAccount',
+      target_entity_id: String(accountId),
+      details: {
+        previousStatus: account.status,
+        externalId: account.external_id,
+        scheduledDeleteAt: scheduledDeleteAt?.toISOString() ?? null,
+      },
+    });
+
+    logger.info(
+      { accountId, actorId, action },
+      '[external-account-lifecycle] remove: complete',
+    );
+
+    return updated;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse WORKSPACE_DELETE_DELAY_DAYS from environment, defaulting to
+ * DEFAULT_WORKSPACE_DELETE_DELAY_DAYS (3). Non-numeric or missing values
+ * silently fall back to the default.
+ */
+function parseDelayDays(): number {
+  const raw = process.env.WORKSPACE_DELETE_DELAY_DAYS;
+  if (raw !== undefined) {
+    const parsed = parseInt(raw, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return DEFAULT_WORKSPACE_DELETE_DELAY_DAYS;
+}

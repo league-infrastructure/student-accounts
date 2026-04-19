@@ -1,7 +1,7 @@
 ---
 id: "005"
 title: "ExternalAccountLifecycleService (suspend and remove)"
-status: todo
+status: done
 use-cases: [SUC-004, SUC-005, SUC-006]
 depends-on: ["001", "002"]
 ---
@@ -36,19 +36,19 @@ Register in `ServiceRegistry`.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/external-account-lifecycle.service.ts` created.
-- [ ] `suspend`: workspace calls suspendUser; claude calls suspendMember (or handles OQ-003 gracefully).
-- [ ] `suspend`: ExternalAccount.status=suspended, status_changed_at set.
-- [ ] `suspend`: correct audit action string (suspend_workspace vs suspend_claude).
-- [ ] `remove` (workspace): suspends if not already suspended, sets scheduled_delete_at.
-- [ ] `remove` (workspace): ExternalAccount.status=removed immediately.
-- [ ] `remove` (claude): calls removeMember, ExternalAccount.status=removed.
-- [ ] `remove`: correct audit action string (remove_workspace vs remove_claude).
-- [ ] WORKSPACE_DELETE_DELAY_DAYS env var controls the delay (default 3).
-- [ ] NotFoundError thrown when accountId does not exist.
-- [ ] UnprocessableError thrown when account is already in status=removed.
-- [ ] `ServiceRegistry` updated.
-- [ ] Integration tests pass.
+- [x] `server/src/services/external-account-lifecycle.service.ts` created.
+- [x] `suspend`: workspace calls suspendUser; claude calls suspendMember (or handles OQ-003 gracefully).
+- [x] `suspend`: ExternalAccount.status=suspended, status_changed_at set.
+- [x] `suspend`: correct audit action string (suspend_workspace vs suspend_claude).
+- [x] `remove` (workspace): suspends if not already suspended, sets scheduled_delete_at.
+- [x] `remove` (workspace): ExternalAccount.status=removed immediately.
+- [x] `remove` (claude): calls removeMember, ExternalAccount.status=removed.
+- [x] `remove`: correct audit action string (remove_workspace vs remove_claude).
+- [x] WORKSPACE_DELETE_DELAY_DAYS env var controls the delay (default 3).
+- [x] NotFoundError thrown when accountId does not exist.
+- [x] UnprocessableError thrown when account is already in status=removed.
+- [x] `ServiceRegistry` updated.
+- [x] Integration tests pass.
 
 ## Implementation Plan
 
