@@ -1,7 +1,7 @@
 ---
 id: "006"
 title: "WorkspaceDeleteJob — scheduled hard-delete of Workspace accounts"
-status: todo
+status: done
 use-cases: [SUC-007]
 depends-on: ["001", "002"]
 ---
@@ -26,14 +26,14 @@ past their scheduled delete date.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/jobs/workspace-delete.job.ts` created.
-- [ ] Job is registered with `SchedulerService` on server startup.
-- [ ] Job queries ExternalAccount: type=workspace, status=removed, scheduled_delete_at <= now.
-- [ ] `GoogleWorkspaceAdminClient.deleteUser` called for each eligible record.
-- [ ] After successful delete: `scheduled_delete_at` set to null on the ExternalAccount row.
-- [ ] AuditEvent recorded with action=workspace_hard_delete (actor_user_id=null = system action).
-- [ ] Failed deletes logged at ERROR level; job continues to next record.
-- [ ] Integration tests pass.
+- [x] `server/src/jobs/workspace-delete.job.ts` created.
+- [x] Job is registered with `SchedulerService` on server startup.
+- [x] Job queries ExternalAccount: type=workspace, status=removed, scheduled_delete_at <= now.
+- [x] `GoogleWorkspaceAdminClient.deleteUser` called for each eligible record.
+- [x] After successful delete: `scheduled_delete_at` set to null on the ExternalAccount row.
+- [x] AuditEvent recorded with action=workspace_hard_delete (actor_user_id=null = system action).
+- [x] Failed deletes logged at ERROR level; job continues to next record.
+- [x] Integration tests pass.
 
 ## Implementation Plan
 
