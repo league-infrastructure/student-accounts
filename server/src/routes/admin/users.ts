@@ -9,8 +9,8 @@ adminUsersRouter.get('/users', async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
       orderBy: { created_at: 'desc' },
+      include: { logins: { select: { provider: true, provider_username: true } } },
     });
-    // Serialize to the shape callers expect
     res.json(users.map(serializeUser));
   } catch (err) {
     next(err);
@@ -131,6 +131,12 @@ function serializeUser(user: any) {
     avatarUrl: null,
     provider: null,
     providerId: null,
+    providers: Array.isArray(user.logins)
+      ? user.logins.map((l: any) => ({
+          provider: l.provider,
+          username: l.provider_username ?? null,
+        }))
+      : [],
     createdAt: user.created_at,
     updatedAt: user.updated_at,
   };

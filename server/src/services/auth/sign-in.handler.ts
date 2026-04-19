@@ -175,7 +175,8 @@ export async function signInHandler(
     // --- Step 2: Existing identity — load the User ---
     user = await userService.findById(existingLogin.user_id);
   } else {
-    // --- Step 3: New identity — create User and Login atomically ---
+    // --- Step 3: New identity — attach Login to an existing User (matched
+    // by primary email) or create a new User.
 
     // Resolve the primary email. For GitHub, if no public email is available,
     // fall back to <username>@github.invalid (RD-002). The .invalid TLD is
@@ -193,16 +194,26 @@ export async function signInHandler(
       resolvedEmail = `${providerUserId}@provider.invalid`;
     }
 
-    // 3a. Create User with audit event
-    user = await userService.createWithAudit(
-      {
-        display_name: displayName || providerEmail || providerUserId,
-        primary_email: resolvedEmail,
-        role: 'student',
-        created_via: 'social_login',
-      },
-      null, // system action; no acting user
-    );
+    // 3a. Look for an existing User by primary email. If one exists (e.g.
+    // created by admin seeding or a different provider on the same address),
+    // attach the new Login to it rather than attempting to create a duplicate
+    // User — the unique constraint on User.primary_email would otherwise
+    // throw and the caller would see a silent oauth_denied.
+    const existingUser = await userService.findByEmail(resolvedEmail);
+
+    if (existingUser) {
+      user = existingUser;
+    } else {
+      user = await userService.createWithAudit(
+        {
+          display_name: displayName || providerEmail || providerUserId,
+          primary_email: resolvedEmail,
+          role: 'student',
+          created_via: 'social_login',
+        },
+        null, // system action; no acting user
+      );
+    }
 
     // 3b. Create Login with audit event (pass provider_username for GitHub)
     await loginService.create(
@@ -214,8 +225,11 @@ export async function signInHandler(
       providerUsername ?? null,
     );
 
-    // 3c. Merge-scan stub (Sprint 007 replaces this module)
-    await mergeScan(user);
+    // 3c. Merge-scan stub (Sprint 007 replaces this module) — only for
+    // freshly created users.
+    if (!existingUser) {
+      await mergeScan(user);
+    }
   }
 
   // --- Step 4: Staff OU detection (@jointheleague.org accounts only) ---
@@ -260,7 +274,9 @@ export async function signInHandler(
     }
 
     // Only call the Admin SDK if staffOuPath is set AND a client is injected.
-    if (staffOuPath !== null && adminDirClient) {
+    // Admin role is treated as manually granted (via the Users panel or
+    // ADMIN_EMAILS) and is never overwritten by OU-based role resolution.
+    if (staffOuPath !== null && adminDirClient && user.role !== 'admin') {
       let ouPath: string;
       try {
         ouPath = await adminDirClient.getUserOU(providerEmail);
@@ -278,14 +294,12 @@ export async function signInHandler(
       }
 
       if (ouPath.startsWith(staffOuPath)) {
-        user = await userService.updateRole(user.id, 'staff');
-      } else if (user.role !== 'student') {
+        if (user.role !== 'staff') {
+          user = await userService.updateRole(user.id, 'staff');
+        }
+      } else if (user.role === 'staff') {
         user = await userService.updateRole(user.id, 'student');
       }
-    } else if (user.role === 'staff') {
-      // OU check skipped but user has stale staff role — reset to student so
-      // the ADMIN_EMAILS check below is the only way to elevate.
-      user = await userService.updateRole(user.id, 'student');
     }
 
     // --- Step 5: Admin email check (T006) ---
