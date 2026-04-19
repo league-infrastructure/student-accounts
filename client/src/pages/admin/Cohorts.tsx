@@ -5,6 +5,15 @@
  * table. A create form at the top allows admins to add a new cohort, which
  * triggers Google Workspace OU creation via the backend.
  *
+ * Each cohort row has a "Bulk Actions" selector with four options:
+ *   - Suspend Workspace
+ *   - Suspend Claude
+ *   - Remove Workspace
+ *   - Remove Claude
+ *
+ * Selecting an option opens BulkActionDialog, which previews the affected
+ * count and confirms/executes the operation.
+ *
  * Error handling:
  *  - Page-level loading/error state for the initial fetch.
  *  - Inline form error on create failure (e.g. duplicate name → 409).
@@ -13,6 +22,8 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { BulkActionDialog } from './BulkActionDialog';
+import type { BulkAction, BulkAccountType, BulkOperation } from './BulkActionDialog';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,6 +63,18 @@ async function createCohort(name: string): Promise<Cohort> {
 }
 
 // ---------------------------------------------------------------------------
+// Bulk action option values
+// ---------------------------------------------------------------------------
+
+type BulkSelectValue = '' | 'suspend-workspace' | 'suspend-claude' | 'remove-workspace' | 'remove-claude';
+
+function parseBulkSelectValue(value: BulkSelectValue): { accountType: BulkAccountType; operation: BulkOperation } | null {
+  if (!value) return null;
+  const [operation, accountType] = value.split('-') as [BulkOperation, BulkAccountType];
+  return { operation, accountType };
+}
+
+// ---------------------------------------------------------------------------
 // Cohorts component
 // ---------------------------------------------------------------------------
 
@@ -59,6 +82,7 @@ export default function Cohorts() {
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
 
   const { data: cohorts, isLoading, error } = useQuery<Cohort[], Error>({
     queryKey: ['admin', 'cohorts'],
@@ -86,6 +110,17 @@ export default function Cohorts() {
       return;
     }
     createMutation.mutate(trimmed);
+  }
+
+  function handleBulkSelect(cohort: Cohort, value: BulkSelectValue) {
+    const parsed = parseBulkSelectValue(value);
+    if (!parsed) return;
+    setBulkAction({
+      cohortId: cohort.id,
+      cohortName: cohort.name,
+      accountType: parsed.accountType,
+      operation: parsed.operation,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -143,6 +178,7 @@ export default function Cohorts() {
               <th style={thStyle}>Name</th>
               <th style={thStyle}>Google OU Path</th>
               <th style={thStyle}>Created On</th>
+              <th style={thStyle}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -153,10 +189,34 @@ export default function Cohorts() {
                 <td style={tdStyle}>
                   {new Date(cohort.createdAt).toLocaleDateString()}
                 </td>
+                <td style={tdStyle}>
+                  <select
+                    style={bulkSelectStyle}
+                    value=""
+                    aria-label={`Bulk actions for ${cohort.name}`}
+                    onChange={(e) =>
+                      handleBulkSelect(cohort, e.target.value as BulkSelectValue)
+                    }
+                  >
+                    <option value="" disabled>Bulk Actions</option>
+                    <option value="suspend-workspace">Suspend Workspace</option>
+                    <option value="suspend-claude">Suspend Claude</option>
+                    <option value="remove-workspace">Remove Workspace</option>
+                    <option value="remove-claude">Remove Claude</option>
+                  </select>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* Bulk action dialog */}
+      {bulkAction && (
+        <BulkActionDialog
+          action={bulkAction}
+          onClose={() => setBulkAction(null)}
+        />
       )}
     </div>
   );
@@ -236,4 +296,13 @@ const tdStyle: React.CSSProperties = {
   padding: '8px 12px',
   borderBottom: '1px solid #f1f5f9',
   verticalAlign: 'top',
+};
+
+const bulkSelectStyle: React.CSSProperties = {
+  padding: '4px 8px',
+  fontSize: 13,
+  border: '1px solid #cbd5e1',
+  borderRadius: 4,
+  background: '#fff',
+  cursor: 'pointer',
 };
