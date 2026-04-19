@@ -1,11 +1,14 @@
 ---
-id: "007"
-title: "ProvisioningRequestService.approve wired to WorkspaceProvisioningService — approval triggers provision"
-status: todo
-use-cases: [UC-005]
-depends-on: ["004"]
-github-issue: ""
-todo: ""
+id: '007'
+title: "ProvisioningRequestService.approve wired to WorkspaceProvisioningService \u2014\
+  \ approval triggers provision"
+status: done
+use-cases:
+- UC-005
+depends-on:
+- '004'
+github-issue: ''
+todo: ''
 ---
 
 # ProvisioningRequestService.approve wired to WorkspaceProvisioningService — approval triggers provision
@@ -30,12 +33,12 @@ extend it further).
 
 ## Acceptance Criteria
 
-- [ ] `ProvisioningRequestService` constructor updated to accept
+- [x] `ProvisioningRequestService` constructor updated to accept
       `workspaceProvisioningService: WorkspaceProvisioningService` as an
       optional parameter (required when approve is called for workspace requests).
-- [ ] `ServiceRegistry` updated to pass `WorkspaceProvisioningService` to
+- [x] `ServiceRegistry` updated to pass `WorkspaceProvisioningService` to
       `ProvisioningRequestService`.
-- [ ] `approve(requestId: number, deciderId: number): Promise<ProvisioningRequest>`
+- [x] `approve(requestId: number, deciderId: number): Promise<ProvisioningRequest>`
       extended:
       - Fetches the ProvisioningRequest by `requestId`. Throws `NotFoundError`
         if absent. Throws `ConflictError` if status is not `'pending'`.
@@ -47,15 +50,15 @@ extend it further).
           calls `workspaceProvisioningService.provision(request.user_id, deciderId, tx)`.
         - Commits.
       - Returns the updated ProvisioningRequest.
-- [ ] If `WorkspaceProvisioningService.provision` throws (SDK error, precondition
+- [x] If `WorkspaceProvisioningService.provision` throws (SDK error, precondition
       fail, domain guard, etc.): the entire transaction is rolled back —
       `status` stays `'pending'`, no AuditEvent written, no ExternalAccount created.
       The error propagates to the caller.
-- [ ] `reject` is unchanged from Sprint 003.
-- [ ] Existing Sprint 003 tests for `approve` (status change, audit event)
+- [x] `reject` is unchanged from Sprint 003.
+- [x] Existing Sprint 003 tests for `approve` (status change, audit event)
       continue to pass. They use a provisioning request where `workspaceProvisioningService`
       is either mocked or the `FakeGoogleWorkspaceAdminClient` returns success.
-- [ ] `npm test` passes.
+- [x] `npm test` passes.
 
 ## Implementation Plan
 

@@ -1,5 +1,5 @@
 /**
- * Integration tests for ProvisioningRequestService (Sprint 003, T001).
+ * Integration tests for ProvisioningRequestService (Sprint 003 T001 + Sprint 004 T007).
  *
  * Covers:
  *  - create('workspace') happy path: one row, audit recorded
@@ -12,9 +12,13 @@
  *  - create('claude') alone: no workspace baseline → 422
  *  - create('claude') alone: workspace ExternalAccount present → succeeds
  *  - create('claude') alone: pending workspace ProvisioningRequest present → succeeds
- *  - approve: sets status, decided_by, decided_at; audit recorded
+ *  - approve (workspace): calls WorkspaceProvisioningService.provision, status=approved, ExternalAccount created
+ *  - approve (workspace): provision throws → transaction rolled back, status stays pending
+ *  - approve (claude): status=approved, no provision call made (Sprint 005 TODO)
+ *  - approve (already-approved): throws ConflictError
+ *  - approve (rejected): throws ConflictError
  *  - approve: throws NotFoundError for unknown request
- *  - reject: sets status, decided_by, decided_at; audit recorded
+ *  - reject: sets status, decided_by, decided_at; audit recorded; no provision call
  *  - reject: throws NotFoundError for unknown request
  *  - findByUser: returns correct rows ordered newest first
  *  - findPending: returns only pending rows ordered oldest first
@@ -24,9 +28,16 @@ import { prisma } from '../../../server/src/services/prisma.js';
 import { AuditService } from '../../../server/src/services/audit.service.js';
 import { ExternalAccountService } from '../../../server/src/services/external-account.service.js';
 import { ProvisioningRequestService } from '../../../server/src/services/provisioning-request.service.js';
+import { WorkspaceProvisioningService } from '../../../server/src/services/workspace-provisioning.service.js';
+import { ExternalAccountRepository } from '../../../server/src/services/repositories/external-account.repository.js';
+import { UserRepository } from '../../../server/src/services/repositories/user.repository.js';
+import { CohortRepository } from '../../../server/src/services/repositories/cohort.repository.js';
+import { WorkspaceApiError } from '../../../server/src/services/google-workspace/google-workspace-admin.client.js';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../../server/src/errors.js';
+import { FakeGoogleWorkspaceAdminClient } from '../helpers/fake-google-workspace-admin.client.js';
 import { vi } from 'vitest';
 import {
+  makeCohort,
   makeUser,
   makeExternalAccount,
   makeProvisioningRequest,
@@ -35,6 +46,8 @@ import {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const STUDENT_DOMAIN = 'students.jointheleague.org';
 
 async function clearDb() {
   await (prisma as any).mergeSuggestion.deleteMany();
@@ -46,11 +59,29 @@ async function clearDb() {
   await (prisma as any).cohort.deleteMany();
 }
 
-function makeService(auditOverride?: AuditService): ProvisioningRequestService {
+function makeWorkspaceProvisioningService(
+  fake: FakeGoogleWorkspaceAdminClient,
+): WorkspaceProvisioningService {
+  return new WorkspaceProvisioningService(
+    fake,
+    ExternalAccountRepository,
+    new AuditService(),
+    UserRepository,
+    CohortRepository,
+  );
+}
+
+function makeService(
+  auditOverride?: AuditService,
+  workspaceProvSvc?: WorkspaceProvisioningService,
+): ProvisioningRequestService {
   const audit = auditOverride ?? new AuditService();
   const externalAccounts = new ExternalAccountService(prisma, audit);
-  return new ProvisioningRequestService(prisma, audit, externalAccounts);
+  return new ProvisioningRequestService(prisma, audit, externalAccounts, workspaceProvSvc);
 }
+
+let fakeClient: FakeGoogleWorkspaceAdminClient;
+let originalDomain: string | undefined;
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -58,6 +89,18 @@ function makeService(auditOverride?: AuditService): ProvisioningRequestService {
 
 beforeEach(async () => {
   await clearDb();
+  fakeClient = new FakeGoogleWorkspaceAdminClient();
+  originalDomain = process.env.GOOGLE_STUDENT_DOMAIN;
+  process.env.GOOGLE_STUDENT_DOMAIN = STUDENT_DOMAIN;
+});
+
+afterEach(() => {
+  if (originalDomain !== undefined) {
+    process.env.GOOGLE_STUDENT_DOMAIN = originalDomain;
+  } else {
+    delete process.env.GOOGLE_STUDENT_DOMAIN;
+  }
+  vi.restoreAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -280,14 +323,15 @@ describe('ProvisioningRequestService.create — atomicity', () => {
 });
 
 // ---------------------------------------------------------------------------
-// approve
+// approve — workspace request wired to WorkspaceProvisioningService (T007)
 // ---------------------------------------------------------------------------
 
-describe('ProvisioningRequestService.approve', () => {
-  it('sets status=approved, decided_by, decided_at', async () => {
-    const user = await makeUser();
-    const admin = await makeUser();
-    const svc = makeService();
+describe('ProvisioningRequestService.approve — workspace request', () => {
+  it('sets status=approved, decided_by, decided_at and creates ExternalAccount', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/TestCohort' });
+    const user = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const admin = await makeUser({ role: 'staff' });
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
 
     const req = await makeProvisioningRequest(user, { requested_type: 'workspace' });
 
@@ -297,12 +341,21 @@ describe('ProvisioningRequestService.approve', () => {
     expect(updated.decided_by).toBe(admin.id);
     expect(updated.decided_at).toBeDefined();
     expect(updated.decided_at).not.toBeNull();
+
+    // ExternalAccount should have been created by WorkspaceProvisioningService
+    const accounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'workspace' },
+    });
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].status).toBe('active');
+    expect(accounts[0].external_id).toBe('fake-gws-user-id');
   });
 
   it('records an approve_provisioning_request audit event', async () => {
-    const user = await makeUser();
-    const admin = await makeUser();
-    const svc = makeService();
+    const cohort = await makeCohort({ google_ou_path: '/Students/TestCohort' });
+    const user = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const admin = await makeUser({ role: 'staff' });
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
 
     const req = await makeProvisioningRequest(user, { requested_type: 'workspace' });
 
@@ -316,9 +369,116 @@ describe('ProvisioningRequestService.approve', () => {
     expect(events[0].target_user_id).toBe(user.id);
   });
 
+  it('calls GoogleWorkspaceAdminClient.createUser with correct params', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/TestCohort' });
+    const user = await makeUser({ role: 'student', cohort_id: cohort.id, display_name: 'Alice Smith' });
+    const admin = await makeUser({ role: 'staff' });
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'workspace' });
+    await svc.approve(req.id, admin.id);
+
+    expect(fakeClient.calls.createUser).toHaveLength(1);
+    const call = fakeClient.calls.createUser[0];
+    expect(call.primaryEmail).toContain(`@${STUDENT_DOMAIN}`);
+    expect(call.orgUnitPath).toBe('/Students/TestCohort');
+  });
+
+  it('rolls back entire transaction when WorkspaceProvisioningService.provision throws', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/TestCohort' });
+    const user = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const admin = await makeUser({ role: 'staff' });
+
+    fakeClient.configureError('createUser', new WorkspaceApiError('SDK error', 'createUser', 500));
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'workspace' });
+
+    await expect(svc.approve(req.id, admin.id)).rejects.toThrow(WorkspaceApiError);
+
+    // Request should still be pending — transaction rolled back
+    const stillPending = await (prisma as any).provisioningRequest.findUnique({
+      where: { id: req.id },
+    });
+    expect(stillPending.status).toBe('pending');
+
+    // No ExternalAccount should have been created
+    const accounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'workspace' },
+    });
+    expect(accounts).toHaveLength(0);
+
+    // No audit event should exist for this approval attempt
+    const approveEvents = await (prisma as any).auditEvent.findMany({
+      where: { action: 'approve_provisioning_request', target_entity_id: String(req.id) },
+    });
+    expect(approveEvents).toHaveLength(0);
+  });
+
+  it('throws ConflictError when request is already approved', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'workspace', status: 'approved' });
+
+    await expect(svc.approve(req.id, admin.id)).rejects.toThrow(ConflictError);
+  });
+
+  it('throws ConflictError when request is already rejected', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'workspace', status: 'rejected' });
+
+    await expect(svc.approve(req.id, admin.id)).rejects.toThrow(ConflictError);
+  });
+
   it('throws NotFoundError for an unknown request id', async () => {
-    const svc = makeService();
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
     await expect(svc.approve(9999999, 1)).rejects.toThrow(NotFoundError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// approve — claude request (no provisioning; Sprint 005 TODO)
+// ---------------------------------------------------------------------------
+
+describe('ProvisioningRequestService.approve — claude request', () => {
+  it('sets status=approved without calling WorkspaceProvisioningService', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    // Give the user an active workspace account so a claude request is valid
+    await makeExternalAccount(user, { type: 'workspace', status: 'active' });
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+
+    const updated = await svc.approve(req.id, admin.id);
+
+    expect(updated.status).toBe('approved');
+    expect(updated.decided_by).toBe(admin.id);
+    expect(updated.decided_at).not.toBeNull();
+
+    // No Google API call for claude requests
+    expect(fakeClient.calls.createUser).toHaveLength(0);
+  });
+
+  it('records an approve_provisioning_request audit event for claude', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    await makeExternalAccount(user, { type: 'workspace', status: 'active' });
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+    await svc.approve(req.id, admin.id);
+
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'approve_provisioning_request', target_entity_id: String(req.id) },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].actor_user_id).toBe(admin.id);
   });
 });
 
@@ -330,7 +490,7 @@ describe('ProvisioningRequestService.reject', () => {
   it('sets status=rejected, decided_by, decided_at', async () => {
     const user = await makeUser();
     const admin = await makeUser();
-    const svc = makeService();
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
 
     const req = await makeProvisioningRequest(user, { requested_type: 'workspace' });
 
@@ -345,7 +505,7 @@ describe('ProvisioningRequestService.reject', () => {
   it('records a reject_provisioning_request audit event', async () => {
     const user = await makeUser();
     const admin = await makeUser();
-    const svc = makeService();
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
 
     const req = await makeProvisioningRequest(user, { requested_type: 'workspace' });
 
@@ -359,8 +519,19 @@ describe('ProvisioningRequestService.reject', () => {
     expect(events[0].target_user_id).toBe(user.id);
   });
 
+  it('does not call WorkspaceProvisioningService on reject', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'workspace' });
+    await svc.reject(req.id, admin.id);
+
+    expect(fakeClient.calls.createUser).toHaveLength(0);
+  });
+
   it('throws NotFoundError for an unknown request id', async () => {
-    const svc = makeService();
+    const svc = makeService(undefined, makeWorkspaceProvisioningService(fakeClient));
     await expect(svc.reject(9999999, 1)).rejects.toThrow(NotFoundError);
   });
 });
