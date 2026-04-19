@@ -21,6 +21,7 @@ import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
 import UsersPanel from './pages/admin/UsersPanel';
 import ProvisioningRequests from './pages/admin/ProvisioningRequests';
+import Cohorts from './pages/admin/Cohorts';
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ function App() {
                 <Route path="/admin/scheduler" element={<ScheduledJobsPanel />} />
                 <Route path="/admin/import-export" element={<ImportExport />} />
                 <Route path="/admin/provisioning-requests" element={<ProvisioningRequests />} />
+                <Route path="/admin/cohorts" element={<Cohorts />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />
