@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { prettifyName } from './utils/prettifyName';
 
@@ -326,11 +326,92 @@ function SortableTh({ col, activeCol, dir, onSort, children }: SortableThProps) 
 }
 
 // ---------------------------------------------------------------------------
+// Three-dot row actions menu
+// ---------------------------------------------------------------------------
+
+interface RowMenuProps {
+  user: AdminUser;
+  isOwnRow: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onImpersonate: () => void;
+}
+
+function RowMenu({
+  isOwnRow,
+  isOpen,
+  onToggle,
+  onClose,
+  onEdit,
+  onDelete,
+  onImpersonate,
+}: RowMenuProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isOpen, onClose]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={onToggle}
+        style={dotMenuButtonStyle}
+        aria-label="Row actions"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+      >
+        ⋮
+      </button>
+      {isOpen && (
+        <div style={rowMenuStyle} role="menu">
+          <button
+            role="menuitem"
+            disabled={isOwnRow}
+            onClick={() => { onClose(); onEdit(); }}
+            style={rowMenuItemStyle(isOwnRow)}
+          >
+            Edit
+          </button>
+          <button
+            role="menuitem"
+            disabled={isOwnRow}
+            onClick={() => { onClose(); onDelete(); }}
+            style={rowMenuItemStyle(isOwnRow)}
+          >
+            Delete
+          </button>
+          <button
+            role="menuitem"
+            disabled={isOwnRow}
+            onClick={() => { onClose(); onImpersonate(); }}
+            style={rowMenuItemStyle(isOwnRow)}
+          >
+            Impersonate
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
 export default function UsersPanel() {
   const { user: currentUser } = useAuth();
+  const navigate = useNavigate();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [cohorts, setCohorts] = useState<CohortOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -343,6 +424,12 @@ export default function UsersPanel() {
   const [activeFilter, setActiveFilter] = useState<FilterOption>({ type: 'all' });
   const [sortCol, setSortCol] = useState<SortCol>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  // Selection + bulk action state
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkError, setBulkError] = useState('');
 
   useEffect(() => {
     fetchUsers();
@@ -411,6 +498,43 @@ export default function UsersPanel() {
     }
   }
 
+  async function handleRowDelete(user: AdminUser) {
+    if (!window.confirm(`Delete user "${prettifyName(user)}"?`)) return;
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+      }
+      // Remove from local state
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(user.id);
+        return next;
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete user');
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (!window.confirm(`Delete ${selected.size} user(s)?`)) return;
+    setBulkDeleting(true);
+    setBulkError('');
+    const ids = [...selected];
+    const results = await Promise.allSettled(
+      ids.map((id) => fetch(`/api/admin/users/${id}`, { method: 'DELETE' })),
+    );
+    const failures = results.filter((r) => r.status === 'rejected');
+    if (failures.length > 0) {
+      setBulkError(`${failures.length} deletion(s) failed.`);
+    }
+    await fetchUsers();
+    setSelected(new Set());
+    setBulkDeleting(false);
+  }
+
   function getProviders(user: AdminUser): string[] {
     const set = new Set<string>();
     if (user.providers) {
@@ -437,9 +561,90 @@ export default function UsersPanel() {
   const filtered = applySearch(filterUsers(users, activeFilter), search);
   const visible = sortUsers(filtered, sortCol, sortDir);
 
+  // Selectable rows: non-own rows
+  const selectableIds = visible
+    .filter((u) => u.id !== currentUser?.id)
+    .map((u) => u.id);
+
+  const allVisibleSelected =
+    selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
+  const someSelected = selectableIds.some((id) => selected.has(id));
+
+  function toggleAll() {
+    if (allVisibleSelected) {
+      // Deselect all visible
+      setSelected((prev) => {
+        const next = new Set(prev);
+        selectableIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      // Select all visible
+      setSelected((prev) => {
+        const next = new Set(prev);
+        selectableIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  }
+
+  function toggleRow(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // Count only selected rows that are still visible
+  const visibleSelectedCount = visible.filter((u) => selected.has(u.id)).length;
+
   return (
     <div>
       <h2 style={{ margin: '0 0 16px', fontSize: 20 }}>Users</h2>
+
+      {/* Bulk error banner */}
+      {bulkError && (
+        <div role="alert" style={errorBannerStyle}>
+          {bulkError}
+          <button
+            onClick={() => setBulkError('')}
+            style={{ marginLeft: 12, background: 'none', border: 'none', cursor: 'pointer', color: '#7f1d1d', fontWeight: 700 }}
+            aria-label="Dismiss error"
+          >
+            x
+          </button>
+        </div>
+      )}
+
+      {/* Bulk-action toolbar — visible when ≥1 row selected */}
+      {visibleSelectedCount > 0 && (
+        <div style={bulkToolbarStyle} role="toolbar" aria-label="Bulk actions">
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+            {visibleSelectedCount} selected
+          </span>
+          <span style={{ color: '#cbd5e1', margin: '0 8px' }}>—</span>
+          <button
+            style={bulkButtonStyle('secondary')}
+            onClick={() => {/* stub: bulk edit coming later */}}
+            aria-label="Bulk edit"
+          >
+            Edit
+          </button>
+          <button
+            style={bulkButtonStyle('danger')}
+            disabled={bulkDeleting}
+            onClick={() => void handleBulkDelete()}
+            aria-label="Bulk delete"
+          >
+            {bulkDeleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      )}
 
       {/* Toolbar: search + filter */}
       <div style={toolbarStyle}>
@@ -461,6 +666,20 @@ export default function UsersPanel() {
       <table style={tableStyle}>
         <thead>
           <tr>
+            {/* Checkbox column */}
+            <th style={{ ...thStyle, width: 36, textAlign: 'center' }}>
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someSelected && !allVisibleSelected;
+                }}
+                onChange={toggleAll}
+                disabled={selectableIds.length === 0}
+                aria-label="Select all visible rows"
+                style={{ cursor: selectableIds.length === 0 ? 'default' : 'pointer', width: 15, height: 15 }}
+              />
+            </th>
             <SortableTh col="name" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Name
             </SortableTh>
@@ -477,15 +696,28 @@ export default function UsersPanel() {
             <SortableTh col="joined" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Joined
             </SortableTh>
-            <th style={thStyle}>Actions</th>
+            <th style={{ ...thStyle, textAlign: 'center', width: 48 }}>⋮</th>
           </tr>
         </thead>
         <tbody>
           {visible.map((user) => {
             const providers = getProviders(user);
             const isOwnRow = currentUser?.id === user.id;
+            const isChecked = selected.has(user.id);
             return (
-              <tr key={user.id}>
+              <tr key={user.id} style={isChecked ? { background: '#eff6ff' } : undefined}>
+                {/* Checkbox cell */}
+                <td style={{ ...tdStyle, width: 36, textAlign: 'center' }}>
+                  {!isOwnRow && (
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleRow(user.id)}
+                      aria-label={`Select ${prettifyName(user)}`}
+                      style={{ cursor: 'pointer', width: 15, height: 15 }}
+                    />
+                  )}
+                </td>
                 <td style={tdStyle}>
                   <Link to={`/admin/users/${user.id}`} style={nameLinkStyle}>
                     {prettifyName(user)}
@@ -523,16 +755,19 @@ export default function UsersPanel() {
                 <td style={tdStyle}>
                   {new Date(user.createdAt).toLocaleDateString()}
                 </td>
-                <td style={tdStyle}>
-                  {!isOwnRow && (
-                    <button
-                      style={impersonateButtonStyle}
-                      disabled={impersonating === user.id}
-                      onClick={() => handleImpersonate(user)}
-                    >
-                      {impersonating === user.id ? 'Working...' : 'Impersonate'}
-                    </button>
-                  )}
+                <td style={{ ...tdStyle, textAlign: 'center', width: 48 }}>
+                  <RowMenu
+                    user={user}
+                    isOwnRow={isOwnRow}
+                    isOpen={openMenuId === user.id}
+                    onToggle={() =>
+                      setOpenMenuId((prev) => (prev === user.id ? null : user.id))
+                    }
+                    onClose={() => setOpenMenuId(null)}
+                    onEdit={() => navigate(`/admin/users/${user.id}`)}
+                    onDelete={() => void handleRowDelete(user)}
+                    onImpersonate={() => void handleImpersonate(user)}
+                  />
                 </td>
               </tr>
             );
@@ -559,6 +794,42 @@ const toolbarStyle: React.CSSProperties = {
   gap: 8,
   marginBottom: 16,
 };
+
+const bulkToolbarStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '8px 12px',
+  marginBottom: 8,
+  background: '#f0f9ff',
+  border: '1px solid #bae6fd',
+  borderRadius: 6,
+};
+
+const errorBannerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  padding: '8px 12px',
+  marginBottom: 8,
+  background: '#fef2f2',
+  border: '1px solid #fca5a5',
+  borderRadius: 6,
+  color: '#7f1d1d',
+  fontSize: 13,
+};
+
+function bulkButtonStyle(variant: 'secondary' | 'danger'): React.CSSProperties {
+  return {
+    padding: '4px 12px',
+    fontSize: 12,
+    fontWeight: 600,
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    background: variant === 'danger' ? '#dc2626' : '#e2e8f0',
+    color: variant === 'danger' ? '#fff' : '#1e293b',
+  };
+}
 
 const searchInputStyle: React.CSSProperties = {
   flex: '1 1 auto',
@@ -661,16 +932,45 @@ const emailLinkStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
-const impersonateButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: '#f59e0b',
-  color: '#fff',
+const dotMenuButtonStyle: React.CSSProperties = {
+  background: 'none',
   border: 'none',
-  borderRadius: 4,
   cursor: 'pointer',
-  fontWeight: 600,
+  fontSize: 18,
+  color: '#64748b',
+  padding: '2px 6px',
+  borderRadius: 4,
+  lineHeight: 1,
 };
+
+const rowMenuStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '100%',
+  right: 0,
+  marginTop: 2,
+  background: '#fff',
+  border: '1px solid #e2e8f0',
+  borderRadius: 8,
+  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+  zIndex: 100,
+  minWidth: 140,
+  padding: '4px 0',
+};
+
+function rowMenuItemStyle(disabled: boolean): React.CSSProperties {
+  return {
+    display: 'block',
+    width: '100%',
+    textAlign: 'left',
+    padding: '7px 16px',
+    fontSize: 13,
+    background: 'transparent',
+    color: disabled ? '#cbd5e1' : '#1e293b',
+    border: 'none',
+    cursor: disabled ? 'default' : 'pointer',
+    fontWeight: 400,
+  };
+}
 
 type NormalizedRole = 'admin' | 'staff' | 'student';
 

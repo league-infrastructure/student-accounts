@@ -1,7 +1,7 @@
 ---
 id: "007"
 title: "Add row checkboxes, bulk-delete toolbar, and three-dot actions menu to UsersPanel"
-status: todo
+status: done
 use-cases: [SUC-009-002, SUC-009-003]
 depends-on: ["003", "006"]
 github-issue: ""
@@ -24,28 +24,28 @@ Depends on T003 (DELETE endpoint) and T006 (base panel overhaul).
 
 ## Acceptance Criteria
 
-- [ ] Each non-own-row has a checkbox in the leftmost column. Own row has no
+- [x] Each non-own-row has a checkbox in the leftmost column. Own row has no
       checkbox.
-- [ ] Header checkbox toggles all visible (non-own) rows.
-- [ ] When ≥1 row is checked, a toolbar appears above the table:
+- [x] Header checkbox toggles all visible (non-own) rows.
+- [x] When ≥1 row is checked, a toolbar appears above the table:
       "N selected — [Edit] [Delete]".
-- [ ] Bulk Delete: confirmation dialog → parallel `DELETE /api/admin/users/:id`
+- [x] Bulk Delete: confirmation dialog → parallel `DELETE /api/admin/users/:id`
       for each selected user → per-row failures in an error banner; successful
       deletions removed from table; selected set cleared.
-- [ ] Bulk Edit: stub — clicking does nothing (no alert, no navigation). 
+- [x] Bulk Edit: stub — clicking does nothing (no alert, no navigation). 
       Future iteration.
-- [ ] Three-dot menu per row with items: Edit, Delete, Impersonate.
+- [x] Three-dot menu per row with items: Edit, Delete, Impersonate.
       - Own row: all three are disabled (grayed out, not hidden).
       - Edit: navigate to `/admin/users/:id`.
       - Delete: confirmation dialog → `DELETE /api/admin/users/:id` → row
         removed or error banner.
       - Impersonate: existing `POST /api/admin/users/:id/impersonate` flow.
-- [ ] Three-dot menu closes on outside click.
-- [ ] Three-dot menu uses the same dropdown pattern as the user-menu in
+- [x] Three-dot menu closes on outside click.
+- [x] Three-dot menu uses the same dropdown pattern as the user-menu in
       `AppLayout.tsx` — no new dropdown library introduced.
-- [ ] Separate "Impersonate" button column and "View" link column are removed.
+- [x] Separate "Impersonate" button column and "View" link column are removed.
       Both actions are now in the three-dot menu.
-- [ ] Actions column header is "⋮" (non-sortable).
+- [x] Actions column header is "⋮" (non-sortable).
 
 ## Implementation Plan
 
