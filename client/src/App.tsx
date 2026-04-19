@@ -20,6 +20,7 @@ import SessionViewer from './pages/admin/SessionViewer';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
 import UsersPanel from './pages/admin/UsersPanel';
+import ProvisioningRequests from './pages/admin/ProvisioningRequests';
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ function App() {
                 <Route path="/admin/sessions" element={<SessionViewer />} />
                 <Route path="/admin/scheduler" element={<ScheduledJobsPanel />} />
                 <Route path="/admin/import-export" element={<ImportExport />} />
+                <Route path="/admin/provisioning-requests" element={<ProvisioningRequests />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />
