@@ -1,7 +1,7 @@
 ---
 id: "004"
 title: "ClaudeProvisioningService"
-status: todo
+status: done
 use-cases: [SUC-001]
 depends-on: ["001", "002"]
 ---
@@ -23,14 +23,14 @@ Register the service in `ServiceRegistry`.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/claude-provisioning.service.ts` created.
-- [ ] `provision(userId, actorId, tx)` validates active workspace account exists; throws UnprocessableError (422) if not.
-- [ ] `provision` validates no active/pending claude ExternalAccount exists; throws ConflictError (409) if already provisioned.
-- [ ] `provision` calls `ClaudeTeamAdminClient.inviteMember` with the workspace email (not the primary email).
-- [ ] ExternalAccount created: type=claude, status=active, external_id=member id from API.
-- [ ] AuditEvent recorded inside tx: action=provision_claude, actor_user_id=actorId, target_user_id=userId.
-- [ ] `ServiceRegistry` updated to instantiate and expose `claudeProvisioning`.
-- [ ] Integration tests pass (see Testing Plan).
+- [x] `server/src/services/claude-provisioning.service.ts` created.
+- [x] `provision(userId, actorId, tx)` validates active workspace account exists; throws UnprocessableError (422) if not.
+- [x] `provision` validates no active/pending claude ExternalAccount exists; throws ConflictError (409) if already provisioned.
+- [x] `provision` calls `ClaudeTeamAdminClient.inviteMember` with the workspace email (not the primary email).
+- [x] ExternalAccount created: type=claude, status=active, external_id=member id from API.
+- [x] AuditEvent recorded inside tx: action=provision_claude, actor_user_id=actorId, target_user_id=userId.
+- [x] `ServiceRegistry` updated to instantiate and expose `claudeProvisioning`.
+- [x] Integration tests pass (see Testing Plan).
 
 ## Implementation Plan
 
