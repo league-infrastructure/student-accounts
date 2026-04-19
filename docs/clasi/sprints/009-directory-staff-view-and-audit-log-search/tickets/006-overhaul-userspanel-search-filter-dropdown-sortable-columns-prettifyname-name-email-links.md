@@ -1,11 +1,15 @@
 ---
-id: "006"
-title: "Overhaul UsersPanel: search, filter dropdown, sortable columns, prettifyName, name/email links"
-status: todo
-use-cases: [SUC-009-001, SUC-009-004]
-depends-on: ["001"]
-github-issue: ""
-todo: ""
+id: '006'
+title: 'Overhaul UsersPanel: search, filter dropdown, sortable columns, prettifyName,
+  name/email links'
+status: done
+use-cases:
+- SUC-009-001
+- SUC-009-004
+depends-on:
+- '001'
+github-issue: ''
+todo: ''
 ---
 
 # Overhaul UsersPanel: search, filter dropdown, sortable columns, prettifyName, name/email links
@@ -22,33 +26,33 @@ menu are in T007.
 
 ## Acceptance Criteria
 
-- [ ] Role tabs are removed. A single Filter dropdown replaces them with
+- [x] Role tabs are removed. A single Filter dropdown replaces them with
       three sections: Role (All, Admin & Staff, Students), Accounts (Google,
       League, Pike13), Cohort (one entry per cohort with `google_ou_path`).
-- [ ] Section labels in the dropdown are visual headers (non-selectable).
-- [ ] Dropdown button label reflects the active selection (e.g., "Filter:
+- [x] Section labels in the dropdown are visual headers (non-selectable).
+- [x] Dropdown button label reflects the active selection (e.g., "Filter:
       Spring 2025" or "Filter: All").
-- [ ] Search box appears to the left of the Filter dropdown. Substring match
+- [x] Search box appears to the left of the Filter dropdown. Substring match
       on `name + email` within the active filter.
-- [ ] Cohorts in the dropdown are fetched from `GET /api/admin/cohorts` and
+- [x] Cohorts in the dropdown are fetched from `GET /api/admin/cohorts` and
       filtered to only those with `google_ou_path` set.
-- [ ] Columns Name, Email, Cohort, Admin (checkbox column), Joined are
+- [x] Columns Name, Email, Cohort, Admin (checkbox column), Joined are
       sortable. Clicking a sortable header sorts by that column. Clicking
       the active header toggles direction. Active header shows ▲/▼.
-- [ ] Default sort: Name ascending.
-- [ ] Name cell renders `prettifyName(user)` as a `<Link to="/admin/users/:id">`.
-- [ ] Email cell renders as a `<Link to="/admin/users/:id">`.
-- [ ] `prettifyName` is a pure function in
+- [x] Default sort: Name ascending.
+- [x] Name cell renders `prettifyName(user)` as a `<Link to="/admin/users/:id">`.
+- [x] Email cell renders as a `<Link to="/admin/users/:id">`.
+- [x] `prettifyName` is a pure function in
       `client/src/pages/admin/utils/prettifyName.ts`. For `@jointheleague.org`
       emails with `first.last` local parts, returns `TitleCase First TitleCase Last`.
       Otherwise returns `displayName` or the email local part.
-- [ ] Admin & Staff filter returns users with `role=admin` OR `role=staff`.
-- [ ] Accounts > Google: users with at least one Login with `provider=google`.
-- [ ] Accounts > League: users with `externalAccountTypes` including `workspace`.
-- [ ] Accounts > Pike13: users with `externalAccountTypes` including `pike13`.
-- [ ] Cohort filter: students in that cohort.
-- [ ] Empty-result message: "No users match this filter."
-- [ ] Frontend unit tests for `prettifyName` covering: `@jointheleague.org`
+- [x] Admin & Staff filter returns users with `role=admin` OR `role=staff`.
+- [x] Accounts > Google: users with at least one Login with `provider=google`.
+- [x] Accounts > League: users with `externalAccountTypes` including `workspace`.
+- [x] Accounts > Pike13: users with `externalAccountTypes` including `pike13`.
+- [x] Cohort filter: students in that cohort.
+- [x] Empty-result message: "No users match this filter."
+- [x] Frontend unit tests for `prettifyName` covering: `@jointheleague.org`
       first.last → TitleCase; non-matching email → fallback; null displayName →
       email local part.
 
