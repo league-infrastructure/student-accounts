@@ -15,5 +15,15 @@ declare module 'express-session' {
   interface SessionData {
     userId: number;
     role: UserRole;
+    /**
+     * Set to true when the OAuth flow was initiated in link-mode (?link=1).
+     * Cleared after the callback completes (success or conflict).
+     */
+    link?: boolean;
+    /**
+     * The URL to redirect to after a successful link-mode callback.
+     * Currently always '/account'. Cleared after the callback completes.
+     */
+    linkReturnTo?: string;
   }
 }
