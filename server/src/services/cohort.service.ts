@@ -137,4 +137,67 @@ export class CohortService {
   async findByName(name: string): Promise<Cohort | null> {
     return CohortRepository.findByName(this.prisma, name);
   }
+
+  /**
+   * Upsert a Cohort keyed on google_ou_path.
+   *
+   * - If no cohort with this google_ou_path exists, creates a new row with the
+   *   given name and ouPath.
+   * - If a cohort exists and the name matches, returns it unchanged.
+   * - If a cohort exists but has a different name, updates the name field.
+   *
+   * Does NOT call createOU or any Google Admin SDK method — the OU already
+   * exists and we are importing, not creating.
+   *
+   * @param ouPath  - The Google Workspace OU path (e.g. "/Students/Spring2025").
+   * @param name    - The display name for the cohort (e.g. "Spring2025").
+   * @param actorId - The user performing this action; null for system.
+   * @returns The upserted Cohort row.
+   */
+  async upsertByOUPath(
+    ouPath: string,
+    name: string,
+    actorId: number | null = null,
+  ): Promise<Cohort> {
+    const existing = await CohortRepository.findByOUPath(this.prisma, ouPath);
+
+    if (existing) {
+      if (existing.name === name) {
+        return existing;
+      }
+      // Name changed — update it
+      logger.info(
+        { ouPath, oldName: existing.name, newName: name, actorId },
+        '[cohort-service] upsertByOUPath: updating cohort name',
+      );
+      return this.prisma.$transaction(async (tx: any) => {
+        const updated = await CohortRepository.update(tx, existing.id, { name });
+        await this.audit.record(tx, {
+          actor_user_id: actorId,
+          action: 'update_cohort',
+          target_entity_type: 'Cohort',
+          target_entity_id: String(existing.id),
+          details: { google_ou_path: ouPath, old_name: existing.name, new_name: name },
+        });
+        return updated;
+      });
+    }
+
+    // Not found — create
+    logger.info(
+      { ouPath, name, actorId },
+      '[cohort-service] upsertByOUPath: creating new cohort',
+    );
+    return this.prisma.$transaction(async (tx: any) => {
+      const cohort = await CohortRepository.create(tx, { name, google_ou_path: ouPath });
+      await this.audit.record(tx, {
+        actor_user_id: actorId,
+        action: 'create_cohort',
+        target_entity_type: 'Cohort',
+        target_entity_id: String(cohort.id),
+        details: { google_ou_path: ouPath },
+      });
+      return cohort;
+    });
+  }
 }

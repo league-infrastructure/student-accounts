@@ -13,7 +13,7 @@ export type CreateUserInput = {
   display_name: string;
   primary_email: string;
   role?: 'student' | 'staff' | 'admin';
-  created_via: 'social_login' | 'pike13_sync' | 'admin_created';
+  created_via: 'social_login' | 'pike13_sync' | 'admin_created' | 'workspace_sync';
   cohort_id?: number | null;
 };
 
