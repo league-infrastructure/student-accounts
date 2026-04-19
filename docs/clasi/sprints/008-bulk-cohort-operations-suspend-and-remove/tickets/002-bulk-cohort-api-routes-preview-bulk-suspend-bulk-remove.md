@@ -1,7 +1,7 @@
 ---
 id: "002"
 title: "Bulk cohort API routes — preview, bulk-suspend, bulk-remove"
-status: todo
+status: done
 use-cases: [SUC-008-002, SUC-008-003, SUC-008-006]
 depends-on: ["001"]
 ---
@@ -16,21 +16,21 @@ Routes are thin adapters: validate input, call the service, format the response.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/admin/cohorts/:id/bulk-preview?accountType=workspace|claude&operation=suspend|remove`
+- [x] `GET /api/admin/cohorts/:id/bulk-preview?accountType=workspace|claude&operation=suspend|remove`
       returns `{ eligibleCount: number }` (200).
-- [ ] `POST /api/admin/cohorts/:id/bulk-suspend` with body `{ accountType: 'workspace' | 'claude' }`
+- [x] `POST /api/admin/cohorts/:id/bulk-suspend` with body `{ accountType: 'workspace' | 'claude' }`
       calls `BulkCohortService.suspendCohort` and returns the result.
-- [ ] `POST /api/admin/cohorts/:id/bulk-remove` with body `{ accountType: 'workspace' | 'claude' }`
+- [x] `POST /api/admin/cohorts/:id/bulk-remove` with body `{ accountType: 'workspace' | 'claude' }`
       calls `BulkCohortService.removeCohort` and returns the result.
-- [ ] Returns 200 when all accounts succeeded (including zero eligible).
-- [ ] Returns 207 when at least one account failed and at least one succeeded.
-- [ ] Returns 400 for missing or invalid `accountType` or `operation`.
-- [ ] Returns 404 when the cohort does not exist (service throws NotFoundError).
-- [ ] Returns 500 for unexpected errors (falls through to global errorHandler).
-- [ ] All three routes are reachable only by `requireAuth` + `requireRole('admin')`
+- [x] Returns 200 when all accounts succeeded (including zero eligible).
+- [x] Returns 207 when at least one account failed and at least one succeeded.
+- [x] Returns 400 for missing or invalid `accountType` or `operation`.
+- [x] Returns 404 when the cohort does not exist (service throws NotFoundError).
+- [x] Returns 500 for unexpected errors (falls through to global errorHandler).
+- [x] All three routes are reachable only by `requireAuth` + `requireRole('admin')`
       (enforced by `adminRouter` upstream — no additional guards in the handler).
-- [ ] `server/src/routes/admin/index.ts` imports and mounts `adminBulkCohortRouter`.
-- [ ] Integration tests cover: happy path (all succeed), partial failure (207),
+- [x] `server/src/routes/admin/index.ts` imports and mounts `adminBulkCohortRouter`.
+- [x] Integration tests cover: happy path (all succeed), partial failure (207),
       invalid accountType (400), unknown cohort (404).
 
 ## Implementation Plan
