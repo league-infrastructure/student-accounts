@@ -1,7 +1,7 @@
 ---
 id: "002"
 title: "HaikuClient — Anthropic SDK wrapper for merge similarity evaluation"
-status: todo
+status: done
 use-cases: [SUC-007-001]
 depends-on: []
 github-issue: ""
@@ -27,17 +27,17 @@ var name against `config/dev/secrets.env.example` before coding.
 
 ## Acceptance Criteria
 
-- [ ] `@anthropic-ai/sdk` is added to `server/package.json` dependencies.
-- [ ] `server/src/services/merge/haiku.client.ts` exists and exports `HaikuClient`.
-- [ ] `HaikuClient` constructor accepts `apiKey: string`.
-- [ ] `HaikuClient.evaluate(userA, userB)` returns `{ confidence: number, rationale: string }`.
-- [ ] `confidence` is a float in the range `[0.0, 1.0]`.
-- [ ] `HaikuApiError` is thrown when the Anthropic SDK throws or returns a non-2xx status.
-- [ ] `HaikuParseError` is thrown when the response body cannot be parsed to
+- [x] `@anthropic-ai/sdk` is added to `server/package.json` dependencies.
+- [x] `server/src/services/merge/haiku.client.ts` exists and exports `HaikuClient`.
+- [x] `HaikuClient` constructor accepts `apiKey: string`.
+- [x] `HaikuClient.evaluate(userA, userB)` returns `{ confidence: number, rationale: string }`.
+- [x] `confidence` is a float in the range `[0.0, 1.0]`.
+- [x] `HaikuApiError` is thrown when the Anthropic SDK throws or returns a non-2xx status.
+- [x] `HaikuParseError` is thrown when the response body cannot be parsed to
       `{ confidence, rationale }`.
-- [ ] The comparison prompt includes both users' `display_name`, `primary_email`,
+- [x] The comparison prompt includes both users' `display_name`, `primary_email`,
       `pike13_id` (if present), `cohort_name` (if present), `created_via`, `created_at`.
-- [ ] Unit tests cover: successful evaluation, `HaikuApiError` path, `HaikuParseError` path
+- [x] Unit tests cover: successful evaluation, `HaikuApiError` path, `HaikuParseError` path
       (using mocked Anthropic SDK responses).
 
 ## Implementation Plan
