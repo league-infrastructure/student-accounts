@@ -19,6 +19,7 @@ import { WorkspaceProvisioningService } from './workspace-provisioning.service';
 import { ClaudeProvisioningService } from './claude-provisioning.service';
 import { ExternalAccountLifecycleService } from './external-account-lifecycle.service';
 import { WorkspaceSyncService } from './workspace-sync.service';
+import { BulkCohortService } from './bulk-cohort.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -58,6 +59,7 @@ export class ServiceRegistry {
   readonly googleClient: GoogleWorkspaceAdminClient;
   readonly pike13Sync: Pike13SyncService;
   readonly workspaceSync: WorkspaceSyncService;
+  readonly bulkCohort: BulkCohortService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -158,6 +160,15 @@ export class ServiceRegistry {
       ExternalAccountRepository,
       CohortRepository,
       this.audit,
+    );
+
+    // BulkCohortService — Sprint 008 T001.
+    this.bulkCohort = new BulkCohortService(
+      defaultPrisma,
+      this.externalAccountLifecycle,
+      UserRepository,
+      ExternalAccountRepository,
+      CohortRepository,
     );
   }
 

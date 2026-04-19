@@ -1,7 +1,7 @@
 ---
 id: "001"
 title: "BulkCohortService — iterate cohort members and dispatch lifecycle operations"
-status: todo
+status: done
 use-cases: [SUC-008-002, SUC-008-003, SUC-008-004]
 depends-on: []
 ---
@@ -18,24 +18,24 @@ external API knowledge; it delegates entirely to `ExternalAccountLifecycleServic
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/bulk-cohort.service.ts` exists and exports `BulkCohortService`.
-- [ ] Constructor accepts `(prisma, externalAccountLifecycle, userRepository, externalAccountRepository)`.
-- [ ] `suspendCohort(cohortId, accountType, actorId)` loads all active users in
+- [x] `server/src/services/bulk-cohort.service.ts` exists and exports `BulkCohortService`.
+- [x] Constructor accepts `(prisma, externalAccountLifecycle, userRepository, externalAccountRepository)`.
+- [x] `suspendCohort(cohortId, accountType, actorId)` loads all active users in
       the cohort (is_active=true, cohort_id=cohortId), finds active ExternalAccounts
       of `accountType` per user, and calls `externalAccountLifecycle.suspend(id, actorId, tx)`
       inside an individual `prisma.$transaction` per account.
-- [ ] `removeCohort(cohortId, accountType, actorId)` targets accounts with
+- [x] `removeCohort(cohortId, accountType, actorId)` targets accounts with
       status in ['active', 'suspended'] and calls `.remove(id, actorId, tx)`.
-- [ ] `previewCount(cohortId, accountType, operation)` returns the count of
+- [x] `previewCount(cohortId, accountType, operation)` returns the count of
       eligible accounts without mutating any record.
-- [ ] Per-account failures are caught; the loop continues; failures are
+- [x] Per-account failures are caught; the loop continues; failures are
       collected in the result. A single account failure does not abort the batch.
-- [ ] Return type is `BulkOperationResult`:
+- [x] Return type is `BulkOperationResult`:
       `{ succeeded: number[]; failed: { accountId: number; userId: number; userName: string; error: string }[] }`.
-- [ ] Throws `NotFoundError` if `cohortId` does not exist.
-- [ ] `ServiceRegistry` gains `readonly bulkCohort: BulkCohortService` instantiated
+- [x] Throws `NotFoundError` if `cohortId` does not exist.
+- [x] `ServiceRegistry` gains `readonly bulkCohort: BulkCohortService` instantiated
       after `externalAccountLifecycle`.
-- [ ] Unit tests cover: all succeed, all fail, partial failure (middle account
+- [x] Unit tests cover: all succeed, all fail, partial failure (middle account
       throws), zero eligible accounts, cohort not found.
 
 ## Implementation Plan
