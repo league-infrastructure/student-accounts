@@ -1,11 +1,13 @@
 ---
-id: "002"
-title: "Schema migration: workspace_sync CreatedVia enum value"
-status: todo
-use-cases: [SUC-002, SUC-003]
+id: '002'
+title: 'Schema migration: workspace_sync CreatedVia enum value'
+status: done
+use-cases:
+- SUC-002
+- SUC-003
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 
 # Schema migration: workspace_sync CreatedVia enum value
@@ -22,12 +24,12 @@ Run `prisma db push` in dev (dev DB is disposable) rather than `prisma migrate d
 
 ## Acceptance Criteria
 
-- [ ] `CreatedVia` enum in `schema.prisma` includes `workspace_sync`.
-- [ ] `npx prisma generate` succeeds.
-- [ ] `npx prisma db push` (dev) or `npx prisma migrate dev` applies the change
+- [x] `CreatedVia` enum in `schema.prisma` includes `workspace_sync`.
+- [x] `npx prisma generate` succeeds.
+- [x] `npx prisma db push` (dev) or `npx prisma migrate dev` applies the change
   without errors on both SQLite and PostgreSQL.
-- [ ] TypeScript compiles cleanly with the new enum value in scope.
-- [ ] Existing tests continue to pass (no regressions).
+- [x] TypeScript compiles cleanly with the new enum value in scope.
+- [x] Existing tests continue to pass (no regressions).
 
 ## Implementation Plan
 

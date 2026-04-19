@@ -65,6 +65,7 @@ enum CreatedVia {
   social_login
   pike13_sync
   admin_created
+  workspace_sync
 }
 
 enum ExternalAccountType {
