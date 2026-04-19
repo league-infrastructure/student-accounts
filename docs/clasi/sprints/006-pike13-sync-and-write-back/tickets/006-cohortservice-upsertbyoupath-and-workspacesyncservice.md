@@ -1,11 +1,17 @@
 ---
-id: "006"
-title: "CohortService.upsertByOUPath and WorkspaceSyncService"
-status: todo
-use-cases: [SUC-001, SUC-002, SUC-003, SUC-004]
-depends-on: ["002", "005"]
-github-issue: ""
-todo: ""
+id: '006'
+title: CohortService.upsertByOUPath and WorkspaceSyncService
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+depends-on:
+- '002'
+- '005'
+github-issue: ''
+todo: ''
 ---
 
 # CohortService.upsertByOUPath and WorkspaceSyncService
@@ -26,30 +32,30 @@ Two related pieces of work that are best implemented together:
 
 ### CohortService.upsertByOUPath
 
-- [ ] `CohortService.upsertByOUPath(ouPath: string, name: string): Promise<Cohort>`
+- [x] `CohortService.upsertByOUPath(ouPath: string, name: string): Promise<Cohort>`
   added to `server/src/services/cohort.service.ts`.
-- [ ] Uses Prisma `upsert` keyed on `google_ou_path`; creates if not found,
+- [x] Uses Prisma `upsert` keyed on `google_ou_path`; creates if not found,
   updates `name` if changed.
-- [ ] Does not call `createOU` or any Google Admin SDK method.
-- [ ] Returns the upserted Cohort row.
-- [ ] Unit test: upsert creates new row; upsert updates name on existing row.
+- [x] Does not call `createOU` or any Google Admin SDK method.
+- [x] Returns the upserted Cohort row.
+- [x] Unit test: upsert creates new row; upsert updates name on existing row.
 
 ### WorkspaceSyncService
 
-- [ ] `server/src/services/workspace-sync.service.ts` exists.
-- [ ] `syncCohorts()`:
+- [x] `server/src/services/workspace-sync.service.ts` exists.
+- [x] `syncCohorts()`:
   - Calls `GoogleWorkspaceAdminClient.listOUs(studentRoot)`.
   - For each child OU: calls `CohortService.upsertByOUPath`.
   - Returns `WorkspaceSyncReport` with cohort counts.
   - AuditEvent: action=sync_cohorts_completed.
-- [ ] `syncStaff()`:
+- [x] `syncStaff()`:
   - Skips (returns informational message) if `GOOGLE_STAFF_OU_PATH` is unset.
   - Calls `listUsersInOU(staffOuPath)`.
   - For each user: upserts User with role=staff; never downgrades admin.
   - created_via=workspace_sync for new rows.
   - Returns `WorkspaceSyncReport` with staff counts.
   - AuditEvent: action=sync_staff_completed.
-- [ ] `syncStudents()`:
+- [x] `syncStudents()`:
   - Calls `listUsersInOU(studentRoot)` for root-level students.
   - For each Cohort with non-null `google_ou_path`: calls `listUsersInOU`.
   - Upserts Users; role=student; cohort_id from OU; skips admins/staff.
@@ -57,13 +63,13 @@ Two related pieces of work that are best implemented together:
     status=removed, records action=workspace_sync_flagged AuditEvent.
   - Returns `WorkspaceSyncReport` with student counts + `flaggedAccounts[]`.
   - AuditEvent: action=sync_students_completed.
-- [ ] `syncAll()`:
+- [x] `syncAll()`:
   - Runs syncCohorts → syncStaff → syncStudents in sequence.
   - Each sub-operation failure is recorded; remaining operations still run.
   - Returns combined `WorkspaceSyncReport`.
   - AuditEvent: action=sync_all_completed.
-- [ ] `WorkspaceSyncService` is registered in `ServiceRegistry`.
-- [ ] Integration tests cover all four methods using `FakeGoogleWorkspaceAdminClient`
+- [x] `WorkspaceSyncService` is registered in `ServiceRegistry`.
+- [x] Integration tests cover all four methods using `FakeGoogleWorkspaceAdminClient`
   and a test database.
 
 ## Implementation Plan

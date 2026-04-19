@@ -92,6 +92,16 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
    */
   readonly ouSeed: Map<string, WorkspaceOU[]> = new Map();
 
+  /**
+   * Seeded user data for listUsersInOU: maps ouPath → array of WorkspaceUser.
+   * Populate this before calling listUsersInOU in tests.
+   *
+   *   fake.seedUsers('/Students/Spring2025', [{ id: 'u1', primaryEmail: 'a@s.com', orgUnitPath: '/Students/Spring2025' }]);
+   *
+   * When an ouPath has no seeded entry and no returnOverrides, returns [].
+   */
+  readonly userSeed: Map<string, WorkspaceUser[]> = new Map();
+
   /** Recorded call arguments, indexed by method name. */
   readonly calls: FakeCallRecords = {
     getUserOU: [],
@@ -138,6 +148,15 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
     this.ouSeed.set(parentPath, ous);
   }
 
+  /**
+   * Seed user data for a given OU path.
+   * listUsersInOU will return these when called with that ouPath (unless
+   * a returnOverrides.listUsersInOU is set, which takes priority).
+   */
+  seedUsers(ouPath: string, users: WorkspaceUser[]): void {
+    this.userSeed.set(ouPath, users);
+  }
+
   reset(): void {
     this.calls.getUserOU = [];
     this.calls.listOUs = [];
@@ -149,6 +168,7 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
     this.returnOverrides = {};
     this.errorOverrides = {};
     this.ouSeed.clear();
+    this.userSeed.clear();
   }
 
   // ---------------------------------------------------------------------------
@@ -218,6 +238,9 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
     if (this.errorOverrides.listUsersInOU) {
       throw this.errorOverrides.listUsersInOU;
     }
-    return this.returnOverrides.listUsersInOU ?? [];
+    if (this.returnOverrides.listUsersInOU !== undefined) {
+      return this.returnOverrides.listUsersInOU;
+    }
+    return this.userSeed.get(ouPath) ?? [];
   }
 }
