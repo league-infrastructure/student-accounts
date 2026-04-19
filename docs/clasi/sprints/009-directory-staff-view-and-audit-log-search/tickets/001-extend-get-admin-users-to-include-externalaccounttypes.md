@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Extend GET /admin/users to include externalAccountTypes
-status: todo
+status: done
 use-cases: [SUC-009-001, SUC-009-004]
 depends-on: []
 github-issue: ''
@@ -21,13 +21,13 @@ This is an additive, non-breaking change.
 
 ## Acceptance Criteria
 
-- [ ] `GET /admin/users` response includes `externalAccountTypes` on every user
+- [x] `GET /admin/users` response includes `externalAccountTypes` on every user
       object (e.g., `["workspace", "pike13"]`).
-- [ ] `externalAccountTypes` lists distinct `type` values from the user's
+- [x] `externalAccountTypes` lists distinct `type` values from the user's
       `external_accounts` rows regardless of status.
-- [ ] Existing fields (`id`, `email`, `displayName`, `role`, `providers`,
+- [x] Existing fields (`id`, `email`, `displayName`, `role`, `providers`,
       `cohort`, `createdAt`) are unchanged.
-- [ ] Server test: GET /admin/users returns correct externalAccountTypes for a
+- [x] Server test: GET /admin/users returns correct externalAccountTypes for a
       user with workspace + pike13 accounts, and an empty array for a user with
       none.
 
