@@ -59,18 +59,11 @@ let _staffOuPathDefaultLogged = false;
  * Read GOOGLE_STAFF_OU_PATH from process.env, falling back to the League
  * default. Logs at INFO (once per process) when the default is in use.
  */
-export function resolveStaffOuPath(): string {
+export function resolveStaffOuPath(): string | null {
   const value = process.env.GOOGLE_STAFF_OU_PATH;
-  if (!value) {
-    if (!_staffOuPathDefaultLogged) {
-      logger.info(
-        { default: DEFAULT_STAFF_OU_PATH },
-        '[sign-in.handler] GOOGLE_STAFF_OU_PATH is not set — ' +
-          `using default "${DEFAULT_STAFF_OU_PATH}".`,
-      );
-      _staffOuPathDefaultLogged = true;
-    }
-    return DEFAULT_STAFF_OU_PATH;
+  if (!value || value.trim() === '') {
+    // Unset → skip OU lookup entirely. ADMIN_EMAILS still elevates to admin.
+    return null;
   }
   return value;
 }
@@ -243,7 +236,14 @@ export async function signInHandler(
     const adminDirClient = options?.adminDirClient;
     const staffOuPath = resolveStaffOuPath();
 
-    if (!adminDirClient) {
+    // GOOGLE_STAFF_OU_PATH unset → skip the OU lookup entirely.
+    // Role stays student (or gets elevated to admin below by ADMIN_EMAILS).
+    if (staffOuPath === null) {
+      logger.info(
+        { email: providerEmail },
+        '[sign-in.handler] GOOGLE_STAFF_OU_PATH unset — skipping OU lookup.',
+      );
+    } else if (!adminDirClient) {
       // No client injected — this is a coding error (passport.config.ts always
       // injects one). Log at ERROR and deny the sign-in as a fail-secure measure.
       logger.error(
@@ -259,44 +259,34 @@ export async function signInHandler(
       );
     }
 
-    let ouPath: string;
-    try {
-      ouPath = await adminDirClient.getUserOU(providerEmail);
-    } catch (err) {
-      if (err instanceof StaffOULookupError) {
-        // RD-001: fail-secure. Log, audit, and propagate.
-        logger.error(
-          { email: providerEmail, code: err.code, err },
-          '[sign-in.handler] StaffOULookupError during @jointheleague.org sign-in — ' +
-            'access denied (RD-001).',
-        );
-        await _writeAuthDeniedEvent(options, providerEmail, err.code);
-
-        // The user/login records created in step 3 remain in the database.
-        // No session is established, so the user cannot access the application.
-        // On the next sign-in attempt, the existing Login row will be found
-        // and the OU check will run again.
-
+    // Only call the Admin SDK if staffOuPath is set AND a client is injected.
+    if (staffOuPath !== null && adminDirClient) {
+      let ouPath: string;
+      try {
+        ouPath = await adminDirClient.getUserOU(providerEmail);
+      } catch (err) {
+        if (err instanceof StaffOULookupError) {
+          logger.error(
+            { email: providerEmail, code: err.code, err },
+            '[sign-in.handler] StaffOULookupError during @jointheleague.org sign-in — ' +
+              'access denied (RD-001).',
+          );
+          await _writeAuthDeniedEvent(options, providerEmail, err.code);
+          throw err;
+        }
         throw err;
       }
-      throw err;
-    }
 
-    // Determine role from OU path.
-    // We always apply the OU result explicitly so that a returning user whose
-    // admin status was revoked (email removed from ADMIN_EMAILS) has their role
-    // reset to the OU-based value here, before the admin check below.
-    if (ouPath.startsWith(staffOuPath)) {
-      // Staff OU matched → promote/keep staff
-      user = await userService.updateRole(user.id, 'staff');
-    } else if (user.role !== 'student') {
-      // OU does not match → ensure role is student (RD-003).
-      // This also demotes any user who was previously admin/staff but whose OU
-      // no longer qualifies, so that the admin check in step 5 starts from the
-      // correct OU-derived baseline.
+      if (ouPath.startsWith(staffOuPath)) {
+        user = await userService.updateRole(user.id, 'staff');
+      } else if (user.role !== 'student') {
+        user = await userService.updateRole(user.id, 'student');
+      }
+    } else if (user.role === 'staff') {
+      // OU check skipped but user has stale staff role — reset to student so
+      // the ADMIN_EMAILS check below is the only way to elevate.
       user = await userService.updateRole(user.id, 'student');
     }
-    // else: role is already 'student', no write needed
 
     // --- Step 5: Admin email check (T006) ---
     //
