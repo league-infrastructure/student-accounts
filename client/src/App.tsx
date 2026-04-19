@@ -19,6 +19,7 @@ import SessionViewer from './pages/admin/SessionViewer';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
 import UsersPanel from './pages/admin/UsersPanel';
+import UserDetailPanel from './pages/admin/UserDetailPanel';
 import ProvisioningRequests from './pages/admin/ProvisioningRequests';
 import Cohorts from './pages/admin/Cohorts';
 
@@ -47,6 +48,7 @@ function App() {
               {/* Admin pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
                 <Route path="/admin/users" element={<UsersPanel />} />
+                <Route path="/admin/users/:id" element={<UserDetailPanel />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />
                 <Route path="/admin/config" element={<ConfigPanel />} />

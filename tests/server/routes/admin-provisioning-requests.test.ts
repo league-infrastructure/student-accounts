@@ -1,16 +1,24 @@
 /**
- * Integration tests for admin provisioning-requests routes (Sprint 004 T008).
+ * Integration tests for admin provisioning-requests routes (Sprint 004 T008 + Sprint 005 T007).
  *
  * Covers:
  *  - GET  /api/admin/provisioning-requests: 401 (no auth), 403 (non-admin), 200 (admin with pending requests)
- *  - POST /api/admin/provisioning-requests/:id/approve: 403 (non-admin), 200 (admin, success with FakeGoogleWorkspaceAdminClient)
+ *  - POST /api/admin/provisioning-requests/:id/approve: 403 (non-admin), 200 (admin, success with fake clients)
  *  - POST /api/admin/provisioning-requests/:id/reject: 200 (admin, success)
  */
 
 import request from 'supertest';
 import { prisma } from '../../../server/src/services/prisma.js';
-import { ServiceRegistry } from '../../../server/src/services/service.registry.js';
+import { ProvisioningRequestService } from '../../../server/src/services/provisioning-request.service.js';
+import { WorkspaceProvisioningService } from '../../../server/src/services/workspace-provisioning.service.js';
+import { ClaudeProvisioningService } from '../../../server/src/services/claude-provisioning.service.js';
+import { AuditService } from '../../../server/src/services/audit.service.js';
+import { ExternalAccountService } from '../../../server/src/services/external-account.service.js';
+import { ExternalAccountRepository } from '../../../server/src/services/repositories/external-account.repository.js';
+import { UserRepository } from '../../../server/src/services/repositories/user.repository.js';
+import { CohortRepository } from '../../../server/src/services/repositories/cohort.repository.js';
 import { FakeGoogleWorkspaceAdminClient } from '../helpers/fake-google-workspace-admin.client.js';
+import { FakeClaudeTeamAdminClient } from '../helpers/fake-claude-team-admin.client.js';
 import {
   makeCohort,
   makeUser,
@@ -45,6 +53,37 @@ async function loginAs(
   const agent = request.agent(app);
   await agent.post('/api/auth/test-login').send({ email, role });
   return agent;
+}
+
+/**
+ * Build a ProvisioningRequestService backed by fake Google and Claude clients.
+ * Used to temporarily replace the singleton's provisioningRequests field so
+ * route-level approve tests get a 200 without needing real API credentials.
+ */
+function makeFakeProvisioningRequestService(): ProvisioningRequestService {
+  const fakeGoogleClient = new FakeGoogleWorkspaceAdminClient();
+  const fakeClaudeClient = new FakeClaudeTeamAdminClient();
+  const audit = new AuditService();
+  const fakeWorkspaceProvisioning = new WorkspaceProvisioningService(
+    fakeGoogleClient,
+    ExternalAccountRepository,
+    audit,
+    UserRepository,
+    CohortRepository,
+  );
+  const fakeClaudeProvisioning = new ClaudeProvisioningService(
+    fakeClaudeClient,
+    ExternalAccountRepository,
+    audit,
+    UserRepository,
+  );
+  return new ProvisioningRequestService(
+    prisma,
+    audit,
+    new ExternalAccountService(prisma, audit),
+    fakeWorkspaceProvisioning,
+    fakeClaudeProvisioning,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -162,75 +201,63 @@ describe('POST /api/admin/provisioning-requests/:id/approve — non-admin', () =
 
 // ---------------------------------------------------------------------------
 // POST /api/admin/provisioning-requests/:id/approve — 200 (admin, success)
-// Uses FakeGoogleWorkspaceAdminClient so no real API calls are made.
+// Uses fake Google and Claude clients injected via registry mutation so no
+// real API calls are made. The singleton registry's provisioningRequests field
+// is temporarily replaced and restored in a finally block.
 // ---------------------------------------------------------------------------
 
 describe('POST /api/admin/provisioning-requests/:id/approve — admin success', () => {
-  it('returns 200 with updated request and marks it approved', async () => {
-    // Inject a fake Google client into the service registry for this test
-    const fake = new FakeGoogleWorkspaceAdminClient();
-    const testRegistry = ServiceRegistry.create('API', fake);
+  it('returns 200 with updated request and marks it approved (workspace via fake clients)', async () => {
+    // Temporarily replace the singleton registry's provisioningRequests with
+    // a service backed by fake clients so no real credentials are needed.
+    const originalProvisioningRequests = (registry as any).provisioningRequests;
+    (registry as any).provisioningRequests = makeFakeProvisioningRequestService();
 
-    // Wire the fake registry into the app for this request by temporarily
-    // overriding req.services via the app's registry.
-    // The test uses its own provisioning so we can call the service directly
-    // and verify it, but we need the route to use the fake. The app's
-    // ServiceRegistry is created once at startup; we need to create the
-    // data in DB and test that the route calls approve correctly.
-    //
-    // Since the app's registry is a singleton (created in app.ts) and
-    // contains a real Google client that will fail without credentials,
-    // we instead test approve via a workspace request that hits the 'claude'
-    // path (which is a pure status update with no Google call).
+    try {
+      const admin = await makeUser({ primary_email: 'admin-approve@example.com', role: 'admin' });
+      const cohort = await makeCohort({ google_ou_path: '/Students/RouteTest' });
+      const student = await makeUser({
+        primary_email: 'student-toapprove@example.com',
+        display_name: 'Bob Student',
+        role: 'student',
+        cohort_id: cohort.id,
+      });
 
-    const admin = await makeUser({ primary_email: 'admin-approve@example.com', role: 'admin' });
-    const student = await makeUser({
-      primary_email: 'student-toapprove@example.com',
-      display_name: 'Bob Student',
-      role: 'student',
-    });
+      const pr = await makeProvisioningRequest(student, {
+        requested_type: 'workspace',
+        status: 'pending',
+      });
 
-    // Use a 'claude' request type — approve() for claude is a pure status
-    // update that does not call the Google Admin SDK. This lets us test the
-    // approve route without real credentials.
-    const pr = await makeProvisioningRequest(student, {
-      requested_type: 'claude',
-      status: 'pending',
-    });
+      const agent = await loginAs('admin-approve@example.com', 'admin');
+      const res = await agent.post(`/api/admin/provisioning-requests/${pr.id}/approve`);
 
-    const agent = await loginAs('admin-approve@example.com', 'admin');
-    const res = await agent.post(`/api/admin/provisioning-requests/${pr.id}/approve`);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        id: pr.id,
+        userId: student.id,
+        requestedType: 'workspace',
+        status: 'approved',
+      });
+      expect(res.body.decidedAt).not.toBeNull();
+      expect(res.body.decidedBy).toBe(admin.id);
 
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      id: pr.id,
-      userId: student.id,
-      requestedType: 'claude',
-      status: 'approved',
-    });
-    expect(res.body.decidedAt).not.toBeNull();
-    expect(res.body.decidedBy).toBe(admin.id);
-
-    // Verify DB row is updated
-    const dbRow = await (prisma as any).provisioningRequest.findUnique({ where: { id: pr.id } });
-    expect(dbRow.status).toBe('approved');
+      const dbRow = await (prisma as any).provisioningRequest.findUnique({ where: { id: pr.id } });
+      expect(dbRow.status).toBe('approved');
+    } finally {
+      (registry as any).provisioningRequests = originalProvisioningRequests;
+    }
   });
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/admin/provisioning-requests/:id/approve — with FakeGoogleWorkspaceAdminClient
-// Tests the workspace approval path using a fake client injected via the
-// test-login + ServiceRegistry integration. Since the app uses a singleton
-// registry with the real client, we test workspace provisioning at the
-// service layer in workspace-provisioning.service.test.ts. Here we verify
-// the route's 422 error propagation when service throws.
+// POST /api/admin/provisioning-requests/:id/approve — error propagation
 // ---------------------------------------------------------------------------
 
-describe('POST /api/admin/provisioning-requests/:id/approve — 422 propagation', () => {
-  it('returns 422 when approving a request that is not pending', async () => {
-    await makeUser({ primary_email: 'admin-422@example.com', role: 'admin' });
+describe('POST /api/admin/provisioning-requests/:id/approve — 409 propagation', () => {
+  it('returns 409 when approving a request that is already approved', async () => {
+    await makeUser({ primary_email: 'admin-409@example.com', role: 'admin' });
     const student = await makeUser({
-      primary_email: 'student-422@example.com',
+      primary_email: 'student-409@example.com',
       role: 'student',
     });
 
@@ -240,10 +267,9 @@ describe('POST /api/admin/provisioning-requests/:id/approve — 422 propagation'
       status: 'approved',
     });
 
-    const agent = await loginAs('admin-422@example.com', 'admin');
+    const agent = await loginAs('admin-409@example.com', 'admin');
     const res = await agent.post(`/api/admin/provisioning-requests/${pr.id}/approve`);
 
-    // ConflictError → 409
     expect(res.status).toBe(409);
     expect(res.body.error).toBeDefined();
   });

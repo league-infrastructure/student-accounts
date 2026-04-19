@@ -41,6 +41,6 @@ export async function leagueEmail(userId: number, email: string): Promise<void> 
 export async function githubHandle(userId: number, handle: string): Promise<void> {
   logger.info(
     { userId, handle },
-    'pike13-writeback: githubHandle deferred to Sprint 006',
+    'pike13-writeback: githubHandle deferred to Sprint 006 — no-op call site',
   );
 }

@@ -1,9 +1,15 @@
 ---
-id: "005"
-title: "Claude Team Integration — Seat Provisioning and Individual Lifecycle"
-status: roadmap
+id: '005'
+title: "Claude Team Integration \u2014 Seat Provisioning and Individual Lifecycle"
+status: done
 branch: sprint/005-claude-team-integration-seat-provisioning-and-individual-lifecycle
-use-cases: [UC-006, UC-008, UC-009, UC-015, UC-016, UC-017]
+use-cases:
+- UC-006
+- UC-008
+- UC-009
+- UC-015
+- UC-016
+- UC-017
 ---
 
 # Sprint 005: Claude Team Integration — Seat Provisioning and Individual Lifecycle
@@ -69,4 +75,22 @@ leave the detail view half-functional.
 
 ## Tickets
 
-_(To be created when this sprint enters Detail Mode.)_
+| # | Title | Depends On | Group |
+|---|-------|------------|-------|
+| 001 | Schema migration: add scheduled_delete_at to ExternalAccount | — | 1 |
+| 002 | ClaudeTeamAdminClient and FakeClaudeTeamAdminClient | — | 1 |
+| 003 | Extend Pike13WritebackStub with githubHandle call site | — | 1 |
+| 004 | ClaudeProvisioningService | 001, 002 | 2 |
+| 005 | ExternalAccountLifecycleService (suspend and remove) | 001, 002 | 2 |
+| 006 | WorkspaceDeleteJob — scheduled hard-delete of Workspace accounts | 001, 002 | 2 |
+| 007 | Wire ProvisioningRequestService.approve for Claude requests | 004 | 3 |
+| 008 | Admin API routes — external account lifecycle and Claude provisioning | 004, 005 | 3 |
+| 009 | Admin API route — deprovision student (composite remove) | 005 | 3 |
+| 010 | Admin API routes — add and remove Login on user's behalf | 003 | 3 |
+| 011 | Admin user detail UI — Claude provisioning, lifecycle actions, login management | 007, 008, 009, 010 | 4 |
+
+**Execution Groups:**
+- Group 1 (parallel): T001, T002, T003 — foundation with no inter-dependencies.
+- Group 2 (parallel, after Group 1): T004, T005, T006 — services built on the new client and schema.
+- Group 3 (parallel, after Group 2): T007, T008, T009, T010 — routes and wiring.
+- Group 4 (after Group 3): T011 — UI that consumes all API routes.

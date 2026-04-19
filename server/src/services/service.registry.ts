@@ -16,6 +16,8 @@ import { ExternalAccountService } from './external-account.service';
 import { ProvisioningRequestService } from './provisioning-request.service';
 import { MergeSuggestionService } from './merge-suggestion.service';
 import { WorkspaceProvisioningService } from './workspace-provisioning.service';
+import { ClaudeProvisioningService } from './claude-provisioning.service';
+import { ExternalAccountLifecycleService } from './external-account-lifecycle.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -23,6 +25,10 @@ import {
   GoogleWorkspaceAdminClientImpl,
   type GoogleWorkspaceAdminClient,
 } from './google-workspace/google-workspace-admin.client';
+import {
+  ClaudeTeamAdminClientImpl,
+  type ClaudeTeamAdminClient,
+} from './claude-team/claude-team-admin.client';
 
 // Infrastructure services
 import { SchedulerService } from './scheduler.service';
@@ -39,11 +45,19 @@ export class ServiceRegistry {
   readonly provisioningRequests: ProvisioningRequestService;
   readonly mergeSuggestions: MergeSuggestionService;
   readonly workspaceProvisioning: WorkspaceProvisioningService;
+  readonly claudeProvisioning: ClaudeProvisioningService;
+  readonly externalAccountLifecycle: ExternalAccountLifecycleService;
   readonly scheduler: SchedulerService;
   readonly backups: BackupService;
   readonly sessions: SessionService;
+  /** Exposed so index.ts can wire the Google Workspace client into background jobs. */
+  readonly googleClient: GoogleWorkspaceAdminClient;
 
-  private constructor(source: ServiceSource = 'UI', googleClient?: GoogleWorkspaceAdminClient) {
+  private constructor(
+    source: ServiceSource = 'UI',
+    googleClient?: GoogleWorkspaceAdminClient,
+    claudeClient?: ClaudeTeamAdminClient,
+  ) {
     this.source = source;
     this.audit = new AuditService();
     this.users = new UserService(defaultPrisma, this.audit);
@@ -75,21 +89,53 @@ export class ServiceRegistry {
       CohortRepository,
     );
 
+    // Build a Claude Team Admin client if not provided. The client constructor
+    // defers credential errors to first use (fail-secure RD-001).
+    const ctClient: ClaudeTeamAdminClient =
+      claudeClient ??
+      new ClaudeTeamAdminClientImpl(
+        process.env.CLAUDE_TEAM_API_KEY ?? '',
+        process.env.CLAUDE_TEAM_PRODUCT_ID ?? '',
+      );
+
+    // ClaudeProvisioningService — Sprint 005 T004.
+    this.claudeProvisioning = new ClaudeProvisioningService(
+      ctClient,
+      ExternalAccountRepository,
+      this.audit,
+      UserRepository,
+    );
+
+    // ExternalAccountLifecycleService — Sprint 005 T005.
+    this.externalAccountLifecycle = new ExternalAccountLifecycleService(
+      wsClient,
+      ctClient,
+      ExternalAccountRepository,
+      this.audit,
+    );
+
     // Sprint 004 T007: pass workspaceProvisioning so approve() can call provision().
+    // Sprint 005 T007: also pass claudeProvisioning so approve() can provision Claude seats.
     this.provisioningRequests = new ProvisioningRequestService(
       defaultPrisma,
       this.audit,
       this.externalAccounts,
       this.workspaceProvisioning,
+      this.claudeProvisioning,
     );
 
     this.scheduler = new SchedulerService(defaultPrisma);
     this.backups = new BackupService(defaultPrisma);
     this.sessions = new SessionService(defaultPrisma);
+    this.googleClient = wsClient;
   }
 
-  static create(source?: ServiceSource, googleClient?: GoogleWorkspaceAdminClient): ServiceRegistry {
-    return new ServiceRegistry(source, googleClient);
+  static create(
+    source?: ServiceSource,
+    googleClient?: GoogleWorkspaceAdminClient,
+    claudeClient?: ClaudeTeamAdminClient,
+  ): ServiceRegistry {
+    return new ServiceRegistry(source, googleClient, claudeClient);
   }
 
   // --- Config ---
