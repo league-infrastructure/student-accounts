@@ -1,7 +1,7 @@
 ---
 id: "011"
 title: "Admin user detail UI — Claude provisioning, lifecycle actions, login management"
-status: todo
+status: done
 use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005, SUC-006]
 depends-on: ["007", "008", "009", "010"]
 ---
@@ -33,20 +33,20 @@ All destructive actions require a confirmation dialog before the API call.
 
 ## Acceptance Criteria
 
-- [ ] "Suspend" button appears on active ExternalAccount rows; posts to /admin/external-accounts/:id/suspend.
-- [ ] "Remove" button appears on active/suspended ExternalAccount rows; posts to /admin/external-accounts/:id/remove.
-- [ ] Confirmation dialog shown before suspend and remove actions.
-- [ ] "Provision Claude Team Seat" button shown for student users.
-- [ ] Provision button is disabled (with tooltip explaining precondition) when workspace account is not active.
-- [ ] Provision button is disabled when claude account already exists.
-- [ ] Provision button posts to /admin/users/:id/provision-claude; on success the ExternalAccounts section refreshes.
-- [ ] "Deprovision Student" button shown for student users; opens confirmation listing affected accounts.
-- [ ] Deprovision posts to /admin/users/:id/deprovision; on partial failure, shows which accounts failed.
-- [ ] "Add Login" form collects provider, providerUserId, providerEmail; posts to /admin/users/:id/logins.
-- [ ] "Remove" on each Login row: posts DELETE /admin/users/:id/logins/:loginId.
-- [ ] Last-login Remove button is disabled with tooltip.
-- [ ] On all errors, the UI shows the server-returned error message.
-- [ ] Page state refreshes after each successful action without a full reload.
+- [x] "Suspend" button appears on active ExternalAccount rows; posts to /admin/external-accounts/:id/suspend.
+- [x] "Remove" button appears on active/suspended ExternalAccount rows; posts to /admin/external-accounts/:id/remove.
+- [x] Confirmation dialog shown before suspend and remove actions.
+- [x] "Provision Claude Team Seat" button shown for student users.
+- [x] Provision button is disabled (with tooltip explaining precondition) when workspace account is not active.
+- [x] Provision button is disabled when claude account already exists.
+- [x] Provision button posts to /admin/users/:id/provision-claude; on success the ExternalAccounts section refreshes.
+- [x] "Deprovision Student" button shown for student users; opens confirmation listing affected accounts.
+- [x] Deprovision posts to /admin/users/:id/deprovision; on partial failure, shows which accounts failed.
+- [x] "Add Login" form collects provider, providerUserId, providerEmail; posts to /admin/users/:id/logins.
+- [x] "Remove" on each Login row: posts DELETE /admin/users/:id/logins/:loginId.
+- [x] Last-login Remove button is disabled with tooltip.
+- [x] On all errors, the UI shows the server-returned error message.
+- [x] Page state refreshes after each successful action without a full reload.
 
 ## Implementation Plan
 

@@ -5,6 +5,53 @@ import { AppError } from '../../errors.js';
 
 export const adminUsersRouter = Router();
 
+// GET /admin/users/:id — get a single user with logins and external accounts
+adminUsersRouter.get('/users/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: {
+        logins: true,
+        external_accounts: { orderBy: { created_at: 'asc' } },
+        cohort: { select: { id: true, name: true } },
+      },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({
+      id: user.id,
+      email: user.primary_email,
+      displayName: user.display_name,
+      role: user.role,
+      cohort: user.cohort ? { id: user.cohort.id, name: user.cohort.name } : null,
+      createdAt: user.created_at,
+      updatedAt: user.updated_at,
+      logins: user.logins.map((l) => ({
+        id: l.id,
+        provider: l.provider,
+        providerUserId: l.provider_user_id,
+        providerEmail: l.provider_email ?? null,
+        providerUsername: l.provider_username ?? null,
+        createdAt: l.created_at,
+      })),
+      externalAccounts: user.external_accounts.map((a) => ({
+        id: a.id,
+        type: a.type,
+        status: a.status,
+        externalId: a.external_id ?? null,
+        statusChangedAt: a.status_changed_at ?? null,
+        scheduledDeleteAt: a.scheduled_delete_at ?? null,
+        createdAt: a.created_at,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /admin/users - list all users
 adminUsersRouter.get('/users', async (req, res, next) => {
   try {
