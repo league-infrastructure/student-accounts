@@ -1,11 +1,14 @@
 ---
-id: "005"
-title: "Admin merge-queue API routes — list, detail, approve, reject, defer"
-status: todo
-use-cases: [SUC-007-002, SUC-007-003]
-depends-on: ["004"]
-github-issue: ""
-todo: ""
+id: '005'
+title: "Admin merge-queue API routes \u2014 list, detail, approve, reject, defer"
+status: done
+use-cases:
+- SUC-007-002
+- SUC-007-003
+depends-on:
+- '004'
+github-issue: ''
+todo: ''
 ---
 
 # Admin merge-queue API routes — list, detail, approve, reject, defer
@@ -31,22 +34,22 @@ Use `ServiceRegistry.create('UI')` to get the service instance.
 
 ## Acceptance Criteria
 
-- [ ] `GET /admin/merge-queue` returns HTTP 200 with an array of queue items
+- [x] `GET /admin/merge-queue` returns HTTP 200 with an array of queue items
       (pending + deferred) including User A and User B name and email fields.
-- [ ] `GET /admin/merge-queue/:id` returns HTTP 200 with full user detail
+- [x] `GET /admin/merge-queue/:id` returns HTTP 200 with full user detail
       (Logins, ExternalAccounts arrays for each user).
-- [ ] `GET /admin/merge-queue/:id` returns HTTP 404 when suggestion ID does not exist.
-- [ ] `POST /admin/merge-queue/:id/approve` with valid `{ survivorId }` returns HTTP 200.
-- [ ] `POST /admin/merge-queue/:id/approve` without `survivorId` returns HTTP 400.
-- [ ] `POST /admin/merge-queue/:id/approve` when survivor ID is not one of the two
+- [x] `GET /admin/merge-queue/:id` returns HTTP 404 when suggestion ID does not exist.
+- [x] `POST /admin/merge-queue/:id/approve` with valid `{ survivorId }` returns HTTP 200.
+- [x] `POST /admin/merge-queue/:id/approve` without `survivorId` returns HTTP 400.
+- [x] `POST /admin/merge-queue/:id/approve` when survivor ID is not one of the two
       users in the suggestion returns HTTP 400.
-- [ ] `POST /admin/merge-queue/:id/approve` on an already-decided suggestion returns
+- [x] `POST /admin/merge-queue/:id/approve` on an already-decided suggestion returns
       HTTP 409.
-- [ ] `POST /admin/merge-queue/:id/reject` returns HTTP 200.
-- [ ] `POST /admin/merge-queue/:id/defer` returns HTTP 200.
-- [ ] All routes return HTTP 401 for unauthenticated requests.
-- [ ] All routes return HTTP 403 for non-admin authenticated requests.
-- [ ] New router is mounted in `routes/admin/index.ts`.
+- [x] `POST /admin/merge-queue/:id/reject` returns HTTP 200.
+- [x] `POST /admin/merge-queue/:id/defer` returns HTTP 200.
+- [x] All routes return HTTP 401 for unauthenticated requests.
+- [x] All routes return HTTP 403 for non-admin authenticated requests.
+- [x] New router is mounted in `routes/admin/index.ts`.
 
 ## Implementation Plan
 
