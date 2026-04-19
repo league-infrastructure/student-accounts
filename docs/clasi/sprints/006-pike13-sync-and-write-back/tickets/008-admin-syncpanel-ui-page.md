@@ -1,7 +1,7 @@
 ---
 id: "008"
 title: "Admin SyncPanel UI page"
-status: todo
+status: done
 use-cases: [UC-004, SUC-001, SUC-002, SUC-003, SUC-004]
 depends-on: ["007"]
 github-issue: ""
@@ -22,23 +22,23 @@ Wire the page into `App.tsx` at `/admin/sync` and add a "Sync" entry to the
 
 ## Acceptance Criteria
 
-- [ ] `client/src/pages/admin/SyncPanel.tsx` exists.
-- [ ] Five action buttons, each disabled while any sync is in-flight:
+- [x] `client/src/pages/admin/SyncPanel.tsx` exists.
+- [x] Five action buttons, each disabled while any sync is in-flight:
   - "Sync Pike13 People" → POST `/admin/sync/pike13`
   - "Sync Cohorts" → POST `/admin/sync/workspace/cohorts`
   - "Sync Staff" → POST `/admin/sync/workspace/staff`
   - "Sync Students" → POST `/admin/sync/workspace/students`
   - "Sync All Workspace" → POST `/admin/sync/workspace/all`
-- [ ] Spinner / loading indicator shown while the POST is in flight.
-- [ ] On success: result panel displays counts (created / updated / unchanged /
+- [x] Spinner / loading indicator shown while the POST is in flight.
+- [x] On success: result panel displays counts (created / updated / unchanged /
   flagged where applicable) per operation.
-- [ ] On success with flagged accounts: flagged list rendered showing email and
+- [x] On success with flagged accounts: flagged list rendered showing email and
   reason for each flagged ExternalAccount.
-- [ ] On HTTP error: error message displayed; no crash.
-- [ ] `/admin/sync` route added to `client/src/App.tsx` pointing to `SyncPanel`.
-- [ ] `ADMIN_NAV` in `client/src/components/AppLayout.tsx` includes
+- [x] On HTTP error: error message displayed; no crash.
+- [x] `/admin/sync` route added to `client/src/App.tsx` pointing to `SyncPanel`.
+- [x] `ADMIN_NAV` in `client/src/components/AppLayout.tsx` includes
   `{ label: 'Sync', path: '/admin/sync' }`.
-- [ ] Component renders without errors when result state is empty (initial state).
+- [x] Component renders without errors when result state is empty (initial state).
 
 ## Implementation Plan
 
