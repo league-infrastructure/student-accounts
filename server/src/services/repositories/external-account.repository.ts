@@ -22,6 +22,12 @@ export type CreateExternalAccountInput = {
   status_changed_at?: Date | null;
 };
 
+export type UpdateExternalAccountInput = {
+  status?: 'pending' | 'active' | 'suspended' | 'removed';
+  status_changed_at?: Date | null;
+  scheduled_delete_at?: Date | null;
+};
+
 export class ExternalAccountRepository {
   static async create(db: DbClient, data: CreateExternalAccountInput): Promise<ExternalAccount> {
     return (db as any).externalAccount.create({ data });
@@ -66,6 +72,38 @@ export class ExternalAccountRepository {
       where: { id },
       data: { status, status_changed_at: new Date() },
     });
+  }
+
+  /**
+   * Return all workspace ExternalAccount rows that are in 'removed' status
+   * and have a scheduled_delete_at in the past (i.e., <= now).
+   *
+   * These are the records eligible for hard-deletion by WorkspaceDeleteJob.
+   */
+  static async findPendingDeletion(db: DbClient, now: Date = new Date()): Promise<ExternalAccount[]> {
+    return (db as any).externalAccount.findMany({
+      where: {
+        type: 'workspace',
+        status: 'removed',
+        scheduled_delete_at: {
+          not: null,
+          lte: now,
+        },
+      },
+    });
+  }
+
+  /**
+   * Update arbitrary fields on an ExternalAccount row.
+   * Intended for lifecycle operations that need to set status, status_changed_at,
+   * and/or scheduled_delete_at atomically in a single update.
+   */
+  static async update(
+    db: DbClient,
+    id: number,
+    data: UpdateExternalAccountInput,
+  ): Promise<ExternalAccount> {
+    return (db as any).externalAccount.update({ where: { id }, data });
   }
 
   static async delete(db: DbClient, id: number): Promise<ExternalAccount> {
