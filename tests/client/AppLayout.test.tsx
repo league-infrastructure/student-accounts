@@ -136,6 +136,21 @@ describe('AppLayout', () => {
     expect(screen.queryByText('Directory')).not.toBeInTheDocument();
   });
 
+  it('shows Audit Log link in admin nav when user has admin role and is on an admin route', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/users']}>
+        <AppLayout />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Audit Log')).toBeInTheDocument();
+  });
+
   it('does not show impersonation banner when not impersonating', () => {
     renderLayout();
     expect(screen.queryByText(/Viewing as/i)).not.toBeInTheDocument();

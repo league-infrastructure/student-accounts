@@ -28,6 +28,16 @@ export const authRouter = Router();
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Return the appropriate post-login landing page for a given domain role.
+ * Domain roles: 'admin', 'staff', 'student'.
+ */
+function postLoginRedirect(role: string | undefined): string {
+  if (role === 'admin') return '/admin/users';
+  if (role === 'staff') return '/staff/directory';
+  return '/account';
+}
+
 /** Map legacy USER/ADMIN role strings to domain enum values. */
 function mapRole(role: string | undefined): string {
   if (role === 'ADMIN') return 'admin';
@@ -285,8 +295,9 @@ authRouter.get(
               console.error('[oauth-callback] session.save error:', saveErr);
               return res.redirect('/?error=oauth_denied');
             }
-            console.log('[oauth-callback] session saved, redirecting to /account');
-            res.redirect('/account');
+            const dest = postLoginRedirect((user as any).role);
+            console.log('[oauth-callback] session saved, redirecting to', dest);
+            res.redirect(dest);
           });
         });
       },
@@ -373,8 +384,9 @@ authRouter.get(
               console.error('[oauth-callback] session.save error:', saveErr);
               return res.redirect('/?error=oauth_denied');
             }
-            console.log('[oauth-callback] session saved, redirecting to /account');
-            res.redirect('/account');
+            const dest = postLoginRedirect((user as any).role);
+            console.log('[oauth-callback] session saved, redirecting to', dest);
+            res.redirect(dest);
           });
         });
       },
