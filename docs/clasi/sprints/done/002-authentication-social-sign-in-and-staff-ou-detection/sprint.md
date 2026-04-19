@@ -1,9 +1,12 @@
 ---
-id: "002"
-title: "Authentication — Social Sign-In and Staff OU Detection"
-status: active
+id: '002'
+title: "Authentication \u2014 Social Sign-In and Staff OU Detection"
+status: done
 branch: sprint/002-authentication-social-sign-in-and-staff-ou-detection
-use-cases: [UC-001, UC-002, UC-003]
+use-cases:
+- UC-001
+- UC-002
+- UC-003
 ---
 
 # Sprint 002: Authentication — Social Sign-In and Staff OU Detection
