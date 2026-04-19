@@ -1,13 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useProviderStatus } from '../hooks/useProviderStatus';
 
 export default function Login() {
   const { loginWithCredentials } = useAuth();
   const navigate = useNavigate();
-  const providerStatus = useProviderStatus();
-  const anyProvider = providerStatus.github || providerStatus.google || providerStatus.pike13;
 
   const [username, setUsername] = useState('user');
   const [password, setPassword] = useState('pass');
@@ -79,46 +76,29 @@ export default function Login() {
           </button>
         </form>
 
-        {!providerStatus.loading && anyProvider && (
-          <>
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="bg-white px-2 text-slate-400">Or sign in with</span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              {providerStatus.github && (
-                <a
-                  href="/api/auth/github"
-                  className="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                  style={{ background: '#24292e' }}
-                >
-                  Sign in with GitHub
-                </a>
-              )}
-              {providerStatus.google && (
-                <a
-                  href="/api/auth/google"
-                  className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-                >
-                  Sign in with Google
-                </a>
-              )}
-              {providerStatus.pike13 && (
-                <a
-                  href="/api/auth/pike13"
-                  className="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                  style={{ background: '#f37121' }}
-                >
-                  Sign in with Pike 13
-                </a>
-              )}
-            </div>
-          </>
-        )}
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-200" />
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="bg-white px-2 text-slate-400">Or sign in with</span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <a
+            href="/api/auth/google"
+            className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+          >
+            Sign in with Google
+          </a>
+          <a
+            href="/api/auth/github"
+            className="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+            style={{ background: '#24292e' }}
+          >
+            Sign in with GitHub
+          </a>
+        </div>
       </div>
     </div>
   );
