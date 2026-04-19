@@ -52,6 +52,34 @@ adminUsersRouter.get('/users/:id', async (req, res, next) => {
   }
 });
 
+// GET /admin/users/:id/pike13 — fetch a user's live Pike13 record (fail-soft)
+adminUsersRouter.get('/users/:id/pike13', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { external_accounts: { where: { type: 'pike13' } } },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const pike13Acct = user.external_accounts?.[0];
+    if (!pike13Acct?.external_id) return res.json({ present: false });
+
+    try {
+      const person = await req.services.pike13Client.getPerson(
+        Number(pike13Acct.external_id),
+      );
+      return res.json({ present: true, person });
+    } catch (err: any) {
+      return res.json({ present: true, error: err.message ?? 'Pike13 API error' });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /admin/users - list all users
 adminUsersRouter.get('/users', async (req, res, next) => {
   try {
@@ -61,6 +89,7 @@ adminUsersRouter.get('/users', async (req, res, next) => {
       include: {
         logins: { select: { provider: true, provider_username: true } },
         cohort: { select: { id: true, name: true } },
+        external_accounts: { select: { type: true } },
       },
     });
     res.json(users.map(serializeUser));
@@ -99,16 +128,27 @@ adminUsersRouter.put('/users/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /admin/users/:id - delete a user
+// DELETE /admin/users/:id - soft-delete a user (is_active=false) and emit audit event
 adminUsersRouter.delete('/users/:id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    await req.services.users.delete(id);
-    res.status(204).end();
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+
+    const actorId = (req.session as any).userId as number;
+    if (id === actorId) return res.status(403).json({ error: 'Cannot delete own account' });
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { is_active: false } });
+      await tx.auditEvent.create({
+        data: { action: 'delete_user', actor_user_id: actorId, target_user_id: id },
+      });
+    });
+
+    res.json({ success: true });
   } catch (err: any) {
-    if (err.code === 'P2025') {
-      return res.status(404).json({ error: 'User not found' });
-    }
     next(err);
   }
 });
@@ -227,6 +267,9 @@ function serializeUser(user: any) {
         }))
       : [],
     cohort: user.cohort ? { id: user.cohort.id, name: user.cohort.name } : null,
+    externalAccountTypes: Array.isArray(user.external_accounts)
+      ? [...new Set(user.external_accounts.map((a: any) => a.type))]
+      : [],
     createdAt: user.created_at,
     updatedAt: user.updated_at,
   };
