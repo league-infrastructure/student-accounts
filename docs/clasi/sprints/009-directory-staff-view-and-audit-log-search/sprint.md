@@ -1,9 +1,9 @@
 ---
 id: "009"
 title: "Directory, Staff View, and Audit Log Search"
-status: roadmap
+status: active
 branch: sprint/009-directory-staff-view-and-audit-log-search
-use-cases: [UC-022, UC-023]
+use-cases: [UC-022, UC-023, SUC-009-001, SUC-009-002, SUC-009-003, SUC-009-004, SUC-009-005, SUC-009-006, SUC-009-007, SUC-009-008, SUC-009-009]
 ---
 
 # Sprint 009: Directory, Staff View, and Audit Log Search
@@ -60,4 +60,22 @@ search UI a realistic workload to test against.
 
 ## Tickets
 
-_(To be created when this sprint enters Detail Mode.)_
+| # | Title | Depends On | Group |
+|---|-------|-----------|-------|
+| T001 | Extend GET /admin/users to include externalAccountTypes | — | 1 |
+| T002 | Expose pike13Client on ServiceRegistry and add GET /admin/users/:id/pike13 | — | 1 |
+| T003 | Add DELETE /admin/users/:id (soft-delete) with AuditEvent | — | 1 |
+| T004 | Add GET /api/staff/directory route with requireRole(staff) guard | — | 1 |
+| T005 | Add GET /admin/audit-log route with filters and pagination | — | 1 |
+| T006 | Overhaul UsersPanel: search, filter dropdown, sortable columns, prettifyName, name/email links | T001 | 2 |
+| T007 | Add row checkboxes, bulk-delete toolbar, and three-dot actions menu to UsersPanel | T003, T006 | 3 |
+| T008 | Add Pike13 snippet section and Unlink/copy fixes to UserDetailPanel | T002 | 2 |
+| T009 | Build StaffLayout and StaffDirectory page (read-only student listing) | T004 | 2 |
+| T010 | Build AuditLogPanel page with filter form, paginated results, and detail expansion | T005 | 2 |
+| T011 | Wire routes, App.tsx, AppLayout nav, and fix role-based post-login redirects | T004–T010 | 4 |
+
+**Execution groups:**
+- **Group 1** (parallel): T001, T002, T003, T004, T005 — all server-side foundation work, no dependencies.
+- **Group 2** (parallel): T006, T008, T009, T010 — client and detail pages that depend on Group 1.
+- **Group 3** (after T003+T006): T007 — bulk/row actions that need both the delete endpoint and the overhauled panel.
+- **Group 4** (after all): T011 — integration wiring and routing.
