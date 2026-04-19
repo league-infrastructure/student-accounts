@@ -1,11 +1,14 @@
 ---
-id: "002"
-title: "Write-enable flag and domain/OU guard in GoogleWorkspaceAdminClient"
-status: todo
-use-cases: [UC-005, UC-012]
-depends-on: ["001"]
-github-issue: ""
-todo: ""
+id: '002'
+title: Write-enable flag and domain/OU guard in GoogleWorkspaceAdminClient
+status: in-progress
+use-cases:
+- UC-005
+- UC-012
+depends-on:
+- '001'
+github-issue: ''
+todo: ''
 ---
 
 # Write-enable flag and domain/OU guard in GoogleWorkspaceAdminClient
@@ -31,36 +34,36 @@ also defines the typed error classes.
 
 ## Acceptance Criteria
 
-- [ ] `WorkspaceWriteDisabledError` class defined and exported from the
+- [x] `WorkspaceWriteDisabledError` class defined and exported from the
       client module (or a shared errors module). Extends `Error` with a
       descriptive message.
-- [ ] `WorkspaceDomainGuardError` class defined and exported. Extends `Error`.
+- [x] `WorkspaceDomainGuardError` class defined and exported. Extends `Error`.
       Constructor accepts `reason: string` that explains which guard triggered.
-- [ ] `WorkspaceApiError` class defined and exported. Wraps Admin SDK HTTP
+- [x] `WorkspaceApiError` class defined and exported. Wraps Admin SDK HTTP
       errors. Includes `statusCode: number` and `sdkMessage: string`.
-- [ ] All write methods (`createUser`, `createOU`, `suspendUser`, `deleteUser`)
+- [x] All write methods (`createUser`, `createOU`, `suspendUser`, `deleteUser`)
       check `GOOGLE_WORKSPACE_WRITE_ENABLED === '1'` as their first step.
       If false, they throw `WorkspaceWriteDisabledError` and log at ERROR level.
-- [ ] `createUser` checks `primaryEmail` ends with `@${GOOGLE_STUDENT_DOMAIN}`.
+- [x] `createUser` checks `primaryEmail` ends with `@${GOOGLE_STUDENT_DOMAIN}`.
       If not, throws `WorkspaceDomainGuardError` before any API call.
-- [ ] `createUser` checks `orgUnitPath` starts with `GOOGLE_STUDENT_OU_ROOT`.
+- [x] `createUser` checks `orgUnitPath` starts with `GOOGLE_STUDENT_OU_ROOT`.
       If not, throws `WorkspaceDomainGuardError` before any API call.
-- [ ] `createOU` checks `GOOGLE_WORKSPACE_WRITE_ENABLED` (write gate only —
+- [x] `createOU` checks `GOOGLE_WORKSPACE_WRITE_ENABLED` (write gate only —
       no domain check needed for OU creation; the OU path is derived
       internally from `GOOGLE_STUDENT_OU_ROOT`).
-- [ ] `listUsersInOU` is NOT gated by the write-enable flag (it is read-only).
-- [ ] `getUserOU` is NOT gated by the write-enable flag (read-only, Sprint 002).
-- [ ] Unit tests cover:
+- [x] `listUsersInOU` is NOT gated by the write-enable flag (it is read-only).
+- [x] `getUserOU` is NOT gated by the write-enable flag (read-only, Sprint 002).
+- [x] Unit tests cover:
       - Write method called without flag → `WorkspaceWriteDisabledError` thrown.
       - `createUser` with `@jointheleague.org` email → `WorkspaceDomainGuardError`.
       - `createUser` with OU outside student root → `WorkspaceDomainGuardError`.
       - `createUser` with correct domain and OU, flag set → no guard error (proceeds
         to SDK call, which can be mocked to return success).
       - `listUsersInOU` works without the write-enable flag.
-- [ ] `FakeGoogleWorkspaceAdminClient` does NOT enforce these guards (the fake
+- [x] `FakeGoogleWorkspaceAdminClient` does NOT enforce these guards (the fake
       is for testing callers, not for testing the guard itself — guard tests
       test the real client with mocked SDK).
-- [ ] `npm test` passes.
+- [x] `npm test` passes.
 
 ## Implementation Plan
 

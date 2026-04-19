@@ -6,6 +6,8 @@ export {
   GoogleWorkspaceAdminClientImpl,
   StaffOULookupError,
   WorkspaceApiError,
+  WorkspaceWriteDisabledError,
+  WorkspaceDomainGuardError,
   type GoogleWorkspaceAdminClient,
   type CreateUserParams,
   type CreatedUser,
