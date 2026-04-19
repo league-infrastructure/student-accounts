@@ -17,6 +17,7 @@ import { adminDeprovisionRouter } from './deprovision';
 import { adminExternalAccountsRouter } from './external-accounts';
 import { adminSyncRouter } from './sync';
 import { adminMergeQueueRouter } from './merge-queue';
+import { adminBulkCohortRouter } from './bulk-cohort';
 
 export const adminRouter = Router();
 
@@ -42,3 +43,4 @@ adminRouter.use('/admin', adminDeprovisionRouter);
 adminRouter.use('/admin', adminExternalAccountsRouter);
 adminRouter.use('/admin', adminSyncRouter);
 adminRouter.use('/admin', adminMergeQueueRouter);
+adminRouter.use('/admin', adminBulkCohortRouter);
