@@ -1,9 +1,15 @@
 ---
-id: "005"
-title: "Claude Team Integration — Seat Provisioning and Individual Lifecycle"
-status: active
+id: '005'
+title: "Claude Team Integration \u2014 Seat Provisioning and Individual Lifecycle"
+status: done
 branch: sprint/005-claude-team-integration-seat-provisioning-and-individual-lifecycle
-use-cases: [UC-006, UC-008, UC-009, UC-015, UC-016, UC-017]
+use-cases:
+- UC-006
+- UC-008
+- UC-009
+- UC-015
+- UC-016
+- UC-017
 ---
 
 # Sprint 005: Claude Team Integration — Seat Provisioning and Individual Lifecycle
