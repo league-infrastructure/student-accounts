@@ -13,6 +13,9 @@
  *  - CreatedUser                 — return type for createUser
  *  - CreatedOU                   — return type for createOU
  *  - WorkspaceUser               — element type for listUsersInOU
+ *  - resolveCredentialsFileEnvVar — helper that resolves the credentials file
+ *    env var, accepting both GOOGLE_CREDENTIALS_FILE (wins) and the legacy
+ *    GOOGLE_SERVICE_ACCOUNT_FILE as an alias (OOP fix, Sprint 004).
  *
  * Design decisions:
  *  - Extends in place (Architecture Decision 1): credential loading, auth
@@ -25,6 +28,12 @@
  *    implemented in T002. This ticket delivers the structural extension only.
  *  - GOOGLE_STUDENT_OU_ROOT is read from process.env inside createOU().
  *    The guard against an invalid/missing root is T002's responsibility.
+ *  - Credential file env var alias (OOP fix): GOOGLE_CREDENTIALS_FILE takes
+ *    precedence over GOOGLE_SERVICE_ACCOUNT_FILE when both are set. One INFO
+ *    log per process records which var and which default is active.
+ *  - League-specific defaults (OOP fix): GOOGLE_STUDENT_DOMAIN defaults to
+ *    "students.jointheleague.org", GOOGLE_STUDENT_OU_ROOT defaults to
+ *    "/Students". Each default is logged at INFO once per process.
  *
  * Scopes required:
  *  https://www.googleapis.com/auth/admin.directory.user.readonly
@@ -41,6 +50,86 @@ import pino from 'pino';
 import { google } from 'googleapis';
 
 const logger = pino({ name: 'google-workspace-admin' });
+
+// ---------------------------------------------------------------------------
+// League-specific defaults (logged once per process)
+// ---------------------------------------------------------------------------
+
+/**
+ * Default domain for student Google Workspace accounts.
+ * Used when GOOGLE_STUDENT_DOMAIN is not set.
+ */
+export const DEFAULT_STUDENT_DOMAIN = 'students.jointheleague.org';
+
+/**
+ * Default OU root path under which all student cohort OUs are created.
+ * Used when GOOGLE_STUDENT_OU_ROOT is not set.
+ */
+export const DEFAULT_STUDENT_OU_ROOT = '/Students';
+
+// Track whether defaults have already been logged so we emit at most once
+// per process per variable.
+let _studentDomainDefaultLogged = false;
+let _studentOuRootDefaultLogged = false;
+
+/**
+ * Read GOOGLE_STUDENT_DOMAIN from process.env, falling back to the League
+ * default. Logs at INFO (once per process) when the default is in use.
+ */
+export function resolveStudentDomain(): string {
+  const value = process.env.GOOGLE_STUDENT_DOMAIN;
+  if (!value) {
+    if (!_studentDomainDefaultLogged) {
+      logger.info(
+        { default: DEFAULT_STUDENT_DOMAIN },
+        '[google-workspace-admin] GOOGLE_STUDENT_DOMAIN is not set — ' +
+          `using default "${DEFAULT_STUDENT_DOMAIN}".`,
+      );
+      _studentDomainDefaultLogged = true;
+    }
+    return DEFAULT_STUDENT_DOMAIN;
+  }
+  return value;
+}
+
+/**
+ * Read GOOGLE_STUDENT_OU_ROOT from process.env, falling back to the League
+ * default. Logs at INFO (once per process) when the default is in use.
+ */
+export function resolveStudentOuRoot(): string {
+  const value = process.env.GOOGLE_STUDENT_OU_ROOT;
+  if (!value) {
+    if (!_studentOuRootDefaultLogged) {
+      logger.info(
+        { default: DEFAULT_STUDENT_OU_ROOT },
+        '[google-workspace-admin] GOOGLE_STUDENT_OU_ROOT is not set — ' +
+          `using default "${DEFAULT_STUDENT_OU_ROOT}".`,
+      );
+      _studentOuRootDefaultLogged = true;
+    }
+    return DEFAULT_STUDENT_OU_ROOT;
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
+// Credentials file env var alias
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the Google service account credentials file env var.
+ *
+ * Accepts two names — newer name wins when both are set:
+ *  1. GOOGLE_CREDENTIALS_FILE  (preferred — the name the stakeholder added)
+ *  2. GOOGLE_SERVICE_ACCOUNT_FILE  (Sprint 002 legacy name, still accepted)
+ *
+ * Returns the resolved value (possibly an empty string when neither is set).
+ */
+export function resolveCredentialsFileEnvVar(): string {
+  const newName = process.env.GOOGLE_CREDENTIALS_FILE ?? '';
+  const legacyName = process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '';
+  return newName || legacyName;
+}
 
 // ---------------------------------------------------------------------------
 // Typed errors
@@ -444,18 +533,19 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
   /**
    * Throws WorkspaceDomainGuardError if the email domain or OU path are outside
    * the configured student domain/OU root. Must be called in createUser.
+   *
+   * Uses resolveStudentDomain() and resolveStudentOuRoot() so League defaults
+   * are applied consistently and logged at INFO when env vars are absent.
    */
   private assertStudentDomainAndOU(primaryEmail: string, orgUnitPath: string): void {
-    const studentDomain = process.env.GOOGLE_STUDENT_DOMAIN ?? '';
-    const studentOuRoot = process.env.GOOGLE_STUDENT_OU_ROOT ?? '/Students';
+    const studentDomain = resolveStudentDomain();
+    const studentOuRoot = resolveStudentOuRoot();
 
-    if (studentDomain) {
-      const expectedSuffix = `@${studentDomain}`;
-      if (!primaryEmail.endsWith(expectedSuffix)) {
-        const reason = `primaryEmail "${primaryEmail}" does not end with "${expectedSuffix}"`;
-        logger.error({ primaryEmail, studentDomain }, `[google-workspace-admin] Domain guard: ${reason}`);
-        throw new WorkspaceDomainGuardError(reason);
-      }
+    const expectedSuffix = `@${studentDomain}`;
+    if (!primaryEmail.endsWith(expectedSuffix)) {
+      const reason = `primaryEmail "${primaryEmail}" does not end with "${expectedSuffix}"`;
+      logger.error({ primaryEmail, studentDomain }, `[google-workspace-admin] Domain guard: ${reason}`);
+      throw new WorkspaceDomainGuardError(reason);
     }
 
     if (!orgUnitPath.startsWith(studentOuRoot)) {
@@ -522,7 +612,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
   async createOU(name: string): Promise<CreatedOU> {
     this.assertWriteEnabled('createOU');
-    const studentOuRoot = process.env.GOOGLE_STUDENT_OU_ROOT ?? '/Students';
+    const studentOuRoot = resolveStudentOuRoot();
     const auth = this.buildAuthClient(`createOU:${name}`);
 
     try {

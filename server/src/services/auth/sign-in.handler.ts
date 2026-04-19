@@ -36,6 +36,46 @@ import {
 const logger = pino({ name: 'sign-in.handler' });
 
 // ---------------------------------------------------------------------------
+// League-specific defaults
+// ---------------------------------------------------------------------------
+
+/**
+ * Default OU path prefix that identifies staff accounts.
+ * Used when GOOGLE_STAFF_OU_PATH is not set in the environment.
+ */
+export const DEFAULT_STAFF_OU_PATH = '/League Staff';
+
+/**
+ * Default domain that identifies League staff accounts for OU lookup.
+ * Used when GOOGLE_STAFF_OU_PATH is not set in the environment.
+ */
+export const DEFAULT_STAFF_DOMAIN = 'jointheleague.org';
+
+// Track whether the GOOGLE_STAFF_OU_PATH default has been logged so we
+// emit at most once per process.
+let _staffOuPathDefaultLogged = false;
+
+/**
+ * Read GOOGLE_STAFF_OU_PATH from process.env, falling back to the League
+ * default. Logs at INFO (once per process) when the default is in use.
+ */
+export function resolveStaffOuPath(): string {
+  const value = process.env.GOOGLE_STAFF_OU_PATH;
+  if (!value) {
+    if (!_staffOuPathDefaultLogged) {
+      logger.info(
+        { default: DEFAULT_STAFF_OU_PATH },
+        '[sign-in.handler] GOOGLE_STAFF_OU_PATH is not set — ' +
+          `using default "${DEFAULT_STAFF_OU_PATH}".`,
+      );
+      _staffOuPathDefaultLogged = true;
+    }
+    return DEFAULT_STAFF_OU_PATH;
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
 // Admin email set — parsed once at module load time (T006)
 // ---------------------------------------------------------------------------
 
@@ -201,7 +241,7 @@ export async function signInHandler(
 
   if (provider === 'google' && providerEmail?.toLowerCase().endsWith('@jointheleague.org')) {
     const adminDirClient = options?.adminDirClient;
-    const staffOuPath = process.env.GOOGLE_STAFF_OU_PATH ?? '/League Staff';
+    const staffOuPath = resolveStaffOuPath();
 
     if (!adminDirClient) {
       // No client injected — this is a coding error (passport.config.ts always

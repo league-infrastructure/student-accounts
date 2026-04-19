@@ -27,6 +27,11 @@ import {
   WorkspaceDomainGuardError,
   WorkspaceApiError,
   StaffOULookupError,
+  resolveCredentialsFileEnvVar,
+  resolveStudentDomain,
+  resolveStudentOuRoot,
+  DEFAULT_STUDENT_DOMAIN,
+  DEFAULT_STUDENT_OU_ROOT,
 } from '../../../../server/src/services/google-workspace/google-workspace-admin.client.js';
 
 // ---------------------------------------------------------------------------
@@ -431,6 +436,203 @@ describe('GoogleWorkspaceAdminClientImpl read-only methods bypass write gate', (
     }
 
     // Will fail at auth/SDK stage, but NOT WorkspaceWriteDisabledError
+    expect(caught).not.toBeInstanceOf(WorkspaceWriteDisabledError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OOP fix: resolveCredentialsFileEnvVar — alias support
+// ---------------------------------------------------------------------------
+
+describe('resolveCredentialsFileEnvVar — GOOGLE_CREDENTIALS_FILE alias', () => {
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    savedEnv.GOOGLE_CREDENTIALS_FILE = process.env.GOOGLE_CREDENTIALS_FILE;
+    savedEnv.GOOGLE_SERVICE_ACCOUNT_FILE = process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
+  });
+
+  afterEach(() => {
+    for (const key of ['GOOGLE_CREDENTIALS_FILE', 'GOOGLE_SERVICE_ACCOUNT_FILE']) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = savedEnv[key];
+      }
+    }
+  });
+
+  it('returns empty string when neither var is set', () => {
+    delete process.env.GOOGLE_CREDENTIALS_FILE;
+    delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
+    expect(resolveCredentialsFileEnvVar()).toBe('');
+  });
+
+  it('returns GOOGLE_CREDENTIALS_FILE when only the new name is set', () => {
+    process.env.GOOGLE_CREDENTIALS_FILE = 'new-creds.json';
+    delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
+    expect(resolveCredentialsFileEnvVar()).toBe('new-creds.json');
+  });
+
+  it('returns GOOGLE_SERVICE_ACCOUNT_FILE when only the legacy name is set', () => {
+    delete process.env.GOOGLE_CREDENTIALS_FILE;
+    process.env.GOOGLE_SERVICE_ACCOUNT_FILE = 'legacy-creds.json';
+    expect(resolveCredentialsFileEnvVar()).toBe('legacy-creds.json');
+  });
+
+  it('GOOGLE_CREDENTIALS_FILE wins when both are set', () => {
+    process.env.GOOGLE_CREDENTIALS_FILE = 'new-creds.json';
+    process.env.GOOGLE_SERVICE_ACCOUNT_FILE = 'legacy-creds.json';
+    expect(resolveCredentialsFileEnvVar()).toBe('new-creds.json');
+  });
+
+  it('falls back to GOOGLE_SERVICE_ACCOUNT_FILE when GOOGLE_CREDENTIALS_FILE is empty string', () => {
+    process.env.GOOGLE_CREDENTIALS_FILE = '';
+    process.env.GOOGLE_SERVICE_ACCOUNT_FILE = 'legacy-creds.json';
+    expect(resolveCredentialsFileEnvVar()).toBe('legacy-creds.json');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OOP fix: resolveStudentDomain — League default
+// ---------------------------------------------------------------------------
+
+describe('resolveStudentDomain — League default', () => {
+  const savedEnv: { value: string | undefined } = { value: undefined };
+
+  beforeEach(() => {
+    savedEnv.value = process.env.GOOGLE_STUDENT_DOMAIN;
+  });
+
+  afterEach(() => {
+    if (savedEnv.value === undefined) {
+      delete process.env.GOOGLE_STUDENT_DOMAIN;
+    } else {
+      process.env.GOOGLE_STUDENT_DOMAIN = savedEnv.value;
+    }
+  });
+
+  it('returns the League default when GOOGLE_STUDENT_DOMAIN is not set', () => {
+    delete process.env.GOOGLE_STUDENT_DOMAIN;
+    expect(resolveStudentDomain()).toBe(DEFAULT_STUDENT_DOMAIN);
+  });
+
+  it('returns the configured value when GOOGLE_STUDENT_DOMAIN is set', () => {
+    process.env.GOOGLE_STUDENT_DOMAIN = 'custom.example.com';
+    expect(resolveStudentDomain()).toBe('custom.example.com');
+  });
+
+  it('DEFAULT_STUDENT_DOMAIN constant is students.jointheleague.org', () => {
+    expect(DEFAULT_STUDENT_DOMAIN).toBe('students.jointheleague.org');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OOP fix: resolveStudentOuRoot — League default
+// ---------------------------------------------------------------------------
+
+describe('resolveStudentOuRoot — League default', () => {
+  const savedEnv: { value: string | undefined } = { value: undefined };
+
+  beforeEach(() => {
+    savedEnv.value = process.env.GOOGLE_STUDENT_OU_ROOT;
+  });
+
+  afterEach(() => {
+    if (savedEnv.value === undefined) {
+      delete process.env.GOOGLE_STUDENT_OU_ROOT;
+    } else {
+      process.env.GOOGLE_STUDENT_OU_ROOT = savedEnv.value;
+    }
+  });
+
+  it('returns the League default when GOOGLE_STUDENT_OU_ROOT is not set', () => {
+    delete process.env.GOOGLE_STUDENT_OU_ROOT;
+    expect(resolveStudentOuRoot()).toBe(DEFAULT_STUDENT_OU_ROOT);
+  });
+
+  it('returns the configured value when GOOGLE_STUDENT_OU_ROOT is set', () => {
+    process.env.GOOGLE_STUDENT_OU_ROOT = '/CustomStudents';
+    expect(resolveStudentOuRoot()).toBe('/CustomStudents');
+  });
+
+  it('DEFAULT_STUDENT_OU_ROOT constant is /Students', () => {
+    expect(DEFAULT_STUDENT_OU_ROOT).toBe('/Students');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OOP fix: domain guard uses League default when GOOGLE_STUDENT_DOMAIN is unset
+// ---------------------------------------------------------------------------
+
+describe('GoogleWorkspaceAdminClientImpl domain guard with League defaults', () => {
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    savedEnv.GOOGLE_WORKSPACE_WRITE_ENABLED = process.env.GOOGLE_WORKSPACE_WRITE_ENABLED;
+    savedEnv.GOOGLE_STUDENT_DOMAIN = process.env.GOOGLE_STUDENT_DOMAIN;
+    savedEnv.GOOGLE_STUDENT_OU_ROOT = process.env.GOOGLE_STUDENT_OU_ROOT;
+
+    process.env.GOOGLE_WORKSPACE_WRITE_ENABLED = '1';
+    // Explicitly unset both domain and OU root to exercise defaults
+    delete process.env.GOOGLE_STUDENT_DOMAIN;
+    delete process.env.GOOGLE_STUDENT_OU_ROOT;
+  });
+
+  afterEach(() => {
+    for (const key of ['GOOGLE_WORKSPACE_WRITE_ENABLED', 'GOOGLE_STUDENT_DOMAIN', 'GOOGLE_STUDENT_OU_ROOT']) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = savedEnv[key];
+      }
+    }
+  });
+
+  it('rejects email outside default student domain when GOOGLE_STUDENT_DOMAIN is unset', async () => {
+    const client = makeClient();
+    await expect(
+      client.createUser({
+        ...VALID_PARAMS,
+        primaryEmail: 'alice@gmail.com',
+      }),
+    ).rejects.toBeInstanceOf(WorkspaceDomainGuardError);
+  });
+
+  it('accepts email on default student domain when GOOGLE_STUDENT_DOMAIN is unset', async () => {
+    const client = makeClient();
+    // VALID_PARAMS has primaryEmail on students.jointheleague.org — the League default
+    let caught: unknown;
+    try {
+      await client.createUser(VALID_PARAMS);
+    } catch (err) {
+      caught = err;
+    }
+    // Should NOT be a guard error — will fail at auth/API stage
+    expect(caught).not.toBeInstanceOf(WorkspaceDomainGuardError);
+    expect(caught).not.toBeInstanceOf(WorkspaceWriteDisabledError);
+  });
+
+  it('rejects OU outside default student OU root when GOOGLE_STUDENT_OU_ROOT is unset', async () => {
+    const client = makeClient();
+    await expect(
+      client.createUser({
+        ...VALID_PARAMS,
+        orgUnitPath: '/League Staff/Instructors',
+      }),
+    ).rejects.toBeInstanceOf(WorkspaceDomainGuardError);
+  });
+
+  it('accepts OU under default student OU root when GOOGLE_STUDENT_OU_ROOT is unset', async () => {
+    const client = makeClient();
+    // VALID_PARAMS has orgUnitPath /Students/Spring2025 — under the League default /Students
+    let caught: unknown;
+    try {
+      await client.createUser(VALID_PARAMS);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).not.toBeInstanceOf(WorkspaceDomainGuardError);
     expect(caught).not.toBeInstanceOf(WorkspaceWriteDisabledError);
   });
 });
