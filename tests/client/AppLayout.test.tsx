@@ -110,6 +110,32 @@ describe('AppLayout', () => {
 
   // ---- Impersonation banner tests ----
 
+  it('shows Directory link when user has role=staff', () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 2,
+        email: 'staff@example.com',
+        displayName: 'Staff User',
+        role: 'staff',
+        avatarUrl: null,
+        provider: null,
+        providerId: null,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    expect(screen.getByText('Directory')).toBeInTheDocument();
+  });
+
+  it('hides Directory link when user has non-staff role', () => {
+    renderLayout();
+    expect(screen.queryByText('Directory')).not.toBeInTheDocument();
+  });
+
   it('does not show impersonation banner when not impersonating', () => {
     renderLayout();
     expect(screen.queryByText(/Viewing as/i)).not.toBeInTheDocument();

@@ -449,6 +449,15 @@ export default function AppLayout() {
             {item.label}
           </NavLink>
         ))}
+        {user.role === 'staff' && !isAdminSection && (
+          <NavLink
+            to="/staff/directory"
+            onClick={closeSidebarIfMobile}
+            style={({ isActive }) => styles.navLink(isActive)}
+          >
+            Directory
+          </NavLink>
+        )}
         {isAdmin && !isAdminSection && (
           <NavLink
             to="/admin/users"
