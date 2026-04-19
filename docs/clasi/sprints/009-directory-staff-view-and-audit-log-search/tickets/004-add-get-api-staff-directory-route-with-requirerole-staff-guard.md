@@ -1,11 +1,12 @@
 ---
-id: "004"
-title: "Add GET /api/staff/directory route with requireRole(staff) guard"
-status: todo
-use-cases: [SUC-009-007]
+id: '004'
+title: Add GET /api/staff/directory route with requireRole(staff) guard
+status: done
+use-cases:
+- SUC-009-007
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 
 # Add GET /api/staff/directory route with requireRole(staff) guard
@@ -19,19 +20,19 @@ endpoints are exposed. Any non-staff user receives 403.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/staff/directory` returns all active Users with `role=student`.
-- [ ] Response per user: `{ id, displayName, email, cohort: {id,name}|null,
+- [x] `GET /api/staff/directory` returns all active Users with `role=student`.
+- [x] Response per user: `{ id, displayName, email, cohort: {id,name}|null,
       externalAccountTypes: string[] }`. No login details, no provisioning
       fields, no audit fields.
-- [ ] Returns 403 for `role=admin` and `role=student` users (staff-only).
+- [x] Returns 403 for `role=admin` and `role=student` users (staff-only).
       Note: admin users may be allowed for testing convenience — confirm with
       stakeholder; default to staff-only.
-- [ ] Returns 401 for unauthenticated requests.
-- [ ] Router is mounted in `server/src/app.ts` under `/api` (not under
+- [x] Returns 401 for unauthenticated requests.
+- [x] Router is mounted in `server/src/app.ts` under `/api` (not under
       `adminRouter`).
-- [ ] No write endpoints exist on `staffDirectoryRouter` — any POST/PUT/DELETE
+- [x] No write endpoints exist on `staffDirectoryRouter` — any POST/PUT/DELETE
       to `/api/staff/*` returns 404.
-- [ ] Server tests cover: staff user can list students; student user is blocked
+- [x] Server tests cover: staff user can list students; student user is blocked
       (403); unauthenticated is blocked (401).
 
 ## Implementation Plan
