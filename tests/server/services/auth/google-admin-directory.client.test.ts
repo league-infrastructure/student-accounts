@@ -15,6 +15,8 @@
  *  - GoogleAdminDirectoryClient (file path): MALFORMED_CREDENTIALS when file missing.
  *  - GoogleAdminDirectoryClient (file path): MALFORMED_CREDENTIALS when file not valid JSON.
  *  - GoogleAdminDirectoryClient (file path): file wins when both file and inline JSON are set.
+ *  - GoogleAdminDirectoryClient.resolveServiceAccountFilePath: bare filename resolves under config/files/.
+ *  - GoogleAdminDirectoryClient.resolveServiceAccountFilePath: path with slashes used as-is.
  *
  * The real Admin SDK endpoint is NOT exercised in CI (requires live credentials).
  * Integration coverage for the real API path is deferred to T005.
@@ -23,7 +25,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   StaffOULookupError,
   FakeAdminDirectoryClient,
@@ -201,7 +203,7 @@ function writeTempFile(content: string): string {
   return tmpPath;
 }
 
-describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_JSON_FILE)', () => {
+describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_FILE)', () => {
   // Track temp files created so we can clean them up.
   const tempFiles: string[] = [];
 
@@ -319,5 +321,38 @@ describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_JSON_
       name: 'StaffOULookupError',
       code: 'MALFORMED_CREDENTIALS', // file was tried first and failed
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GoogleAdminDirectoryClient.resolveServiceAccountFilePath — path resolution
+// ---------------------------------------------------------------------------
+
+describe('GoogleAdminDirectoryClient.resolveServiceAccountFilePath', () => {
+  it('resolves a bare filename against <cwd>/config/files/', () => {
+    const result = GoogleAdminDirectoryClient.resolveServiceAccountFilePath(
+      'gapps-integrations-fc9a96a0f34a.json',
+    );
+    expect(result).toBe(
+      path.resolve(process.cwd(), 'config', 'files', 'gapps-integrations-fc9a96a0f34a.json'),
+    );
+  });
+
+  it('uses an explicit relative path (with slashes) as-is via path.resolve', () => {
+    const result = GoogleAdminDirectoryClient.resolveServiceAccountFilePath(
+      './config/files/my-key.json',
+    );
+    expect(result).toBe(path.resolve(process.cwd(), './config/files/my-key.json'));
+  });
+
+  it('uses an absolute path unchanged', () => {
+    const absPath = '/etc/secrets/google-sa.json';
+    const result = GoogleAdminDirectoryClient.resolveServiceAccountFilePath(absPath);
+    expect(result).toBe(absPath);
+  });
+
+  it('bare filename with no extension is still resolved under config/files/', () => {
+    const result = GoogleAdminDirectoryClient.resolveServiceAccountFilePath('mykey');
+    expect(result).toBe(path.resolve(process.cwd(), 'config', 'files', 'mykey'));
   });
 });

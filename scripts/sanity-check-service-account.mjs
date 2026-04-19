@@ -3,14 +3,18 @@
  * parsed, and used to construct a GoogleAdminDirectoryClient.
  *
  * Does NOT make a real API call — only verifies that:
- *   1. The file at GOOGLE_SERVICE_ACCOUNT_JSON_FILE exists and is readable.
+ *   1. The file at GOOGLE_SERVICE_ACCOUNT_FILE exists and is readable.
  *   2. The file contents are valid JSON.
  *   3. The expected fields (type, client_email, private_key) are present.
+ *
+ * Path resolution rules (same as GoogleAdminDirectoryClient):
+ *   - Bare filename (no slashes): resolved against <project_root>/config/files/
+ *   - Path with slashes: used as-is (relative paths resolved against cwd)
  *
  * Run from the project root:
  *   node scripts/sanity-check-service-account.mjs
  *
- * Reads GOOGLE_SERVICE_ACCOUNT_JSON_FILE directly from .env (or the environment)
+ * Reads GOOGLE_SERVICE_ACCOUNT_FILE directly from .env (or the environment)
  * without requiring any npm packages beyond Node built-ins.
  */
 
@@ -55,24 +59,37 @@ for (const [k, v] of Object.entries(envVars)) {
 }
 
 // ---------------------------------------------------------------------------
+// Path resolution — mirrors GoogleAdminDirectoryClient.resolveServiceAccountFilePath
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve GOOGLE_SERVICE_ACCOUNT_FILE to an absolute path.
+ *
+ *  - Bare filename (no path separator): resolved against <projectRoot>/config/files/
+ *  - Path with slashes: used as-is via path.resolve (handles absolute and relative)
+ */
+function resolveServiceAccountFilePath(fileValue) {
+  if (fileValue.includes('/') || fileValue.includes(path.sep)) {
+    return path.resolve(projectRoot, fileValue);
+  }
+  return path.resolve(projectRoot, 'config', 'files', fileValue);
+}
+
+// ---------------------------------------------------------------------------
 // Sanity check
 // ---------------------------------------------------------------------------
 
-const filePath = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_FILE;
+const fileValue = process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
 
 console.log('--- Google Service Account Sanity Check ---');
-console.log(`GOOGLE_SERVICE_ACCOUNT_JSON_FILE = ${filePath ?? '(not set)'}`);
+console.log(`GOOGLE_SERVICE_ACCOUNT_FILE = ${fileValue ?? '(not set)'}`);
 
-if (!filePath) {
-  console.error('FAIL: GOOGLE_SERVICE_ACCOUNT_JSON_FILE is not set in .env');
+if (!fileValue) {
+  console.error('FAIL: GOOGLE_SERVICE_ACCOUNT_FILE is not set in .env');
   process.exit(1);
 }
 
-// Resolve relative to project root
-const resolvedPath = path.isAbsolute(filePath)
-  ? filePath
-  : path.join(projectRoot, filePath);
-
+const resolvedPath = resolveServiceAccountFilePath(fileValue);
 console.log(`Resolved path: ${resolvedPath}`);
 
 // Step 1: File exists and is readable
