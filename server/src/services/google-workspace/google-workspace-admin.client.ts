@@ -244,6 +244,13 @@ export interface WorkspaceUser {
   orgUnitPath: string;
 }
 
+export interface WorkspaceOU {
+  /** Full OU path (e.g. /Students/Spring2025). */
+  orgUnitPath: string;
+  /** Display name of the OU (e.g. Spring2025). */
+  name: string;
+}
+
 // ---------------------------------------------------------------------------
 // GoogleWorkspaceAdminClient interface
 // ---------------------------------------------------------------------------
@@ -258,6 +265,9 @@ export interface WorkspaceUser {
 export interface GoogleWorkspaceAdminClient {
   // Read — used by sign-in handler (preserved from Sprint 002)
   getUserOU(email: string): Promise<string>;
+
+  // Read — new in Sprint 006 (T005)
+  listOUs(parentPath: string): Promise<WorkspaceOU[]>;
 
   // Write — new in Sprint 004
   createUser(params: CreateUserParams): Promise<CreatedUser>;
@@ -506,6 +516,46 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         `Admin Directory lookup failed for ${email}`,
         'API_ERROR',
         email,
+        err,
+      );
+    }
+  }
+
+  async listOUs(parentPath: string): Promise<WorkspaceOU[]> {
+    const auth = this.buildAuthClient(`listOUs:${parentPath}`);
+
+    try {
+      const adminSdk = google.admin({ version: 'directory_v1', auth });
+      const response = await adminSdk.orgunits.list({
+        customerId: 'my_customer',
+        orgUnitPath: parentPath,
+        type: 'children',
+      });
+
+      const ous: WorkspaceOU[] = [];
+      for (const ou of response.data.organizationUnits ?? []) {
+        if (ou.orgUnitPath && ou.name) {
+          ous.push({ orgUnitPath: ou.orgUnitPath, name: ou.name });
+        }
+      }
+
+      logger.info(
+        { parentPath, count: ous.length },
+        '[google-workspace-admin] listOUs: completed.',
+      );
+
+      return ous;
+    } catch (err) {
+      if (err instanceof StaffOULookupError) {
+        throw err;
+      }
+      const apiErr = err as any;
+      const statusCode: number | undefined = apiErr?.response?.status ?? apiErr?.code;
+      logger.error({ parentPath, err }, '[google-workspace-admin] listOUs failed.');
+      throw new WorkspaceApiError(
+        `Admin SDK listOUs failed for '${parentPath}': ${apiErr?.message ?? String(err)}`,
+        'listOUs',
+        statusCode,
         err,
       );
     }
