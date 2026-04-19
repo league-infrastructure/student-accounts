@@ -1,11 +1,14 @@
 ---
-id: "003"
-title: "DELETE /api/account/logins/:id — remove Login with at-least-one guard and audit"
-status: todo
-use-cases: [SUC-003]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: '003'
+title: "DELETE /api/account/logins/:id \u2014 remove Login with at-least-one guard\
+  \ and audit"
+status: in-progress
+use-cases:
+- SUC-003
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # DELETE /api/account/logins/:id — remove Login with at-least-one guard and audit
@@ -23,15 +26,15 @@ user-ownership scope check.
 
 ## Acceptance Criteria
 
-- [ ] `DELETE /api/account/logins/:id` returns 204 when the Login belongs to
+- [x] `DELETE /api/account/logins/:id` returns 204 when the Login belongs to
       the current user and at least two Logins remain after deletion.
-- [ ] Returns 409 when the user has exactly one Login (would leave zero).
-- [ ] Returns 404 when the login_id does not belong to the current user
+- [x] Returns 409 when the user has exactly one Login (would leave zero).
+- [x] Returns 404 when the login_id does not belong to the current user
       (scope guard — not 403, to avoid revealing cross-user login IDs).
-- [ ] Returns 401 when no session exists.
-- [ ] Returns 403 when session user is staff or admin.
-- [ ] `remove_login` AuditEvent is recorded atomically with the deletion.
-- [ ] Audit event details include `provider` and `loginId`.
+- [x] Returns 401 when no session exists.
+- [x] Returns 403 when session user is staff or admin.
+- [x] `remove_login` AuditEvent is recorded atomically with the deletion.
+- [x] Audit event details include `provider` and `loginId`.
 
 ## Implementation Plan
 

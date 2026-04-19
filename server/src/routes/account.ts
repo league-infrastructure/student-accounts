@@ -5,17 +5,18 @@
  * Requests from users with role=staff or role=admin return 403.
  *
  * Routes provided by this module (mounted at /api):
- *   GET  /api/account  — aggregate profile/logins/externalAccounts/provisioningRequests
+ *   GET    /api/account               — aggregate profile/logins/externalAccounts/provisioningRequests
+ *   DELETE /api/account/logins/:id    — remove one of the student's own Logins
  *
- * Routes reserved for T003 and T004:
- *   DELETE /api/account/logins/:id
+ * Routes reserved for T004:
  *   POST   /api/account/provisioning-requests
  *   GET    /api/account/provisioning-requests
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
 
 export const accountRouter = Router();
 
@@ -86,5 +87,58 @@ accountRouter.get(
     };
 
     res.json(body);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /api/account/logins/:id — remove one of the student's own Logins
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes a Login that belongs to the signed-in student.
+ *
+ * Ownership scope: the Login must have login.user_id === session.userId.
+ * If the ID does not exist or belongs to another user, returns 404 (to avoid
+ * revealing cross-user login IDs).
+ *
+ * At-least-one guard: LoginService.delete throws ValidationError when the
+ * deletion would leave the user with zero logins. The route maps this to 409.
+ *
+ * The delete and its audit event (remove_login) are written atomically by
+ * LoginService.delete.
+ */
+accountRouter.delete(
+  '/account/logins/:id',
+  requireAuth,
+  requireRole('student'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    const userId: number = (req.session as any).userId;
+    const loginId = parseInt(req.params.id, 10);
+
+    if (isNaN(loginId)) {
+      return next(new NotFoundError('Login not found'));
+    }
+
+    const { logins } = req.services;
+
+    // Ownership check: load the Login and confirm it belongs to this user.
+    // Return 404 whether the record is missing or belongs to another user, to
+    // avoid revealing that the ID exists.
+    const login = await logins.findById(loginId);
+    if (!login || login.user_id !== userId) {
+      return next(new NotFoundError('Login not found'));
+    }
+
+    try {
+      await logins.delete(loginId, userId);
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        // Map "would leave zero logins" → 409 Conflict per UC-011.
+        return next(new ConflictError('Cannot remove the last login'));
+      }
+      return next(err);
+    }
+
+    res.status(204).end();
   },
 );

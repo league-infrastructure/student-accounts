@@ -72,6 +72,11 @@ export class LoginService {
     return LoginRepository.findByProvider(this.prisma, provider, providerUserId);
   }
 
+  /** Return a single Login by its primary key, or null if not found. */
+  async findById(loginId: number): Promise<Login | null> {
+    return LoginRepository.findById(this.prisma, loginId);
+  }
+
   /** Return all Login records for a user. */
   async findAllByUser(userId: number): Promise<Login[]> {
     return LoginRepository.findAllByUser(this.prisma, userId);
