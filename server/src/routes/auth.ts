@@ -180,7 +180,7 @@ authRouter.post('/auth/logout', (req: Request, res: Response, _next: NextFunctio
  * (account-linking mode requires an existing session).
  */
 authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction) => {
-  if (!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET)) {
+  if (!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)) {
     return res.status(501).json({
       error: 'Google OAuth not configured',
       docs: 'https://console.cloud.google.com/apis/credentials',
@@ -201,7 +201,7 @@ authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction)
 authRouter.get(
   '/auth/google/callback',
   (req: Request, res: Response, next: NextFunction) => {
-    if (!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET)) {
+    if (!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)) {
       return res.redirect('/?error=oauth_denied');
     }
     // Use a custom callback to intercept authentication failures and redirect
@@ -244,7 +244,7 @@ authRouter.get(
  * Returns 401 if ?link=1 is passed and the user is not authenticated.
  */
 authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction) => {
-  if (!(process.env.GITHUB_OAUTH_CLIENT_ID && process.env.GITHUB_OAUTH_CLIENT_SECRET)) {
+  if (!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)) {
     return res.status(501).json({
       error: 'GitHub OAuth not configured',
       docs: 'https://github.com/settings/developers',
@@ -265,7 +265,7 @@ authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction)
 authRouter.get(
   '/auth/github/callback',
   (req: Request, res: Response, next: NextFunction) => {
-    if (!(process.env.GITHUB_OAUTH_CLIENT_ID && process.env.GITHUB_OAUTH_CLIENT_SECRET)) {
+    if (!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)) {
       return res.redirect('/?error=oauth_denied');
     }
     passport.authenticate(

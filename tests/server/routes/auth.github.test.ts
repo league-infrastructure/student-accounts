@@ -133,12 +133,12 @@ async function cleanDb() {
 const SAVED_ENV: Record<string, string | undefined> = {};
 
 beforeAll(() => {
-  SAVED_ENV.GITHUB_OAUTH_CLIENT_ID = process.env.GITHUB_OAUTH_CLIENT_ID;
-  SAVED_ENV.GITHUB_OAUTH_CLIENT_SECRET = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+  SAVED_ENV.GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+  SAVED_ENV.GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
   SAVED_ENV.GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
 
-  process.env.GITHUB_OAUTH_CLIENT_ID = 'test-gh-client-id';
-  process.env.GITHUB_OAUTH_CLIENT_SECRET = 'test-gh-client-secret';
+  process.env.GITHUB_CLIENT_ID = 'test-gh-client-id';
+  process.env.GITHUB_CLIENT_SECRET = 'test-gh-client-secret';
   process.env.GITHUB_CALLBACK_URL = 'http://localhost:3000/api/auth/github/callback';
 
   userService = new UserService(prisma, new AuditService());
@@ -170,16 +170,16 @@ beforeEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /api/auth/github', () => {
-  it('returns 501 when GITHUB_OAUTH_CLIENT_ID is not set', async () => {
-    const savedId = process.env.GITHUB_OAUTH_CLIENT_ID;
-    delete process.env.GITHUB_OAUTH_CLIENT_ID;
+  it('returns 501 when GITHUB_CLIENT_ID is not set', async () => {
+    const savedId = process.env.GITHUB_CLIENT_ID;
+    delete process.env.GITHUB_CLIENT_ID;
 
     const res = await request(app).get('/api/auth/github');
     expect(res.status).toBe(501);
     expect(res.body.error).toMatch(/not configured/i);
     expect(res.body).toHaveProperty('docs');
 
-    process.env.GITHUB_OAUTH_CLIENT_ID = savedId;
+    process.env.GITHUB_CLIENT_ID = savedId;
   });
 });
 

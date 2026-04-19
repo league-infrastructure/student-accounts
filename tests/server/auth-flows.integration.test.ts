@@ -198,18 +198,18 @@ const SAVED_ENV: Record<string, string | undefined> = {};
 
 beforeAll(() => {
   // Save and set OAuth env vars so strategy gates don't return 501
-  SAVED_ENV.GOOGLE_OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  SAVED_ENV.GOOGLE_OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  SAVED_ENV.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+  SAVED_ENV.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
   SAVED_ENV.GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL;
-  SAVED_ENV.GITHUB_OAUTH_CLIENT_ID = process.env.GITHUB_OAUTH_CLIENT_ID;
-  SAVED_ENV.GITHUB_OAUTH_CLIENT_SECRET = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+  SAVED_ENV.GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+  SAVED_ENV.GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
   SAVED_ENV.GITHUB_CALLBACK_URL = process.env.GITHUB_CALLBACK_URL;
 
-  process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-google-client-id-flows';
-  process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-google-secret-flows';
+  process.env.GOOGLE_CLIENT_ID = 'test-google-client-id-flows';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-google-secret-flows';
   process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/api/auth/google/callback';
-  process.env.GITHUB_OAUTH_CLIENT_ID = 'test-github-client-id-flows';
-  process.env.GITHUB_OAUTH_CLIENT_SECRET = 'test-github-secret-flows';
+  process.env.GITHUB_CLIENT_ID = 'test-github-client-id-flows';
+  process.env.GITHUB_CLIENT_SECRET = 'test-github-secret-flows';
   process.env.GITHUB_CALLBACK_URL = 'http://localhost:3000/api/auth/github/callback';
 
   auditService = new AuditService();
