@@ -13,4 +13,5 @@ export {
   type CreatedUser,
   type CreatedOU,
   type WorkspaceUser,
+  type WorkspaceOU,
 } from './google-workspace-admin.client.js';

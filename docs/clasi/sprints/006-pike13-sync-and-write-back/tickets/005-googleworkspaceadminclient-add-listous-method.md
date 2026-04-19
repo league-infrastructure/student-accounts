@@ -1,7 +1,7 @@
 ---
 id: "005"
 title: "GoogleWorkspaceAdminClient: add listOUs method"
-status: todo
+status: done
 use-cases: [SUC-001]
 depends-on: []
 github-issue: ""
@@ -22,21 +22,21 @@ with a corresponding fake `listOUs` implementation.
 
 ## Acceptance Criteria
 
-- [ ] `GoogleWorkspaceAdminClient` interface gains:
+- [x] `GoogleWorkspaceAdminClient` interface gains:
   ```typescript
   listOUs(parentPath: string): Promise<WorkspaceOU[]>
   ```
   where `WorkspaceOU = { name: string; orgUnitPath: string }`.
-- [ ] `GoogleWorkspaceAdminClientImpl` implements `listOUs` using
+- [x] `GoogleWorkspaceAdminClientImpl` implements `listOUs` using
   `directory.orgunits.list` with `customerId='my_customer'` and filtering to
   direct children of `parentPath`.
-- [ ] The method is read-only; `GOOGLE_WORKSPACE_WRITE_ENABLED` is not checked.
-- [ ] `WorkspaceApiError` is thrown on Admin SDK HTTP error.
-- [ ] `FakeGoogleWorkspaceAdminClient` gains `listOUs(parentPath)` that returns
+- [x] The method is read-only; `GOOGLE_WORKSPACE_WRITE_ENABLED` is not checked.
+- [x] `WorkspaceApiError` is thrown on Admin SDK HTTP error.
+- [x] `FakeGoogleWorkspaceAdminClient` gains `listOUs(parentPath)` that returns
   a configurable seeded list of `WorkspaceOU` objects.
-- [ ] `tests/server/helpers/fake-google-workspace-admin.client.ts` updated.
-- [ ] Existing tests continue to pass (no regressions to existing methods).
-- [ ] Unit test: `listOUs` returns child OUs for a given parent path;
+- [x] `tests/server/helpers/fake-google-workspace-admin.client.ts` updated.
+- [x] Existing tests continue to pass (no regressions to existing methods).
+- [x] Unit test: `listOUs` returns child OUs for a given parent path;
   empty result for a path with no children.
 
 ## Implementation Plan
