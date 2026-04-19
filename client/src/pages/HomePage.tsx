@@ -6,7 +6,8 @@ type Role = (typeof ROLES)[number];
 export default function HomePage() {
   const [email, setEmail] = useState('eric.busboom@jointheleague.org');
   const [role, setRole] = useState<Role>('admin');
-  const [error, setError] = useState<string | null>(null);
+  const urlError = new URLSearchParams(window.location.search).get('error');
+  const [error, setError] = useState<string | null>(urlError);
   const [submitting, setSubmitting] = useState(false);
 
   async function signIn(e: React.FormEvent) {
