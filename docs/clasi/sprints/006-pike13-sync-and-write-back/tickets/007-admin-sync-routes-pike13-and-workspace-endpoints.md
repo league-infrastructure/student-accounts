@@ -1,7 +1,7 @@
 ---
 id: "007"
 title: "Admin sync routes: Pike13 and Workspace endpoints"
-status: todo
+status: done
 use-cases: [UC-004, SUC-001, SUC-002, SUC-003, SUC-004]
 depends-on: ["003", "006"]
 github-issue: ""
@@ -21,18 +21,18 @@ ticket creates it from scratch with all five routes.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/routes/admin/sync.ts` contains all five endpoints:
+- [x] `server/src/routes/admin/sync.ts` contains all five endpoints:
   - `POST /admin/sync/pike13` → `Pike13SyncService.sync()`
   - `POST /admin/sync/workspace/cohorts` → `WorkspaceSyncService.syncCohorts()`
   - `POST /admin/sync/workspace/staff` → `WorkspaceSyncService.syncStaff()`
   - `POST /admin/sync/workspace/students` → `WorkspaceSyncService.syncStudents()`
   - `POST /admin/sync/workspace/all` → `WorkspaceSyncService.syncAll()`
-- [ ] All routes are protected by `requireAuth` + `requireRole('admin')`.
-- [ ] All routes return HTTP 200 with the service's report object as JSON.
-- [ ] Service errors (exception thrown) are caught and returned as HTTP 500 with
+- [x] All routes are protected by `requireAuth` + `requireRole('admin')`.
+- [x] All routes return HTTP 200 with the service's report object as JSON.
+- [x] Service errors (exception thrown) are caught and returned as HTTP 500 with
   `{ error: string }` (standard error handler pattern).
-- [ ] Router is mounted at `/admin/sync` in `server/src/app.ts`.
-- [ ] Route integration tests: 403 for non-admin, 200 + report for admin,
+- [x] Router is mounted at `/admin/sync` in `server/src/app.ts`.
+- [x] Route integration tests: 403 for non-admin, 200 + report for admin,
   500 response when service throws.
 
 ## Implementation Plan
