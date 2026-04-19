@@ -1,7 +1,7 @@
 ---
 id: "011"
 title: "Wire routes, App.tsx, AppLayout nav, and fix role-based post-login redirects"
-status: todo
+status: done
 use-cases: [SUC-009-009]
 depends-on: ["004", "005", "006", "007", "008", "009", "010"]
 github-issue: ""
@@ -20,24 +20,24 @@ after OAuth sign-in.
 
 ## Acceptance Criteria
 
-- [ ] `App.tsx` contains routes:
+- [x] `App.tsx` contains routes:
       - `/staff/directory` wrapped in `<StaffLayout>` → `<StaffDirectory>`.
       - `/admin/audit-log` wrapped in `<AdminLayout>` → `<AuditLogPanel>`.
-- [ ] `AppLayout.tsx` nav:
+- [x] `AppLayout.tsx` nav:
       - "Directory" link (`/staff/directory`) visible only when
         `user.role === 'staff'`.
       - "Audit Log" link (`/admin/audit-log`) visible only when
         `user.role === 'admin'`.
       - Existing admin-only links remain unchanged.
-- [ ] `server/src/app.ts` mounts `staffDirectoryRouter` at `/api`.
-- [ ] Google OAuth callback in `server/src/routes/auth.ts` redirects:
+- [x] `server/src/app.ts` mounts `staffDirectoryRouter` at `/api`.
+- [x] Google OAuth callback in `server/src/routes/auth.ts` redirects:
       - `role=admin` → `/admin/users`.
       - `role=staff` → `/staff/directory`.
       - `role=student` → `/account`.
-- [ ] GitHub OAuth callback applies the same redirect logic.
-- [ ] A staff user cannot navigate to `/admin/*` routes in the browser (blocked
+- [x] GitHub OAuth callback applies the same redirect logic.
+- [x] A staff user cannot navigate to `/admin/*` routes in the browser (blocked
       by `AdminLayout` guard).
-- [ ] A student user cannot navigate to `/staff/*` routes (blocked by
+- [x] A student user cannot navigate to `/staff/*` routes (blocked by
       `StaffLayout` guard).
 - [ ] Manual end-to-end: sign in as staff via Google → lands on
       `/staff/directory`; sign in as admin → lands on `/admin/users`.

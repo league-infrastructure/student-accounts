@@ -401,7 +401,7 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     const res = await request(app).get('/api/auth/google/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/account');
+    expect(res.headers.location).toBe('/staff/directory');
 
     const user = await (prisma as any).user.findFirst({
       where: { primary_email: 'staffuser@jointheleague.org' },
