@@ -1,7 +1,7 @@
 ---
 id: "010"
 title: "Admin API routes — add and remove Login on user's behalf"
-status: todo
+status: done
 use-cases: [SUC-002, SUC-003]
 depends-on: ["003"]
 ---
@@ -35,19 +35,19 @@ The actorId for the audit event is `req.user.id` (the admin).
 
 ## Acceptance Criteria
 
-- [ ] POST /admin/users/:id/logins creates the Login via LoginService.create.
-- [ ] POST /admin/users/:id/logins: if provider=github, calls pike13WritebackStub.githubHandle.
-- [ ] POST /admin/users/:id/logins returns 201 with the created Login.
-- [ ] POST /admin/users/:id/logins: 409 when providerUserId already exists on another user.
-- [ ] POST /admin/users/:id/logins: 400 when provider or providerUserId is missing.
-- [ ] POST /admin/users/:id/logins: 403 for non-admin.
-- [ ] DELETE /admin/users/:id/logins/:loginId deletes the Login via LoginService.delete.
-- [ ] DELETE returns 204 on success.
-- [ ] DELETE: 422 when removing would leave user with zero logins.
-- [ ] DELETE: 404 when loginId does not exist.
-- [ ] DELETE: 403 for non-admin.
-- [ ] AuditEvents recorded for both operations (via LoginService — no extra audit calls needed in route).
-- [ ] Integration tests pass.
+- [x] POST /admin/users/:id/logins creates the Login via LoginService.create.
+- [x] POST /admin/users/:id/logins: if provider=github, calls pike13WritebackStub.githubHandle.
+- [x] POST /admin/users/:id/logins returns 201 with the created Login.
+- [x] POST /admin/users/:id/logins: 409 when providerUserId already exists on another user.
+- [x] POST /admin/users/:id/logins: 400 when provider or providerUserId is missing.
+- [x] POST /admin/users/:id/logins: 403 for non-admin.
+- [x] DELETE /admin/users/:id/logins/:loginId deletes the Login via LoginService.delete.
+- [x] DELETE returns 204 on success.
+- [x] DELETE: 422 when removing would leave user with zero logins.
+- [x] DELETE: 404 when loginId does not exist.
+- [x] DELETE: 403 for non-admin.
+- [x] AuditEvents recorded for both operations (via LoginService — no extra audit calls needed in route).
+- [x] Integration tests pass.
 
 ## Implementation Plan
 
