@@ -24,7 +24,7 @@ export default function HomePage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `Sign-in failed (${res.status})`);
       }
-      window.location.href = role === 'student' ? '/account' : '/staff';
+      window.location.href = role === 'admin' ? '/admin/provisioning-requests' : '/account';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed');
       setSubmitting(false);
