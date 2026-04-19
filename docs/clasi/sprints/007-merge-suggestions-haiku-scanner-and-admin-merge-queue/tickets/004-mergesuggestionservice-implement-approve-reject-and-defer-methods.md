@@ -1,7 +1,7 @@
 ---
 id: "004"
 title: "MergeSuggestionService — implement approve, reject, and defer methods"
-status: todo
+status: done
 use-cases: [SUC-007-003, SUC-007-004]
 depends-on: ["001"]
 github-issue: ""
@@ -31,24 +31,24 @@ Sprint-001 stub to a full implementation. Add the following methods:
 
 ## Acceptance Criteria
 
-- [ ] `findQueueItems()` returns pending + deferred suggestions with User summaries.
-- [ ] `findDetailById(id)` returns full User records with Logins and ExternalAccounts.
-- [ ] `approve()`: all Logins re-parented to survivor within a single Prisma
+- [x] `findQueueItems()` returns pending + deferred suggestions with User summaries.
+- [x] `findDetailById(id)` returns full User records with Logins and ExternalAccounts.
+- [x] `approve()`: all Logins re-parented to survivor within a single Prisma
       `$transaction`.
-- [ ] `approve()`: all ExternalAccounts re-parented to survivor within the same
+- [x] `approve()`: all ExternalAccounts re-parented to survivor within the same
       transaction.
-- [ ] `approve()`: if survivor has no cohort and non-survivor does, survivor inherits
+- [x] `approve()`: if survivor has no cohort and non-survivor does, survivor inherits
       non-survivor's cohort (within the transaction).
-- [ ] `approve()`: non-survivor has `is_active=false` after transaction commits.
-- [ ] `approve()`: MergeSuggestion `status=approved`, `decided_by`, `decided_at`
+- [x] `approve()`: non-survivor has `is_active=false` after transaction commits.
+- [x] `approve()`: MergeSuggestion `status=approved`, `decided_by`, `decided_at`
       set within the transaction.
-- [ ] `approve()`: `AuditEvent` with `action=merge_approve` written within the
+- [x] `approve()`: `AuditEvent` with `action=merge_approve` written within the
       transaction.
-- [ ] `approve()`: entire transaction rolls back on any constraint violation; both
+- [x] `approve()`: entire transaction rolls back on any constraint violation; both
       User records remain unchanged.
-- [ ] `reject()`: `status=rejected`, `decided_by`, `decided_at`; AuditEvent written.
-- [ ] `defer()`: `status=deferred`; `decided_by` and `decided_at` remain null.
-- [ ] All three action methods throw a typed error if the suggestion is already
+- [x] `reject()`: `status=rejected`, `decided_by`, `decided_at`; AuditEvent written.
+- [x] `defer()`: `status=deferred`; `decided_by` and `decided_at` remain null.
+- [x] All three action methods throw a typed error if the suggestion is already
       approved or rejected.
 
 ## Implementation Plan
