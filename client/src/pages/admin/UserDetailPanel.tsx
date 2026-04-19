@@ -20,6 +20,23 @@ import { useParams, useNavigate } from 'react-router-dom';
 // Types
 // ---------------------------------------------------------------------------
 
+/** Response shape from GET /api/admin/users/:id/pike13 */
+type Pike13Result =
+  | { present: false }
+  | { present: true; person: Pike13Person }
+  | { present: true; error: string };
+
+interface Pike13Person {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  /** May include phone, status, and custom fields depending on Pike13 API shape. */
+  phone?: string;
+  status?: string;
+  custom_fields?: Record<string, unknown>;
+}
+
 interface UserDetail {
   id: number;
   email: string;
@@ -100,6 +117,9 @@ export default function UserDetailPanel() {
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Pike13 record (fetched independently so failures don't break the main view)
+  const [pike13Data, setPike13Data] = useState<Pike13Result | null>(null);
+
   // Add-login form state
   const [showAddLogin, setShowAddLogin] = useState(false);
   const [addLoginForm, setAddLoginForm] = useState<AddLoginForm>({
@@ -125,6 +145,16 @@ export default function UserDetailPanel() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Pike13 fetch — independent of main user detail so API failures are isolated
+  useEffect(() => {
+    if (!id) return;
+    setPike13Data(null);
+    fetch(`/api/admin/users/${id}/pike13`)
+      .then((r) => r.json())
+      .then((data: Pike13Result) => setPike13Data(data))
+      .catch(() => setPike13Data({ present: true, error: 'Network error fetching Pike13 data' }));
+  }, [id]);
 
   // -------------------------------------------------------------------------
   // External account actions
@@ -444,13 +474,13 @@ export default function UserDetailPanel() {
                     <td style={tdStyle}>{login.providerUsername ?? <em style={{ color: '#94a3b8' }}>—</em>}</td>
                     <td style={tdStyle}>{new Date(login.createdAt).toLocaleDateString()}</td>
                     <td style={tdStyle}>
-                      <span title={isLast ? 'Cannot remove the last login' : undefined}>
+                      <span title={isLast ? 'Cannot unlink the last login' : undefined}>
                         <button
                           style={isLast ? disabledButtonStyle : removeButtonStyle}
                           disabled={isLast || busy}
                           onClick={() => handleRemoveLogin(login)}
                         >
-                          Remove
+                          Unlink
                         </button>
                       </span>
                     </td>
@@ -502,7 +532,13 @@ export default function UserDetailPanel() {
                 const canSuspend = account.status === 'active';
                 const canRemove = account.status === 'active' || account.status === 'suspended';
                 const isClaude = account.type === 'claude';
-                const suspendLabel = isClaude ? 'Suspend (no-op for Claude)' : 'Suspend';
+                const isWorkspace = account.type === 'workspace';
+                const suspendLabel = isClaude ? 'Disable Claude' : 'Suspend';
+                const removeLabel = isWorkspace
+                  ? 'Delete League Account'
+                  : isClaude
+                  ? 'Delete Claude'
+                  : 'Remove';
 
                 return (
                   <tr key={account.id}>
@@ -538,13 +574,13 @@ export default function UserDetailPanel() {
                           </button>
                         )}
                         {canRemove && (
-                          <span title={account.type === 'workspace' ? 'Will hard-delete the Google Workspace account after 3 days' : undefined}>
+                          <span title={isWorkspace ? 'Will hard-delete the Google Workspace account after 3 days' : undefined}>
                             <button
                               style={removeButtonStyle}
                               disabled={busy}
                               onClick={() => handleRemoveAccount(account)}
                             >
-                              Remove
+                              {removeLabel}
                             </button>
                           </span>
                         )}
@@ -557,6 +593,70 @@ export default function UserDetailPanel() {
           </table>
         )}
       </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Pike13 Record                                                        */}
+      {/* ------------------------------------------------------------------ */}
+      {pike13Data !== null && (
+        <section style={sectionStyle}>
+          <h3 style={subHeadingStyle}>Pike13 Record</h3>
+          {!pike13Data.present ? (
+            <p style={emptyStyle}>No Pike13 account linked.</p>
+          ) : 'error' in pike13Data ? (
+            <div style={pike13ErrorStyle} role="alert">
+              <strong>Pike13 data unavailable: </strong>
+              {pike13Data.error}
+            </div>
+          ) : (
+            <dl style={dlStyle}>
+              <dt style={dtStyle}>Name</dt>
+              <dd style={ddStyle}>{pike13Data.person.first_name} {pike13Data.person.last_name}</dd>
+
+              <dt style={dtStyle}>Email</dt>
+              <dd style={ddStyle}>{pike13Data.person.email}</dd>
+
+              {pike13Data.person.phone && (
+                <>
+                  <dt style={dtStyle}>Phone</dt>
+                  <dd style={ddStyle}>{pike13Data.person.phone}</dd>
+                </>
+              )}
+
+              {pike13Data.person.status && (
+                <>
+                  <dt style={dtStyle}>Status</dt>
+                  <dd style={ddStyle}>{pike13Data.person.status}</dd>
+                </>
+              )}
+
+              {pike13Data.person.custom_fields && (() => {
+                const cf = pike13Data.person.custom_fields!;
+                const leagueEmail = cf['League Email Address'] ?? cf['league_email_address'];
+                const githubUsername = cf['GitHub Username'] ?? cf['github_username'];
+                return (
+                  <>
+                    {leagueEmail !== undefined && leagueEmail !== null && (
+                      <>
+                        <dt style={dtStyle}>League Email</dt>
+                        <dd style={ddStyle}>{String(leagueEmail) || <em style={{ color: '#94a3b8' }}>—</em>}</dd>
+                      </>
+                    )}
+                    {githubUsername !== undefined && githubUsername !== null && (
+                      <>
+                        <dt style={dtStyle}>GitHub Username</dt>
+                        <dd style={ddStyle}>{String(githubUsername) || <em style={{ color: '#94a3b8' }}>—</em>}</dd>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+
+              <dt style={dtStyle}>Pike13 ID</dt>
+              <dd style={ddStyle}><code style={codeStyle}>{pike13Data.person.id}</code></dd>
+            </dl>
+          )}
+        </section>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Deprovision Student                                                  */}
@@ -843,6 +943,15 @@ const provisionButtonStyle: React.CSSProperties = {
   borderRadius: 4,
   cursor: 'pointer',
   fontWeight: 600,
+};
+
+const pike13ErrorStyle: React.CSSProperties = {
+  background: '#fff7ed',
+  border: '1px solid #fed7aa',
+  borderRadius: 6,
+  padding: '10px 14px',
+  fontSize: 13,
+  color: '#c2410c',
 };
 
 const deprovisionButtonStyle: React.CSSProperties = {

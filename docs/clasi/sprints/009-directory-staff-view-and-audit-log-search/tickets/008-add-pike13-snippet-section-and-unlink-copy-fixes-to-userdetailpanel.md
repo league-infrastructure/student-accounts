@@ -1,7 +1,7 @@
 ---
 id: "008"
 title: "Add Pike13 snippet section and Unlink/copy fixes to UserDetailPanel"
-status: todo
+status: done
 use-cases: [SUC-009-005, SUC-009-006]
 depends-on: ["002"]
 github-issue: ""
@@ -29,24 +29,23 @@ Three changes to `UserDetailPanel.tsx`:
 
 ## Acceptance Criteria
 
-- [ ] A "Pike13 Record" section appears below External Accounts when
+- [x] A "Pike13 Record" section appears below External Accounts when
       `GET /api/admin/users/:id/pike13` returns `{ present: true, person }`.
-- [ ] The section shows: display name, email(s), phone, account status,
+- [x] The section shows: display name, email(s), phone, account status,
       "League Email Address" custom field value, "GitHub Username" custom field
       value.
-- [ ] When `{ present: true, error }` is returned, the section shows an inline
+- [x] When `{ present: true, error }` is returned, the section shows an inline
       amber/red banner: "Pike13 data unavailable: [error message]".
-- [ ] When `{ present: false }`, the section is not rendered (or shows a
-      "No Pike13 account" note — ticket engineer's discretion).
-- [ ] The Pike13 fetch is independent of the main user detail fetch — a
+- [x] When `{ present: false }`, the section shows "No Pike13 account linked."
+- [x] The Pike13 fetch is independent of the main user detail fetch — a
       Pike13 API failure does not break the rest of the detail view.
-- [ ] In the Logins section, the button label is "Unlink" (was "Remove").
+- [x] In the Logins section, the button label is "Unlink" (was "Remove").
       The last-Login guard behavior is unchanged.
-- [ ] On the External Accounts section, workspace Remove button label is
-      "Delete League Account" (or equivalent — confirm exact wording with
-      stakeholder). If already correct, note this in the commit message.
-- [ ] Claude account buttons: Suspend button reads "Disable Claude"; Remove
-      button reads "Delete Claude". If already correct, note it.
+- [x] On the External Accounts section, workspace Remove button label is
+      "Delete League Account". Was previously "Remove".
+- [x] Claude account buttons: Suspend button reads "Disable Claude" (was
+      "Suspend (no-op for Claude)"); Remove button reads "Delete Claude"
+      (was "Remove").
 
 ## Implementation Plan
 
