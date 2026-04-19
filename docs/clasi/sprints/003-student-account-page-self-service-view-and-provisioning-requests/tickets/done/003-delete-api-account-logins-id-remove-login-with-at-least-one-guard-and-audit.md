@@ -2,7 +2,7 @@
 id: '003'
 title: "DELETE /api/account/logins/:id \u2014 remove Login with at-least-one guard\
   \ and audit"
-status: in-progress
+status: done
 use-cases:
 - SUC-003
 depends-on:

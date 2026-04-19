@@ -1,11 +1,16 @@
 ---
-id: "004"
-title: "POST /api/account/provisioning-requests — create request(s) with constraint enforcement and audit"
-status: todo
-use-cases: [SUC-004, SUC-005]
-depends-on: ["001", "002"]
-github-issue: ""
-todo: ""
+id: '004'
+title: "POST /api/account/provisioning-requests \u2014 create request(s) with constraint\
+  \ enforcement and audit"
+status: done
+use-cases:
+- SUC-004
+- SUC-005
+depends-on:
+- '001'
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # POST /api/account/provisioning-requests — create request(s) with constraint enforcement and audit
@@ -22,20 +27,20 @@ parse body, call service, format response.
 
 ## Acceptance Criteria
 
-- [ ] `POST /api/account/provisioning-requests` with `{ "requestType": "workspace" }`
+- [x] `POST /api/account/provisioning-requests` with `{ "requestType": "workspace" }`
       returns 201 with the created ProvisioningRequest object.
-- [ ] `POST` with `{ "requestType": "workspace_and_claude" }` returns 201 with
+- [x] `POST` with `{ "requestType": "workspace_and_claude" }` returns 201 with
       an array of two ProvisioningRequest objects (or a wrapper object).
-- [ ] `POST` with an unrecognized `requestType` returns 400.
-- [ ] `POST` when the workspace conflict exists returns 409.
-- [ ] `POST` with `requestType` that would include claude but no workspace
+- [x] `POST` with an unrecognized `requestType` returns 400.
+- [x] `POST` when the workspace conflict exists returns 409.
+- [x] `POST` with `requestType` that would include claude but no workspace
       baseline exists returns 422 with an error message explaining the
       League email prerequisite.
-- [ ] `POST` returns 401 when unauthenticated.
-- [ ] `POST` returns 403 for staff or admin roles.
-- [ ] `GET /api/account/provisioning-requests` returns the list of all
+- [x] `POST` returns 401 when unauthenticated.
+- [x] `POST` returns 403 for staff or admin roles.
+- [x] `GET /api/account/provisioning-requests` returns the list of all
       provisioning requests for the signed-in user, ordered most-recent-first.
-- [ ] `GET` returns 401 when unauthenticated, 403 for staff/admin.
+- [x] `GET` returns 401 when unauthenticated, 403 for staff/admin.
 
 ## Implementation Plan
 
