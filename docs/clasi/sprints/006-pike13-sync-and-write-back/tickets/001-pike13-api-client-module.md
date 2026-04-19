@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: Pike13 API client module
-status: todo
+status: done
 use-cases: [UC-004, UC-020]
 depends-on: []
 github-issue: ''
@@ -24,26 +24,26 @@ endpoint. These are captured as OQ-001 and OQ-002 in the architecture update.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/pike13/pike13-api.client.ts` exists and exports the
+- [x] `server/src/services/pike13/pike13-api.client.ts` exists and exports the
   `Pike13ApiClient` interface and `Pike13ApiClientImpl` class.
-- [ ] `listPeople(cursor?)` — calls the Pike13 people endpoint, returns
+- [x] `listPeople(cursor?)` — calls the Pike13 people endpoint, returns
   `Pike13PeoplePage` with `people[]` and `nextCursor | null`.
-- [ ] `getPerson(personId)` — returns `Pike13Person` for the given ID.
-- [ ] `updateCustomField(personId, fieldId, value)` — updates a custom field
+- [x] `getPerson(personId)` — returns `Pike13Person` for the given ID.
+- [x] `updateCustomField(personId, fieldId, value)` — updates a custom field
   on a person; respects `PIKE13_WRITE_ENABLED` flag.
-- [ ] `Pike13WriteDisabledError` thrown when `updateCustomField` is called
+- [x] `Pike13WriteDisabledError` thrown when `updateCustomField` is called
   and `PIKE13_WRITE_ENABLED !== '1'`.
-- [ ] `Pike13ApiError` thrown on any HTTP error response.
-- [ ] `Pike13PersonNotFoundError` thrown when person ID does not exist (404).
-- [ ] All credential env vars (`PIKE13_API_URL`, `PIKE13_API_KEY`) are read
+- [x] `Pike13ApiError` thrown on any HTTP error response.
+- [x] `Pike13PersonNotFoundError` thrown when person ID does not exist (404).
+- [x] All credential env vars (`PIKE13_API_URL`, `PIKE13_ACCESS_TOKEN`) are read
   from `process.env`; missing vars cause a clear startup-time or call-time
   error message.
-- [ ] `server/src/services/pike13/index.ts` re-exports the client interface,
+- [x] `server/src/services/pike13/index.ts` re-exports the client interface,
   impl class, and error classes.
-- [ ] A fake implementation `tests/server/helpers/fake-pike13-api.client.ts`
+- [x] A fake implementation `tests/server/helpers/fake-pike13-api.client.ts`
   exists: records all calls, returns configurable responses, never makes
   network calls.
-- [ ] Unit tests for: write-enable flag enforcement, error mapping (HTTP 404 →
+- [x] Unit tests for: write-enable flag enforcement, error mapping (HTTP 404 →
   `Pike13PersonNotFoundError`, other HTTP errors → `Pike13ApiError`), and
   happy-path call signatures.
 
