@@ -1,11 +1,13 @@
 ---
-id: "007"
-title: "Staff redirect — redirect staff users from /account to /staff"
-status: todo
-use-cases: [SUC-001]
-depends-on: ["006"]
-github-issue: ""
-todo: ""
+id: '007'
+title: "Staff redirect \u2014 redirect staff users from /account to /staff"
+status: done
+use-cases:
+- SUC-001
+depends-on:
+- '006'
+github-issue: ''
+todo: ''
 ---
 
 # Staff redirect — redirect staff users from /account to /staff
@@ -29,13 +31,13 @@ in T002). This ticket covers the frontend routing behavior.
 
 ## Acceptance Criteria
 
-- [ ] A staff user navigating to `/account` in the browser is redirected to
+- [x] A staff user navigating to `/account` in the browser is redirected to
       `/staff` without rendering any account content.
-- [ ] The redirect uses `<Navigate to="/staff" replace />` so the `/account`
+- [x] The redirect uses `<Navigate to="/staff" replace />` so the `/account`
       URL is not retained in browser history.
-- [ ] A student user navigating to `/account` sees the AccountPage normally
+- [x] A student user navigating to `/account` sees the AccountPage normally
       (no regression from T006).
-- [ ] An admin user navigating to `/account` — define behavior: redirect to
+- [x] An admin user navigating to `/account` — define behavior: redirect to
       `/staff` or show an appropriate page. For this sprint, redirect to `/staff`
       (admin-specific account page is out of scope). This is the simplest safe
       default.

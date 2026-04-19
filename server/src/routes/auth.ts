@@ -142,7 +142,7 @@ authRouter.get('/auth/me', async (req: Request, res: Response) => {
 // Logout
 authRouter.post('/auth/logout', (req: Request, res: Response, _next: NextFunction) => {
   // Capture userId BEFORE destroying the session so we can write the audit event.
-  const userId: number | undefined = (req.session as any).userId ?? req.user?.id;
+  const userId: number | undefined = (req.session as any).userId ?? (req.user as any)?.id;
 
   // Best-effort audit write: fire-and-forget after session destruction.
   // Does not block logout regardless of success or failure.

@@ -112,7 +112,7 @@ accountRouter.delete(
   requireRole('student'),
   async (req: Request, res: Response, next: NextFunction) => {
     const userId: number = (req.session as any).userId;
-    const loginId = parseInt(req.params.id, 10);
+    const loginId = parseInt(req.params.id as string, 10);
 
     if (isNaN(loginId)) {
       return next(new NotFoundError('Login not found'));
