@@ -13,7 +13,31 @@ interface AdminUser {
   role: string;
   provider: string | null;
   providers: UserProvider[];
+  cohort: { id: number; name: string } | null;
   createdAt: string;
+}
+
+type RoleFilter = 'all' | 'admin' | 'staff' | 'student';
+
+const ROLE_TABS: { id: RoleFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'admin', label: 'Admin' },
+  { id: 'staff', label: 'Staff' },
+  { id: 'student', label: 'Student' },
+];
+
+function normalizeRole(role: string): RoleFilter {
+  const r = role.toLowerCase();
+  if (r === 'admin') return 'admin';
+  if (r === 'staff') return 'staff';
+  return 'student';
+}
+
+function cohortLabel(user: AdminUser): string {
+  const role = normalizeRole(user.role);
+  if (role === 'admin') return 'admin';
+  if (role === 'staff') return 'staff';
+  return user.cohort?.name ?? '—';
 }
 
 const PROVIDER_LOGOS: Record<string, { src: string; alt: string }> = {
@@ -57,6 +81,7 @@ export default function UsersPanel() {
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState<number | null>(null);
   const [impersonating, setImpersonating] = useState<number | null>(null);
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
 
   useEffect(() => {
     fetchUsers();
@@ -127,14 +152,39 @@ export default function UsersPanel() {
   if (loading) return <p>Loading users...</p>;
   if (error) return <p style={{ color: '#dc2626' }}>{error}</p>;
 
+  const counts: Record<RoleFilter, number> = {
+    all: users.length,
+    admin: users.filter((u) => normalizeRole(u.role) === 'admin').length,
+    staff: users.filter((u) => normalizeRole(u.role) === 'staff').length,
+    student: users.filter((u) => normalizeRole(u.role) === 'student').length,
+  };
+  const visibleUsers =
+    roleFilter === 'all' ? users : users.filter((u) => normalizeRole(u.role) === roleFilter);
+
   return (
     <div>
       <h2 style={{ margin: '0 0 16px', fontSize: 20 }}>Users</h2>
+      <div style={tabsStyle}>
+        {ROLE_TABS.map((tab) => {
+          const active = roleFilter === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setRoleFilter(tab.id)}
+              style={{ ...tabStyle, ...(active ? activeTabStyle : {}) }}
+            >
+              {tab.label}
+              <span style={tabCountStyle}>{counts[tab.id]}</span>
+            </button>
+          );
+        })}
+      </div>
       <table style={tableStyle}>
         <thead>
           <tr>
             <th style={thStyle}>Name</th>
             <th style={thStyle}>Email</th>
+            <th style={thStyle}>Cohort</th>
             <th style={thStyle}>Providers</th>
             <th style={thStyle}>Admin</th>
             <th style={thStyle}>Joined</th>
@@ -143,13 +193,18 @@ export default function UsersPanel() {
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => {
+          {visibleUsers.map((user) => {
             const providers = getProviders(user);
             const isOwnRow = currentUser?.id === user.id;
             return (
               <tr key={user.id}>
                 <td style={tdStyle}>{user.displayName || '-'}</td>
                 <td style={tdStyle}>{user.email}</td>
+                <td style={tdStyle}>
+                  <span style={cohortChipStyle(normalizeRole(user.role))}>
+                    {cohortLabel(user)}
+                  </span>
+                </td>
                 <td style={tdStyle}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     {providers.length === 0 && (
@@ -193,9 +248,9 @@ export default function UsersPanel() {
           })}
         </tbody>
       </table>
-      {users.length === 0 && (
+      {visibleUsers.length === 0 && (
         <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 24 }}>
-          No users yet.
+          {users.length === 0 ? 'No users yet.' : 'No users match this filter.'}
         </p>
       )}
     </div>
@@ -243,3 +298,57 @@ const viewLinkStyle: React.CSSProperties = {
   textDecoration: 'none',
   display: 'inline-block',
 };
+
+const tabsStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 4,
+  marginBottom: 16,
+  borderBottom: '1px solid #e2e8f0',
+};
+
+const tabStyle: React.CSSProperties = {
+  padding: '8px 14px',
+  fontSize: 13,
+  fontWeight: 600,
+  background: 'transparent',
+  color: '#64748b',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  cursor: 'pointer',
+  marginBottom: -1,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+};
+
+const activeTabStyle: React.CSSProperties = {
+  color: '#0f172a',
+  borderBottomColor: '#4f46e5',
+};
+
+const tabCountStyle: React.CSSProperties = {
+  background: '#e2e8f0',
+  color: '#475569',
+  fontSize: 11,
+  padding: '1px 7px',
+  borderRadius: 999,
+  fontWeight: 600,
+};
+
+function cohortChipStyle(role: RoleFilter): React.CSSProperties {
+  const palette: Record<RoleFilter, { bg: string; fg: string }> = {
+    admin: { bg: '#fef3c7', fg: '#92400e' },
+    staff: { bg: '#dbeafe', fg: '#1e40af' },
+    student: { bg: '#ecfccb', fg: '#3f6212' },
+    all: { bg: '#f1f5f9', fg: '#475569' },
+  };
+  const { bg, fg } = palette[role] ?? palette.all;
+  return {
+    fontSize: 12,
+    padding: '2px 8px',
+    background: bg,
+    color: fg,
+    borderRadius: 999,
+    fontWeight: 600,
+  };
+}

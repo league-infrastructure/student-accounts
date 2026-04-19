@@ -405,7 +405,8 @@ function HelpSection() {
 export default function Account() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const isNonStudent = user?.role === 'staff' || user?.role === 'admin';
+  const role = user?.role?.toLowerCase();
+  const isNonStudent = role === 'staff' || role === 'admin';
 
   // All hooks must be called unconditionally before any early return.
   const {
@@ -437,7 +438,7 @@ export default function Account() {
 
   // Admin redirect — to the provisioning-requests page (has actual admin UI).
   // Staff falls through and renders the account page (empty but won't 404).
-  if (user?.role === 'admin') {
+  if (role === 'admin') {
     return <Navigate to="/admin/provisioning-requests" replace />;
   }
 

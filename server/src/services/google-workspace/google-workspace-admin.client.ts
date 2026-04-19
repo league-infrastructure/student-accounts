@@ -281,8 +281,12 @@ export interface GoogleWorkspaceAdminClient {
 // GoogleWorkspaceAdminClientImpl — real implementation
 // ---------------------------------------------------------------------------
 
+// admin.directory.user covers both read and write (subsumes the .readonly
+// variant). admin.directory.orgunit covers both read and write of OUs.
+// We intentionally do NOT request .readonly variants — requesting a scope
+// the service account has NOT been granted via domain-wide delegation
+// causes Google to reject the token request with unauthorized_client.
 const ADMIN_SDK_SCOPES = [
-  'https://www.googleapis.com/auth/admin.directory.user.readonly',
   'https://www.googleapis.com/auth/admin.directory.user',
   'https://www.googleapis.com/auth/admin.directory.orgunit',
 ];
@@ -332,10 +336,25 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
    *    `config/files/` relative to the project root (process.cwd()).
    */
   static resolveServiceAccountFilePath(fileValue: string): string {
-    if (fileValue.includes('/') || fileValue.includes(path.sep)) {
-      return path.resolve(process.cwd(), fileValue);
+    const hasSep = fileValue.includes('/') || fileValue.includes(path.sep);
+    // Candidate base directories: cwd (server/) and its parent (repo root).
+    // The dev server runs from server/, but the credentials file lives at
+    // repo-root/config/files/, so relative paths in .env resolve correctly
+    // from either anchor.
+    const bases = [process.cwd(), path.resolve(process.cwd(), '..')];
+    if (hasSep) {
+      if (path.isAbsolute(fileValue)) return fileValue;
+      for (const base of bases) {
+        const candidate = path.resolve(base, fileValue);
+        if (fs.existsSync(candidate)) return candidate;
+      }
+      return path.resolve(bases[0], fileValue);
     }
-    return path.resolve(process.cwd(), 'config', 'files', fileValue);
+    for (const base of bases) {
+      const candidate = path.resolve(base, 'config', 'files', fileValue);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return path.resolve(bases[0], 'config', 'files', fileValue);
   }
 
   /**
