@@ -115,11 +115,13 @@ export class ServiceRegistry {
     );
 
     // Sprint 004 T007: pass workspaceProvisioning so approve() can call provision().
+    // Sprint 005 T007: also pass claudeProvisioning so approve() can provision Claude seats.
     this.provisioningRequests = new ProvisioningRequestService(
       defaultPrisma,
       this.audit,
       this.externalAccounts,
       this.workspaceProvisioning,
+      this.claudeProvisioning,
     );
 
     this.scheduler = new SchedulerService(defaultPrisma);
