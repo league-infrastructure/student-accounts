@@ -15,6 +15,7 @@ import { adminCohortsRouter } from './cohorts';
 import { adminUserLoginsRouter } from './user-logins';
 import { adminDeprovisionRouter } from './deprovision';
 import { adminExternalAccountsRouter } from './external-accounts';
+import { adminSyncRouter } from './sync';
 
 export const adminRouter = Router();
 
@@ -38,3 +39,4 @@ adminRouter.use('/admin', adminCohortsRouter);
 adminRouter.use('/admin', adminUserLoginsRouter);
 adminRouter.use('/admin', adminDeprovisionRouter);
 adminRouter.use('/admin', adminExternalAccountsRouter);
+adminRouter.use('/admin', adminSyncRouter);

@@ -1,7 +1,7 @@
 ---
 id: "003"
 title: "Pike13 sync service and admin sync route"
-status: todo
+status: done
 use-cases: [UC-004]
 depends-on: ["001"]
 github-issue: ""
@@ -23,26 +23,26 @@ returns the count report as JSON.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/pike13/pike13-sync.service.ts` exists.
-- [ ] Paginates all Pike13 people using `Pike13ApiClient.listPeople` until
+- [x] `server/src/services/pike13/pike13-sync.service.ts` exists.
+- [x] Paginates all Pike13 people using `Pike13ApiClient.listPeople` until
   `nextCursor` is null.
-- [ ] For each person: checks for existing ExternalAccount(type=pike13,
+- [x] For each person: checks for existing ExternalAccount(type=pike13,
   external_id=person.id) first, then falls back to matching by `primary_email`.
-- [ ] Unmatched person: creates User (role=student, created_via=pike13_sync,
+- [x] Unmatched person: creates User (role=student, created_via=pike13_sync,
   display_name=first_name+' '+last_name, primary_email=person.email) and
   ExternalAccount (type=pike13, external_id=person.id, status=active).
-- [ ] Calls `mergeScan` stub for each newly created User.
-- [ ] Returns `SyncReport` with `{ created, matched, skipped, errors, errorDetails }`.
-- [ ] Person missing email: record is skipped and counted in `skipped`; sync
+- [x] Calls `mergeScan` stub for each newly created User.
+- [x] Returns `SyncReport` with `{ created, matched, skipped, errors, errorDetails }`.
+- [x] Person missing email: record is skipped and counted in `skipped`; sync
   continues.
-- [ ] Pike13 API error mid-pagination: increments `errors` for that page; sync
+- [x] Pike13 API error mid-pagination: increments `errors` for that page; sync
   continues with remaining pages (fail-soft per record, not per page).
-- [ ] AuditEvent recorded: action=pike13_sync_completed, details include counts.
-- [ ] AuditEvent recorded per newly created User (action=create_user).
-- [ ] `POST /admin/sync/pike13` route exists in `server/src/routes/admin/sync.ts`;
+- [x] AuditEvent recorded: action=pike13_sync_completed, details include counts.
+- [x] AuditEvent recorded per newly created User (action=create_user).
+- [x] `POST /admin/sync/pike13` route exists in `server/src/routes/admin/sync.ts`;
   returns 200 with `SyncReport` JSON; protected by `requireAuth + requireRole('admin')`.
-- [ ] `Pike13SyncService` is registered in `ServiceRegistry`.
-- [ ] Integration tests cover: full happy-path (create+match), skipped
+- [x] `Pike13SyncService` is registered in `ServiceRegistry`.
+- [x] Integration tests cover: full happy-path (create+match), skipped
   (no email), API error on one page, empty Pike13 result.
 
 ## Implementation Plan

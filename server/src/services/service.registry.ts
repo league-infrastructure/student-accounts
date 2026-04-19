@@ -18,6 +18,7 @@ import { MergeSuggestionService } from './merge-suggestion.service';
 import { WorkspaceProvisioningService } from './workspace-provisioning.service';
 import { ClaudeProvisioningService } from './claude-provisioning.service';
 import { ExternalAccountLifecycleService } from './external-account-lifecycle.service';
+import { WorkspaceSyncService } from './workspace-sync.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -29,6 +30,9 @@ import {
   ClaudeTeamAdminClientImpl,
   type ClaudeTeamAdminClient,
 } from './claude-team/claude-team-admin.client';
+import { Pike13ApiClientImpl, resolvePike13ApiUrl } from './pike13/pike13-api.client';
+import { Pike13SyncService } from './pike13/pike13-sync.service';
+import { mergeScan } from './auth/merge-scan.stub';
 
 // Infrastructure services
 import { SchedulerService } from './scheduler.service';
@@ -52,6 +56,8 @@ export class ServiceRegistry {
   readonly sessions: SessionService;
   /** Exposed so index.ts can wire the Google Workspace client into background jobs. */
   readonly googleClient: GoogleWorkspaceAdminClient;
+  readonly pike13Sync: Pike13SyncService;
+  readonly workspaceSync: WorkspaceSyncService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -128,6 +134,31 @@ export class ServiceRegistry {
     this.backups = new BackupService(defaultPrisma);
     this.sessions = new SessionService(defaultPrisma);
     this.googleClient = wsClient;
+
+    // Pike13SyncService — Sprint 006 T003.
+    const pike13Client = new Pike13ApiClientImpl(
+      process.env.PIKE13_ACCESS_TOKEN ?? '',
+      resolvePike13ApiUrl(),
+    );
+    this.pike13Sync = new Pike13SyncService(
+      pike13Client,
+      defaultPrisma,
+      UserRepository,
+      ExternalAccountRepository,
+      this.audit,
+      mergeScan,
+    );
+
+    // WorkspaceSyncService — Sprint 006 T006.
+    this.workspaceSync = new WorkspaceSyncService(
+      defaultPrisma,
+      wsClient,
+      this.cohorts,
+      UserRepository,
+      ExternalAccountRepository,
+      CohortRepository,
+      this.audit,
+    );
   }
 
   static create(
