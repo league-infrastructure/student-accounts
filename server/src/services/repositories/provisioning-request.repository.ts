@@ -32,7 +32,10 @@ export class ProvisioningRequestRepository {
   static async findByUser(db: DbClient, user_id: number): Promise<ProvisioningRequest[]> {
     return (db as any).provisioningRequest.findMany({
       where: { user_id },
-      orderBy: { created_at: 'desc' },
+      // Primary sort by created_at desc; secondary sort by id desc as a
+      // tiebreaker when records are created in the same millisecond (common
+      // in tests and rapid-succession API calls).
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });
   }
 

@@ -21,6 +21,7 @@ import type { UserService } from '../user.service.js';
 import type { LoginService } from '../login.service.js';
 import { AuditService } from '../audit.service.js';
 import { signInHandler } from './sign-in.handler.js';
+import { linkHandler } from './link.handler.js';
 import type { User } from '../../generated/prisma/client.js';
 import {
   GoogleAdminDirectoryClient,
@@ -160,17 +161,45 @@ export function configurePassport(
           clientSecret: googleConfig.clientSecret,
           callbackURL: googleConfig.callbackURL,
           scope: ['profile', 'email'],
+          passReqToCallback: true,
         },
-        // Verify callback — wired to sign-in handler with OU detection (T005).
-        (_accessToken, _refreshToken, profile, done) => {
+        // Verify callback — wired to sign-in handler (normal) or link handler (link mode).
+        // req is passed first because passReqToCallback: true.
+        (req: any, _accessToken: string, _refreshToken: string, profile: any, done: any) => {
           const emails = profile.emails ?? [];
-          const providerEmail = emails.find((e) => e.value)?.value ?? null;
+          const providerEmail = emails.find((e: any) => e.value)?.value ?? null;
           const displayName =
             profile.displayName ||
             profile.name?.givenName ||
             providerEmail ||
             profile.id;
 
+          // Link mode: a signed-in user is adding a new provider identity.
+          // session.userId is set from the earlier sign-in; session.link was
+          // set by the initiation route when ?link=1 was present.
+          const linkUserId: number | undefined = req.session?.userId;
+          if (req.session?.link && linkUserId) {
+            linkHandler(
+              'google',
+              {
+                providerUserId: profile.id,
+                providerEmail,
+                displayName,
+                providerUsername: null,
+              },
+              linkUserId,
+              loginService,
+            )
+              .then((result) => {
+                // Encode the link result in a sentinel object so the route
+                // callback can detect link mode and redirect appropriately.
+                done(null, { _linkResult: result.action });
+              })
+              .catch((err) => done(err));
+            return;
+          }
+
+          // Normal sign-in path.
           signInHandler(
             'google',
             {
@@ -209,9 +238,11 @@ export function configurePassport(
           clientSecret: githubConfig.clientSecret,
           callbackURL: githubConfig.callbackURL,
           scope: ['read:user', 'user:email'],
+          passReqToCallback: true,
         },
-        // Verify callback — wired to sign-in handler (T003).
-        (_accessToken, _refreshToken, profile, done) => {
+        // Verify callback — wired to sign-in handler (normal) or link handler (link mode).
+        // req is passed first because passReqToCallback: true.
+        (req: any, _accessToken: string, _refreshToken: string, profile: any, done: any) => {
           // GitHub returns emails in profile.emails[] and username in profile.username.
           const emails = profile.emails ?? [];
           const providerEmail = emails.find((e: any) => e.value)?.value ?? null;
@@ -222,6 +253,28 @@ export function configurePassport(
             providerEmail ||
             profile.id;
 
+          // Link mode: a signed-in user is adding a new provider identity.
+          const linkUserId: number | undefined = req.session?.userId;
+          if (req.session?.link && linkUserId) {
+            linkHandler(
+              'github',
+              {
+                providerUserId: profile.id,
+                providerEmail,
+                displayName,
+                providerUsername,
+              },
+              linkUserId,
+              loginService,
+            )
+              .then((result) => {
+                done(null, { _linkResult: result.action });
+              })
+              .catch((err) => done(err));
+            return;
+          }
+
+          // Normal sign-in path.
           signInHandler(
             'github',
             {

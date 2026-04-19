@@ -2,7 +2,12 @@
  * Auth routes — OAuth strategy endpoints, shared auth utilities.
  *
  * Google OAuth (T002): GET /api/auth/google, GET /api/auth/google/callback
- * GitHub OAuth (T003): stub routes; implementation deferred.
+ * GitHub OAuth (T003): GET /api/auth/github, GET /api/auth/github/callback
+ * Link mode  (T005): ?link=1 on initiation routes attaches a new provider to
+ *                    the current authenticated user instead of creating a new
+ *                    user. The verify callback in passport.config.ts detects
+ *                    session.link and calls linkHandler; it returns a
+ *                    { _linkResult } sentinel that the route callback reads.
  * Shared: /api/auth/me, POST /api/auth/logout, POST /api/auth/test-login
  */
 
@@ -48,8 +53,25 @@ function serializeUser(user: any) {
 }
 
 // ---------------------------------------------------------------------------
-// Test login (non-production only)
+// Test helpers (non-production only)
 // ---------------------------------------------------------------------------
+
+/**
+ * POST /api/auth/test-set-link
+ * Sets session.link = true and session.linkReturnTo = '/account' for testing
+ * link-mode OAuth flows. Only available outside production.
+ */
+authRouter.post('/auth/test-set-link', (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  (req.session as any).link = true;
+  (req.session as any).linkReturnTo = '/account';
+  req.session.save((err) => {
+    if (err) return res.status(500).json({ error: 'Failed to save session' });
+    res.json({ link: true, linkReturnTo: '/account' });
+  });
+});
 
 authRouter.post('/auth/test-login', async (req: Request, res: Response) => {
   if (process.env.NODE_ENV === 'production') {
@@ -120,7 +142,7 @@ authRouter.get('/auth/me', async (req: Request, res: Response) => {
 // Logout
 authRouter.post('/auth/logout', (req: Request, res: Response, _next: NextFunction) => {
   // Capture userId BEFORE destroying the session so we can write the audit event.
-  const userId: number | undefined = (req.session as any).userId ?? req.user?.id;
+  const userId: number | undefined = (req.session as any).userId ?? (req.user as any)?.id;
 
   // Best-effort audit write: fire-and-forget after session destruction.
   // Does not block logout regardless of success or failure.
@@ -167,17 +189,16 @@ authRouter.post('/auth/logout', (req: Request, res: Response, _next: NextFunctio
 });
 
 // ---------------------------------------------------------------------------
-// Google OAuth routes (T002)
+// Google OAuth routes (T002, T005)
 // ---------------------------------------------------------------------------
 
 /**
  * GET /api/auth/google
  * Initiates the Google OAuth redirect.
- * Returns 501 if GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are absent
- * (strategy not registered — Passport would throw a "Unknown authentication
- * strategy" error, so we gate it explicitly).
+ * Returns 501 if GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are absent.
  * Returns 401 if ?link=1 is passed and the user is not authenticated
  * (account-linking mode requires an existing session).
+ * Sets session.link and session.linkReturnTo when ?link=1 and user is signed in.
  */
 authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction) => {
   if (!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)) {
@@ -186,8 +207,14 @@ authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction)
       docs: 'https://console.cloud.google.com/apis/credentials',
     });
   }
-  if (req.query.link === '1' && !req.user) {
-    return res.status(401).json({ error: 'Authentication required to link an account' });
+  if (req.query.link === '1') {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required to link an account' });
+    }
+    // Mark the session so the verify callback (via passReqToCallback) can
+    // detect link mode and call linkHandler instead of signInHandler.
+    (req.session as any).link = true;
+    (req.session as any).linkReturnTo = '/account';
   }
   passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
 });
@@ -195,8 +222,13 @@ authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction)
 /**
  * GET /api/auth/google/callback
  * Google redirects here after the user grants (or denies) consent.
- * On success: writes userId + role to session, redirects to /account.
- * On failure/denial: redirects to /?error=oauth_denied.
+ *
+ * Normal mode: writes userId + role to session, redirects to /account.
+ * Link mode: verify callback ran linkHandler and returned { _linkResult }.
+ *   - 'linked'         → clear flags, redirect to /account
+ *   - 'already_linked' → clear flags, redirect to /account (idempotent)
+ *   - 'conflict'       → clear flags, redirect to /account?error=already_linked
+ * Failure/denial: redirects to /?error=oauth_denied.
  */
 authRouter.get(
   '/auth/google/callback',
@@ -221,6 +253,24 @@ authRouter.get(
         if (!user) {
           return res.redirect('/?error=oauth_denied');
         }
+
+        // Link mode: the verify callback in passport.config.ts detected
+        // session.link and ran linkHandler, encoding the result as a sentinel
+        // object { _linkResult: 'linked' | 'already_linked' | 'conflict' }.
+        const linkResult = (user as any)._linkResult;
+        if (linkResult) {
+          // Clear link-mode flags regardless of outcome.
+          delete (req.session as any).link;
+          delete (req.session as any).linkReturnTo;
+
+          if (linkResult === 'conflict') {
+            return res.redirect('/account?error=already_linked');
+          }
+          // 'linked' or 'already_linked' → success / idempotent.
+          return res.redirect('/account');
+        }
+
+        // Normal sign-in path.
         req.login(user, (loginErr) => {
           if (loginErr) return next(loginErr);
           // Write typed session fields.
@@ -234,14 +284,15 @@ authRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// GitHub OAuth routes (T003)
+// GitHub OAuth routes (T003, T005)
 // ---------------------------------------------------------------------------
 
 /**
  * GET /api/auth/github
  * Initiates the GitHub OAuth redirect.
- * Returns 501 if GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET are absent.
+ * Returns 501 if GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET are absent.
  * Returns 401 if ?link=1 is passed and the user is not authenticated.
+ * Sets session.link and session.linkReturnTo when ?link=1 and user is signed in.
  */
 authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction) => {
   if (!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)) {
@@ -250,8 +301,13 @@ authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction)
       docs: 'https://github.com/settings/developers',
     });
   }
-  if (req.query.link === '1' && !req.user) {
-    return res.status(401).json({ error: 'Authentication required to link an account' });
+  if (req.query.link === '1') {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required to link an account' });
+    }
+    // Mark the session so the verify callback can detect link mode.
+    (req.session as any).link = true;
+    (req.session as any).linkReturnTo = '/account';
   }
   passport.authenticate('github', { scope: ['read:user', 'user:email'] })(req, res, next);
 });
@@ -259,8 +315,10 @@ authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction)
 /**
  * GET /api/auth/github/callback
  * GitHub redirects here after the user grants (or denies) consent.
- * On success: writes userId + role to session, redirects to /account.
- * On failure/denial: redirects to /?error=oauth_denied.
+ *
+ * Normal mode: writes userId + role to session, redirects to /account.
+ * Link mode: verify callback ran linkHandler and returned { _linkResult }.
+ * Failure/denial: redirects to /?error=oauth_denied.
  */
 authRouter.get(
   '/auth/github/callback',
@@ -275,6 +333,22 @@ authRouter.get(
         if (err || !user) {
           return res.redirect('/?error=oauth_denied');
         }
+
+        // Link mode: verify callback returned a _linkResult sentinel.
+        const linkResult = (user as any)._linkResult;
+        if (linkResult) {
+          // Clear link-mode flags regardless of outcome.
+          delete (req.session as any).link;
+          delete (req.session as any).linkReturnTo;
+
+          if (linkResult === 'conflict') {
+            return res.redirect('/account?error=already_linked');
+          }
+          // 'linked' or 'already_linked' → success / idempotent.
+          return res.redirect('/account');
+        }
+
+        // Normal sign-in path.
         req.login(user, (loginErr) => {
           if (loginErr) return next(loginErr);
           // Write typed session fields.
