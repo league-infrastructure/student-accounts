@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: "Merge Suggestions \u2014 Haiku Scanner and Admin Merge Queue"
-status: active
+status: done
 branch: sprint/007-merge-suggestions-haiku-scanner-and-admin-merge-queue
 use-cases:
 - UC-018
