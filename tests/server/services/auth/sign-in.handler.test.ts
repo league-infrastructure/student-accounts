@@ -795,7 +795,7 @@ describe('signInHandler — ADMIN_EMAILS admin role assignment (T006)', () => {
     });
   });
 
-  it('reverts role from admin to staff when email removed from ADMIN_EMAILS (OU=staff)', async () => {
+  it('preserves role=admin when email removed from ADMIN_EMAILS (OU=staff)', async () => {
     // Seed: returning user currently role=admin (was previously promoted)
     const existingUser = await makeUser({
       primary_email: 'demoted@jointheleague.org',
@@ -813,7 +813,8 @@ describe('signInHandler — ADMIN_EMAILS admin role assignment (T006)', () => {
     _setAdminEmails(new Set());
 
     const adminDirClient = new FakeGoogleWorkspaceAdminClient();
-    // In staff OU — should revert to staff
+    // In staff OU — admin role is preserved (sticky), OU check is skipped
+    // while role is admin.
     adminDirClient.configure('getUserOU', '/League Staff/Engineering');
 
     const user = await signInHandler(
@@ -829,10 +830,10 @@ describe('signInHandler — ADMIN_EMAILS admin role assignment (T006)', () => {
       { adminDirClient },
     );
 
-    expect(user.role).toBe('staff');
+    expect(user.role).toBe('admin');
   });
 
-  it('reverts role from admin to student when email removed from ADMIN_EMAILS (OU=non-staff)', async () => {
+  it('preserves role=admin when email removed from ADMIN_EMAILS (OU=non-staff)', async () => {
     // Seed: returning user currently role=admin
     const existingUser = await makeUser({
       primary_email: 'demoted-student@jointheleague.org',
@@ -850,7 +851,8 @@ describe('signInHandler — ADMIN_EMAILS admin role assignment (T006)', () => {
     _setAdminEmails(new Set());
 
     const adminDirClient = new FakeGoogleWorkspaceAdminClient();
-    // Not in staff OU — should revert to student
+    // Not in staff OU — admin role is preserved; OU check is skipped for
+    // admin users.
     adminDirClient.configure('getUserOU', '/Other/Dept');
 
     const user = await signInHandler(
@@ -866,7 +868,7 @@ describe('signInHandler — ADMIN_EMAILS admin role assignment (T006)', () => {
       { adminDirClient },
     );
 
-    expect(user.role).toBe('student');
+    expect(user.role).toBe('admin');
   });
 
   it('does not set role=admin for GitHub sign-in even if email matches ADMIN_EMAILS', async () => {
@@ -953,9 +955,9 @@ describe('resolveStaffOuPath — League default', () => {
     }
   });
 
-  it('returns the League default when GOOGLE_STAFF_OU_PATH is not set', () => {
+  it('returns null when GOOGLE_STAFF_OU_PATH is not set (OU lookup is skipped)', () => {
     delete process.env.GOOGLE_STAFF_OU_PATH;
-    expect(resolveStaffOuPath()).toBe(DEFAULT_STAFF_OU_PATH);
+    expect(resolveStaffOuPath()).toBeNull();
   });
 
   it('returns the configured value when GOOGLE_STAFF_OU_PATH is set', () => {
@@ -972,9 +974,8 @@ describe('resolveStaffOuPath — League default', () => {
 // OOP fix: signInHandler uses League default when GOOGLE_STAFF_OU_PATH is unset
 // ---------------------------------------------------------------------------
 
-describe('signInHandler — uses League default for GOOGLE_STAFF_OU_PATH when unset', () => {
+describe('signInHandler — skips OU lookup when GOOGLE_STAFF_OU_PATH is unset', () => {
   beforeEach(async () => {
-    // Ensure the env var is absent — the handler should apply the default
     delete process.env.GOOGLE_STAFF_OU_PATH;
     _setAdminEmails(new Set());
   });
@@ -984,7 +985,7 @@ describe('signInHandler — uses League default for GOOGLE_STAFF_OU_PATH when un
     _setAdminEmails(new Set());
   });
 
-  it('grants role=staff when OU starts with default /League Staff and GOOGLE_STAFF_OU_PATH is unset', async () => {
+  it('keeps role=student when OU would match /League Staff but env var is unset', async () => {
     const adminDirClient = new FakeGoogleWorkspaceAdminClient();
     adminDirClient.configure('getUserOU', '/League Staff/Engineering');
 
@@ -1001,10 +1002,10 @@ describe('signInHandler — uses League default for GOOGLE_STAFF_OU_PATH when un
       { adminDirClient },
     );
 
-    expect(user.role).toBe('staff');
+    expect(user.role).toBe('student');
   });
 
-  it('keeps role=student when OU does NOT match default /League Staff and GOOGLE_STAFF_OU_PATH is unset', async () => {
+  it('keeps role=student when OU is outside the staff tree and env var is unset', async () => {
     const adminDirClient = new FakeGoogleWorkspaceAdminClient();
     adminDirClient.configure('getUserOU', '/Students/Spring2025');
 
