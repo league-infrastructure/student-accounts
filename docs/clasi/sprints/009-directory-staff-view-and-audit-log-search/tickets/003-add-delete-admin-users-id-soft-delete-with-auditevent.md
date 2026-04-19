@@ -1,11 +1,13 @@
 ---
-id: "003"
-title: "Add DELETE /admin/users/:id (soft-delete) with AuditEvent"
-status: todo
-use-cases: [SUC-009-002, SUC-009-003]
+id: '003'
+title: Add DELETE /admin/users/:id (soft-delete) with AuditEvent
+status: done
+use-cases:
+- SUC-009-002
+- SUC-009-003
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 
 # Add DELETE /admin/users/:id (soft-delete) with AuditEvent
@@ -19,18 +21,18 @@ hard deletion. An AuditEvent with `action=delete_user` is recorded.
 
 ## Acceptance Criteria
 
-- [ ] `DELETE /api/admin/users/:id` sets `is_active=false` and `updated_at=now`
+- [x] `DELETE /api/admin/users/:id` sets `is_active=false` and `updated_at=now`
       on the target User.
-- [ ] Records an AuditEvent: `action='delete_user'`, `actor_user_id=req.user.id`,
+- [x] Records an AuditEvent: `action='delete_user'`, `actor_user_id=req.user.id`,
       `target_user_id=id`.
-- [ ] Returns 200 with `{ success: true }` on success.
-- [ ] Returns 404 if the user does not exist.
-- [ ] Returns 403 if the actor attempts to delete their own account
+- [x] Returns 200 with `{ success: true }` on success.
+- [x] Returns 404 if the user does not exist.
+- [x] Returns 403 if the actor attempts to delete their own account
       (`id === req.user.id`).
-- [ ] The deleted user no longer appears in `GET /admin/users` (filtered by
+- [x] The deleted user no longer appears in `GET /admin/users` (filtered by
       `is_active=true`).
-- [ ] Route requires admin role (inherited from `adminRouter`).
-- [ ] Server tests cover: successful delete, self-delete blocked (403),
+- [x] Route requires admin role (inherited from `adminRouter`).
+- [x] Server tests cover: successful delete, self-delete blocked (403),
       user not found (404).
 
 ## Implementation Plan
