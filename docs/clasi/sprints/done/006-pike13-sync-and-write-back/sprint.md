@@ -1,7 +1,7 @@
 ---
 id: '006'
 title: "External Source Sync \u2014 Pike13 and Google Workspace"
-status: active
+status: done
 branch: sprint/006-pike13-sync-and-write-back
 use-cases:
 - UC-004
