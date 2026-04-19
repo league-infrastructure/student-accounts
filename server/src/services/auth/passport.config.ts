@@ -24,27 +24,23 @@ import { signInHandler } from './sign-in.handler.js';
 import { linkHandler } from './link.handler.js';
 import type { User } from '../../generated/prisma/client.js';
 import {
-  GoogleAdminDirectoryClient,
-  type AdminDirectoryClient,
-} from './google-admin-directory.client.js';
+  GoogleWorkspaceAdminClientImpl,
+  type GoogleWorkspaceAdminClient,
+} from '../google-workspace/google-workspace-admin.client.js';
 
 // ---------------------------------------------------------------------------
 // Admin Directory client factory
 // ---------------------------------------------------------------------------
 
 /**
- * Build a GoogleAdminDirectoryClient if both required env vars are present.
+ * Build a GoogleWorkspaceAdminClientImpl if both required env vars are present.
  *
- * Returns null if either var is missing — the app still starts, but any
- * attempt to call getUserOU() on a missing-credentials client will throw
- * StaffOULookupError (fail-secure per RD-001).
- *
- * The client is created regardless of whether both vars are present so that
- * the missing-credential path is tested on the first real lookup rather than
- * at startup. The GoogleAdminDirectoryClient constructor handles missing
- * values gracefully — it only throws at getUserOU() call time.
+ * Returns a client regardless of whether both vars are present so that the
+ * missing-credential path is detected on the first real lookup rather than
+ * at startup. The GoogleWorkspaceAdminClientImpl constructor handles missing
+ * values gracefully — it only throws at method call time (fail-secure RD-001).
  */
-function buildAdminDirectoryClient(): AdminDirectoryClient {
+function buildAdminDirectoryClient(): GoogleWorkspaceAdminClient {
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '';
   const serviceAccountFile = process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '';
   const delegatedUser = process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '';
@@ -64,7 +60,7 @@ function buildAdminDirectoryClient(): AdminDirectoryClient {
     );
   }
 
-  return new GoogleAdminDirectoryClient(serviceAccountJson, delegatedUser, serviceAccountFile);
+  return new GoogleWorkspaceAdminClientImpl(serviceAccountJson, delegatedUser, serviceAccountFile);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,15 +115,15 @@ function readGitHubConfig(): {
  * @param loginService      - LoginService used by sign-in handler.
  * @param prismaClient      - Prisma client passed through to signInHandler for
  *                            auth_denied audit event writes (RD-001).
- * @returns                 - The AdminDirectoryClient instance (exposed for
- *                            test overrides).
+ * @returns                 - The GoogleWorkspaceAdminClient instance (exposed
+ *                            for test overrides).
  */
 export function configurePassport(
   passportInstance: typeof passport,
   userService: UserService,
   loginService: LoginService,
   prismaClient?: any,
-): AdminDirectoryClient {
+): GoogleWorkspaceAdminClient {
   // Build the Admin Directory client up front so it is available for injection
   // into the Google strategy verify callback.
   const adminDirClient = buildAdminDirectoryClient();

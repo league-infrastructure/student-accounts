@@ -1,25 +1,27 @@
 /**
- * Unit tests for google-admin-directory.client.ts (T004).
+ * Unit tests for google-workspace-admin.client.ts (Sprint 004 T001).
  *
  * Covers:
  *  - StaffOULookupError: name, code, email, cause properties.
- *  - FakeAdminDirectoryClient: returns the configured OU path.
- *  - FakeAdminDirectoryClient: propagates a configured StaffOULookupError.
- *  - GoogleAdminDirectoryClient: throws StaffOULookupError (MISSING_CREDENTIALS)
+ *  - FakeGoogleWorkspaceAdminClient: getUserOU returns the configured OU path.
+ *  - FakeGoogleWorkspaceAdminClient: propagates a configured error.
+ *  - FakeGoogleWorkspaceAdminClient: call recording for all methods.
+ *  - FakeGoogleWorkspaceAdminClient: configurable return values per method.
+ *  - FakeGoogleWorkspaceAdminClient: configurable thrown errors per method.
+ *  - GoogleWorkspaceAdminClientImpl: throws StaffOULookupError (MISSING_CREDENTIALS)
  *    when serviceAccountJson is empty.
- *  - GoogleAdminDirectoryClient: throws StaffOULookupError (MISSING_CREDENTIALS)
+ *  - GoogleWorkspaceAdminClientImpl: throws StaffOULookupError (MISSING_CREDENTIALS)
  *    when delegatedUser is empty.
- *  - GoogleAdminDirectoryClient: throws StaffOULookupError (MALFORMED_CREDENTIALS)
+ *  - GoogleWorkspaceAdminClientImpl: throws StaffOULookupError (MALFORMED_CREDENTIALS)
  *    when serviceAccountJson is not valid JSON.
- *  - GoogleAdminDirectoryClient (file path): happy path — reads credentials from file.
- *  - GoogleAdminDirectoryClient (file path): MALFORMED_CREDENTIALS when file missing.
- *  - GoogleAdminDirectoryClient (file path): MALFORMED_CREDENTIALS when file not valid JSON.
- *  - GoogleAdminDirectoryClient (file path): file wins when both file and inline JSON are set.
- *  - GoogleAdminDirectoryClient.resolveServiceAccountFilePath: bare filename resolves under config/files/.
- *  - GoogleAdminDirectoryClient.resolveServiceAccountFilePath: path with slashes used as-is.
+ *  - GoogleWorkspaceAdminClientImpl (file path): happy path — reads credentials from file.
+ *  - GoogleWorkspaceAdminClientImpl (file path): MALFORMED_CREDENTIALS when file missing.
+ *  - GoogleWorkspaceAdminClientImpl (file path): MALFORMED_CREDENTIALS when file not valid JSON.
+ *  - GoogleWorkspaceAdminClientImpl (file path): file wins when both file and inline JSON are set.
+ *  - GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath: bare filename resolves under config/files/.
+ *  - GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath: path with slashes used as-is.
  *
  * The real Admin SDK endpoint is NOT exercised in CI (requires live credentials).
- * Integration coverage for the real API path is deferred to T005.
  */
 
 import fs from 'fs';
@@ -28,9 +30,12 @@ import path from 'path';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   StaffOULookupError,
-  FakeAdminDirectoryClient,
-  GoogleAdminDirectoryClient,
-} from '../../../../server/src/services/auth/google-admin-directory.client.js';
+  WorkspaceApiError,
+  GoogleWorkspaceAdminClientImpl,
+} from '../../../../server/src/services/google-workspace/google-workspace-admin.client.js';
+import {
+  FakeGoogleWorkspaceAdminClient,
+} from '../../helpers/fake-google-workspace-admin.client.js';
 
 // ---------------------------------------------------------------------------
 // StaffOULookupError
@@ -68,46 +73,51 @@ describe('StaffOULookupError', () => {
 });
 
 // ---------------------------------------------------------------------------
-// FakeAdminDirectoryClient
+// FakeGoogleWorkspaceAdminClient
 // ---------------------------------------------------------------------------
 
-describe('FakeAdminDirectoryClient — returns configured OU path', () => {
-  it('returns the OU path string passed to the constructor', async () => {
-    const fake = new FakeAdminDirectoryClient('/League Staff');
+describe('FakeGoogleWorkspaceAdminClient — getUserOU default behavior', () => {
+  it('returns the default OU path when no override is configured', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
     const result = await fake.getUserOU('alice@jointheleague.org');
     expect(result).toBe('/League Staff');
   });
 
-  it('ignores the email argument and always returns the configured path', async () => {
-    const fake = new FakeAdminDirectoryClient('/Students');
-    const resultA = await fake.getUserOU('a@jointheleague.org');
-    const resultB = await fake.getUserOU('b@jointheleague.org');
-    expect(resultA).toBe('/Students');
-    expect(resultB).toBe('/Students');
+  it('returns a configured OU path when configure() is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.configure('getUserOU', '/Students/Spring2025');
+    const result = await fake.getUserOU('alice@jointheleague.org');
+    expect(result).toBe('/Students/Spring2025');
   });
 
-  it('can be configured with a deeply nested OU path', async () => {
-    const fake = new FakeAdminDirectoryClient('/League Staff/Operations');
-    const result = await fake.getUserOU('ops@jointheleague.org');
-    expect(result).toBe('/League Staff/Operations');
+  it('records the email argument in calls.getUserOU', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    await fake.getUserOU('alice@jointheleague.org');
+    await fake.getUserOU('bob@jointheleague.org');
+    expect(fake.calls.getUserOU).toEqual([
+      'alice@jointheleague.org',
+      'bob@jointheleague.org',
+    ]);
   });
 });
 
-describe('FakeAdminDirectoryClient — configured to throw', () => {
-  it('throws the StaffOULookupError passed to the constructor', async () => {
+describe('FakeGoogleWorkspaceAdminClient — configureError for getUserOU', () => {
+  it('throws the configured error when configureError is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
     const error = new StaffOULookupError(
       'credentials missing',
       'MISSING_CREDENTIALS',
       'alice@jointheleague.org',
     );
-    const fake = new FakeAdminDirectoryClient(error);
+    fake.configureError('getUserOU', error);
 
     await expect(fake.getUserOU('alice@jointheleague.org')).rejects.toThrow(StaffOULookupError);
   });
 
   it('propagates the exact error instance, preserving code and email', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
     const error = new StaffOULookupError('api error', 'API_ERROR', 'bob@jointheleague.org');
-    const fake = new FakeAdminDirectoryClient(error);
+    fake.configureError('getUserOU', error);
 
     let caught: unknown;
     try {
@@ -122,13 +132,175 @@ describe('FakeAdminDirectoryClient — configured to throw', () => {
   });
 });
 
+describe('FakeGoogleWorkspaceAdminClient — createUser', () => {
+  it('returns default { id, primaryEmail } from params', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    const result = await fake.createUser({
+      primaryEmail: 'alice@students.example.com',
+      orgUnitPath: '/Students/Spring2025',
+      givenName: 'Alice',
+      familyName: 'Example',
+      sendNotificationEmail: false,
+    });
+    expect(result).toEqual({ id: 'fake-gws-user-id', primaryEmail: 'alice@students.example.com' });
+  });
+
+  it('records the CreateUserParams in calls.createUser', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    const params = {
+      primaryEmail: 'alice@students.example.com',
+      orgUnitPath: '/Students/Spring2025',
+      givenName: 'Alice',
+      familyName: 'Example',
+      sendNotificationEmail: true,
+    };
+    await fake.createUser(params);
+    expect(fake.calls.createUser).toHaveLength(1);
+    expect(fake.calls.createUser[0]).toEqual(params);
+  });
+
+  it('returns a configured value when configure() is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.configure('createUser', { id: 'custom-id', primaryEmail: 'custom@students.example.com' });
+    const result = await fake.createUser({
+      primaryEmail: 'x@students.example.com',
+      orgUnitPath: '/Students',
+      givenName: 'X',
+      familyName: 'Y',
+      sendNotificationEmail: false,
+    });
+    expect(result).toEqual({ id: 'custom-id', primaryEmail: 'custom@students.example.com' });
+  });
+
+  it('throws a configured error when configureError() is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    const err = new WorkspaceApiError('conflict', 'createUser', 409);
+    fake.configureError('createUser', err);
+
+    await expect(
+      fake.createUser({
+        primaryEmail: 'x@students.example.com',
+        orgUnitPath: '/Students',
+        givenName: 'X',
+        familyName: 'Y',
+        sendNotificationEmail: false,
+      }),
+    ).rejects.toThrow(WorkspaceApiError);
+  });
+});
+
+describe('FakeGoogleWorkspaceAdminClient — createOU', () => {
+  it('returns default { ouPath } using /Students/ + name', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    const result = await fake.createOU('Spring2025');
+    expect(result).toEqual({ ouPath: '/Students/Spring2025' });
+  });
+
+  it('records the OU name in calls.createOU', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    await fake.createOU('Cohort-A');
+    await fake.createOU('Cohort-B');
+    expect(fake.calls.createOU).toEqual(['Cohort-A', 'Cohort-B']);
+  });
+
+  it('throws a configured error when configureError() is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.configureError('createOU', new WorkspaceApiError('OU already exists', 'createOU', 409));
+    await expect(fake.createOU('Spring2025')).rejects.toThrow(WorkspaceApiError);
+  });
+});
+
+describe('FakeGoogleWorkspaceAdminClient — suspendUser', () => {
+  it('resolves void by default', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    await expect(fake.suspendUser('alice@students.example.com')).resolves.toBeUndefined();
+  });
+
+  it('records the email in calls.suspendUser', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    await fake.suspendUser('alice@students.example.com');
+    expect(fake.calls.suspendUser).toEqual(['alice@students.example.com']);
+  });
+
+  it('throws a configured error when configureError() is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.configureError('suspendUser', new WorkspaceApiError('not found', 'suspendUser', 404));
+    await expect(fake.suspendUser('alice@students.example.com')).rejects.toThrow(WorkspaceApiError);
+  });
+});
+
+describe('FakeGoogleWorkspaceAdminClient — deleteUser', () => {
+  it('resolves void by default', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    await expect(fake.deleteUser('alice@students.example.com')).resolves.toBeUndefined();
+  });
+
+  it('records the email in calls.deleteUser', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    await fake.deleteUser('alice@students.example.com');
+    expect(fake.calls.deleteUser).toEqual(['alice@students.example.com']);
+  });
+
+  it('throws a configured error when configureError() is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.configureError('deleteUser', new WorkspaceApiError('not found', 'deleteUser', 404));
+    await expect(fake.deleteUser('alice@students.example.com')).rejects.toThrow(WorkspaceApiError);
+  });
+});
+
+describe('FakeGoogleWorkspaceAdminClient — listUsersInOU', () => {
+  it('returns an empty array by default', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    const result = await fake.listUsersInOU('/Students/Spring2025');
+    expect(result).toEqual([]);
+  });
+
+  it('records the ouPath in calls.listUsersInOU', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    await fake.listUsersInOU('/Students/Spring2025');
+    expect(fake.calls.listUsersInOU).toEqual(['/Students/Spring2025']);
+  });
+
+  it('returns a configured list when configure() is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    const users = [
+      { id: 'uid-1', primaryEmail: 'alice@s.example.com', orgUnitPath: '/Students/Spring2025' },
+    ];
+    fake.configure('listUsersInOU', users);
+    const result = await fake.listUsersInOU('/Students/Spring2025');
+    expect(result).toEqual(users);
+  });
+
+  it('throws a configured error when configureError() is called', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.configureError('listUsersInOU', new WorkspaceApiError('forbidden', 'listUsersInOU', 403));
+    await expect(fake.listUsersInOU('/Students')).rejects.toThrow(WorkspaceApiError);
+  });
+});
+
+describe('FakeGoogleWorkspaceAdminClient — reset()', () => {
+  it('clears call records and configured overrides', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.configure('getUserOU', '/Custom/OU');
+    await fake.getUserOU('alice@jointheleague.org');
+    expect(fake.calls.getUserOU).toHaveLength(1);
+
+    fake.reset();
+
+    expect(fake.calls.getUserOU).toHaveLength(0);
+    // After reset, default behavior is restored
+    const result = await fake.getUserOU('alice@jointheleague.org');
+    expect(result).toBe('/League Staff');
+  });
+});
+
 // ---------------------------------------------------------------------------
-// GoogleAdminDirectoryClient — credential error paths (no network)
+// GoogleWorkspaceAdminClientImpl — credential error paths (no network)
 // ---------------------------------------------------------------------------
 
-describe('GoogleAdminDirectoryClient — missing credentials (RD-001)', () => {
+describe('GoogleWorkspaceAdminClientImpl — missing credentials (RD-001)', () => {
   it('throws StaffOULookupError with code MISSING_CREDENTIALS when serviceAccountJson is empty', async () => {
-    const client = new GoogleAdminDirectoryClient('', 'admin@jointheleague.org');
+    const client = new GoogleWorkspaceAdminClientImpl('', 'admin@jointheleague.org');
 
     await expect(client.getUserOU('alice@jointheleague.org')).rejects.toMatchObject({
       name: 'StaffOULookupError',
@@ -138,7 +310,7 @@ describe('GoogleAdminDirectoryClient — missing credentials (RD-001)', () => {
   });
 
   it('throws StaffOULookupError with code MISSING_CREDENTIALS when delegatedUser is empty', async () => {
-    const client = new GoogleAdminDirectoryClient('{"type":"service_account"}', '');
+    const client = new GoogleWorkspaceAdminClientImpl('{"type":"service_account"}', '');
 
     await expect(client.getUserOU('alice@jointheleague.org')).rejects.toMatchObject({
       name: 'StaffOULookupError',
@@ -148,7 +320,7 @@ describe('GoogleAdminDirectoryClient — missing credentials (RD-001)', () => {
   });
 
   it('throws StaffOULookupError with code MISSING_CREDENTIALS when both are empty', async () => {
-    const client = new GoogleAdminDirectoryClient('', '');
+    const client = new GoogleWorkspaceAdminClientImpl('', '');
 
     await expect(client.getUserOU('test@jointheleague.org')).rejects.toMatchObject({
       name: 'StaffOULookupError',
@@ -157,9 +329,9 @@ describe('GoogleAdminDirectoryClient — missing credentials (RD-001)', () => {
   });
 });
 
-describe('GoogleAdminDirectoryClient — malformed credentials', () => {
+describe('GoogleWorkspaceAdminClientImpl — malformed credentials', () => {
   it('throws StaffOULookupError with code MALFORMED_CREDENTIALS for invalid JSON', async () => {
-    const client = new GoogleAdminDirectoryClient(
+    const client = new GoogleWorkspaceAdminClientImpl(
       'not-valid-json',
       'admin@jointheleague.org',
     );
@@ -172,7 +344,7 @@ describe('GoogleAdminDirectoryClient — malformed credentials', () => {
   });
 
   it('includes the original parse error as cause', async () => {
-    const client = new GoogleAdminDirectoryClient(
+    const client = new GoogleWorkspaceAdminClientImpl(
       '{broken json',
       'admin@jointheleague.org',
     );
@@ -190,7 +362,7 @@ describe('GoogleAdminDirectoryClient — malformed credentials', () => {
 });
 
 // ---------------------------------------------------------------------------
-// GoogleAdminDirectoryClient — GOOGLE_SERVICE_ACCOUNT_JSON_FILE path
+// GoogleWorkspaceAdminClientImpl — GOOGLE_SERVICE_ACCOUNT_JSON_FILE path
 // ---------------------------------------------------------------------------
 
 /**
@@ -203,7 +375,7 @@ function writeTempFile(content: string): string {
   return tmpPath;
 }
 
-describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_FILE)', () => {
+describe('GoogleWorkspaceAdminClientImpl — file path (GOOGLE_SERVICE_ACCOUNT_FILE)', () => {
   // Track temp files created so we can clean them up.
   const tempFiles: string[] = [];
 
@@ -229,7 +401,7 @@ describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_FILE)
     const tmpPath = writeTempFile(serviceAccountJson);
     tempFiles.push(tmpPath);
 
-    const client = new GoogleAdminDirectoryClient(
+    const client = new GoogleWorkspaceAdminClientImpl(
       '', // inline JSON is empty
       'admin@jointheleague.org',
       tmpPath, // file path takes precedence
@@ -254,7 +426,7 @@ describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_FILE)
   it('throws MALFORMED_CREDENTIALS when the file path does not exist', async () => {
     const nonExistentPath = path.join(os.tmpdir(), 'does-not-exist-abc123.json');
 
-    const client = new GoogleAdminDirectoryClient(
+    const client = new GoogleWorkspaceAdminClientImpl(
       '',
       'admin@jointheleague.org',
       nonExistentPath,
@@ -271,7 +443,7 @@ describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_FILE)
     const tmpPath = writeTempFile('this is not json {{{');
     tempFiles.push(tmpPath);
 
-    const client = new GoogleAdminDirectoryClient(
+    const client = new GoogleWorkspaceAdminClientImpl(
       '',
       'admin@jointheleague.org',
       tmpPath,
@@ -288,7 +460,7 @@ describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_FILE)
     const tmpPath = writeTempFile('{broken');
     tempFiles.push(tmpPath);
 
-    const client = new GoogleAdminDirectoryClient(
+    const client = new GoogleWorkspaceAdminClientImpl(
       '',
       'admin@jointheleague.org',
       tmpPath,
@@ -311,7 +483,7 @@ describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_FILE)
     const nonExistentPath = path.join(os.tmpdir(), 'precedence-test-nonexistent.json');
     const validInlineJson = JSON.stringify({ type: 'service_account', client_email: 'x@x.iam.gserviceaccount.com', private_key: 'k' });
 
-    const client = new GoogleAdminDirectoryClient(
+    const client = new GoogleWorkspaceAdminClientImpl(
       validInlineJson, // valid inline — would succeed loading
       'admin@jointheleague.org',
       nonExistentPath, // file takes precedence; this file does not exist → MALFORMED
@@ -325,12 +497,12 @@ describe('GoogleAdminDirectoryClient — file path (GOOGLE_SERVICE_ACCOUNT_FILE)
 });
 
 // ---------------------------------------------------------------------------
-// GoogleAdminDirectoryClient.resolveServiceAccountFilePath — path resolution
+// GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath — path resolution
 // ---------------------------------------------------------------------------
 
-describe('GoogleAdminDirectoryClient.resolveServiceAccountFilePath', () => {
+describe('GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath', () => {
   it('resolves a bare filename against <cwd>/config/files/', () => {
-    const result = GoogleAdminDirectoryClient.resolveServiceAccountFilePath(
+    const result = GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath(
       'gapps-integrations-fc9a96a0f34a.json',
     );
     expect(result).toBe(
@@ -339,7 +511,7 @@ describe('GoogleAdminDirectoryClient.resolveServiceAccountFilePath', () => {
   });
 
   it('uses an explicit relative path (with slashes) as-is via path.resolve', () => {
-    const result = GoogleAdminDirectoryClient.resolveServiceAccountFilePath(
+    const result = GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath(
       './config/files/my-key.json',
     );
     expect(result).toBe(path.resolve(process.cwd(), './config/files/my-key.json'));
@@ -347,12 +519,12 @@ describe('GoogleAdminDirectoryClient.resolveServiceAccountFilePath', () => {
 
   it('uses an absolute path unchanged', () => {
     const absPath = '/etc/secrets/google-sa.json';
-    const result = GoogleAdminDirectoryClient.resolveServiceAccountFilePath(absPath);
+    const result = GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath(absPath);
     expect(result).toBe(absPath);
   });
 
   it('bare filename with no extension is still resolved under config/files/', () => {
-    const result = GoogleAdminDirectoryClient.resolveServiceAccountFilePath('mykey');
+    const result = GoogleWorkspaceAdminClientImpl.resolveServiceAccountFilePath('mykey');
     expect(result).toBe(path.resolve(process.cwd(), 'config', 'files', 'mykey'));
   });
 });

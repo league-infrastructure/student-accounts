@@ -15,7 +15,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import passport from 'passport';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { StaffOULookupError } from '../services/auth/google-admin-directory.client.js';
+import { StaffOULookupError } from '../services/google-workspace/google-workspace-admin.client.js';
 import { AuditService } from '../services/audit.service.js';
 
 // Module-level AuditService instance for the logout route.

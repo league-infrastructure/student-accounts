@@ -14,10 +14,8 @@ import { AuditService } from '../../../../server/src/services/audit.service.js';
 import { UserService } from '../../../../server/src/services/user.service.js';
 import { LoginService } from '../../../../server/src/services/login.service.js';
 import { signInHandler } from '../../../../server/src/services/auth/sign-in.handler.js';
-import {
-  FakeAdminDirectoryClient,
-  StaffOULookupError,
-} from '../../../../server/src/services/auth/google-admin-directory.client.js';
+import { StaffOULookupError } from '../../../../server/src/services/google-workspace/google-workspace-admin.client.js';
+import { FakeGoogleWorkspaceAdminClient } from '../../helpers/fake-google-workspace-admin.client.js';
 import { makeUser, makeLogin } from '../../helpers/factories.js';
 
 // ---------------------------------------------------------------------------
@@ -335,7 +333,8 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
   });
 
   it('sets role=staff when OU path matches GOOGLE_STAFF_OU_PATH', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient('/League Staff/Engineering');
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff/Engineering');
 
     const user = await signInHandler(
       'google',
@@ -354,7 +353,8 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
   });
 
   it('sets role=staff when OU path exactly equals GOOGLE_STAFF_OU_PATH', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient('/League Staff');
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff');
 
     const user = await signInHandler(
       'google',
@@ -373,7 +373,8 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
   });
 
   it('sets role=student when OU path does not match (RD-003)', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient('/Students/Spring2025');
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/Students/Spring2025');
 
     const user = await signInHandler(
       'google',
@@ -392,7 +393,9 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
   });
 
   it('throws StaffOULookupError when AdminClient fails (RD-001)', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient(
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configureError(
+      'getUserOU',
       new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
     );
 
@@ -414,7 +417,9 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
 
   it('writes auth_denied AuditEvent when StaffOULookupError is thrown (RD-001)', async () => {
     const auditService = new AuditService();
-    const adminDirClient = new FakeAdminDirectoryClient(
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configureError(
+      'getUserOU',
       new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
     );
 
@@ -508,7 +513,8 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
       provider_email: 'returning-staff@jointheleague.org',
     });
 
-    const adminDirClient = new FakeAdminDirectoryClient('/League Staff/Engineering');
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff/Engineering');
 
     const user = await signInHandler(
       'google',

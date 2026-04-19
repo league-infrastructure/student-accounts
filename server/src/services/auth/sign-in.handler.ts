@@ -29,9 +29,9 @@ import type { LoginService } from '../login.service.js';
 import { AuditService } from '../audit.service.js';
 import { mergeScan } from './merge-scan.stub.js';
 import {
-  type AdminDirectoryClient,
+  type GoogleWorkspaceAdminClient,
   StaffOULookupError,
-} from './google-admin-directory.client.js';
+} from '../google-workspace/google-workspace-admin.client.js';
 
 const logger = pino({ name: 'sign-in.handler' });
 
@@ -58,8 +58,8 @@ export interface OAuthProfile {
  *   StaffOULookupError is thrown (RD-001).
  */
 export interface SignInOptions {
-  /** AdminDirectoryClient for @jointheleague.org OU lookups (T005). */
-  adminDirClient?: AdminDirectoryClient;
+  /** GoogleWorkspaceAdminClient for @jointheleague.org OU lookups. */
+  adminDirClient?: GoogleWorkspaceAdminClient;
   /**
    * AuditService instance for writing auth_denied events on StaffOULookupError.
    * Required alongside `prisma` for the audit path to function.
@@ -181,7 +181,7 @@ export async function signInHandler(
       );
       await _writeAuthDeniedEvent(options, providerEmail, 'NO_ADMIN_CLIENT');
       throw new StaffOULookupError(
-        'No AdminDirectoryClient available for @jointheleague.org sign-in',
+        'No GoogleWorkspaceAdminClient available for @jointheleague.org sign-in',
         'NO_ADMIN_CLIENT',
         providerEmail,
       );
