@@ -1,5 +1,5 @@
 /**
- * ProvisioningRequestService — full implementation (Sprint 003).
+ * ProvisioningRequestService — full implementation (Sprint 003 + Sprint 004 T007).
  *
  * Manages the lifecycle of provisioning requests from creation through
  * administrative decision.
@@ -12,19 +12,27 @@
  *  - workspace_and_claude creates two rows atomically.
  *  - Duplicate outstanding workspace requests are blocked (ConflictError).
  *
- * Seams for Sprint 004:
- *  - approve() and reject() set status/decided_by/decided_at and emit an
- *    audit event. Actual provisioning (API calls) is deferred.
+ * Sprint 004 T007 — approve() wired to WorkspaceProvisioningService:
+ *  - If request.requested_type === 'workspace', approve() calls
+ *    workspaceProvisioningService.provision(userId, deciderId, tx) inside
+ *    the same transaction. If provision() throws, the whole transaction rolls
+ *    back and the request stays 'pending'.
+ *  - If request.requested_type === 'claude', approve() remains a pure status
+ *    update (Sprint 005 will wire claude provisioning).
  *  - notifyAdmin() is a no-op this sprint; Sprint 004+ will implement it.
  */
 
+import pino from 'pino';
 import { ConflictError, NotFoundError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import type { ExternalAccountService } from './external-account.service.js';
+import type { WorkspaceProvisioningService } from './workspace-provisioning.service.js';
 import { ProvisioningRequestRepository } from './repositories/provisioning-request.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { ProvisioningRequest } from '../generated/prisma/client.js';
 import type { Prisma } from '../generated/prisma/client.js';
+
+const logger = pino({ name: 'provisioning-request' });
 
 export type CreateRequestType = 'workspace' | 'claude' | 'workspace_and_claude';
 
@@ -33,6 +41,7 @@ export class ProvisioningRequestService {
     private prisma: any,
     private audit: AuditService,
     private externalAccountService: ExternalAccountService,
+    private workspaceProvisioningService?: WorkspaceProvisioningService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -194,12 +203,25 @@ export class ProvisioningRequestService {
    * Approve a provisioning request.
    *
    * Sets status=approved, decided_by, decided_at, and records an audit event.
+   * If the request type is 'workspace', also calls WorkspaceProvisioningService.provision
+   * inside the same transaction. If provisioning fails, the entire transaction is rolled
+   * back and the request stays 'pending'.
+   *
+   * If the request type is 'claude', approval remains a pure status update.
+   * Claude seat provisioning is handled by Sprint 005's WorkspaceClaudeService.
+   * TODO(Sprint 005): wire claude provisioning here when WorkspaceClaudeService is available.
    *
    * @throws NotFoundError if the request does not exist.
+   * @throws ConflictError if the request is not in 'pending' status.
    */
   async approve(requestId: number, deciderId: number): Promise<ProvisioningRequest> {
     const existing = await ProvisioningRequestRepository.findById(this.prisma, requestId);
     if (!existing) throw new NotFoundError(`ProvisioningRequest ${requestId} not found`);
+    if (existing.status !== 'pending') {
+      throw new ConflictError(
+        `ProvisioningRequest ${requestId} cannot be approved: current status is '${existing.status}'`,
+      );
+    }
 
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updated = await ProvisioningRequestRepository.updateStatus(
@@ -217,6 +239,27 @@ export class ProvisioningRequestService {
         target_entity_id: String(requestId),
         details: { requestedType: existing.requested_type },
       });
+
+      if (existing.requested_type === 'workspace') {
+        if (!this.workspaceProvisioningService) {
+          throw new Error(
+            'ProvisioningRequestService: workspaceProvisioningService is required to approve workspace requests but was not injected',
+          );
+        }
+        logger.info(
+          { requestId, userId: existing.user_id, deciderId },
+          '[provisioning-request] Calling WorkspaceProvisioningService.provision for workspace request',
+        );
+        await this.workspaceProvisioningService.provision(existing.user_id, deciderId, tx);
+      } else {
+        // requested_type === 'claude'
+        // TODO(Sprint 005): call WorkspaceClaudeService.provision here when it is available.
+        logger.info(
+          { requestId, userId: existing.user_id, deciderId },
+          '[provisioning-request] Claude request approved — provisioning deferred to Sprint 005 (WorkspaceClaudeService)',
+        );
+      }
+
       return updated;
     });
   }

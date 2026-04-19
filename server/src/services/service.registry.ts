@@ -49,7 +49,6 @@ export class ServiceRegistry {
     this.users = new UserService(defaultPrisma, this.audit);
     this.logins = new LoginService(defaultPrisma, this.audit);
     this.externalAccounts = new ExternalAccountService(defaultPrisma, this.audit);
-    this.provisioningRequests = new ProvisioningRequestService(defaultPrisma, this.audit, this.externalAccounts);
     this.mergeSuggestions = new MergeSuggestionService(defaultPrisma);
 
     // Build a Google Workspace Admin client if not provided. The client
@@ -66,6 +65,8 @@ export class ServiceRegistry {
     // CohortService receives the Google client so createWithOU can call createOU.
     this.cohorts = new CohortService(defaultPrisma, this.audit, wsClient);
 
+    // WorkspaceProvisioningService is constructed first so it can be injected
+    // into ProvisioningRequestService (Sprint 004 T007: approve() wires provision).
     this.workspaceProvisioning = new WorkspaceProvisioningService(
       wsClient,
       ExternalAccountRepository,
@@ -73,6 +74,15 @@ export class ServiceRegistry {
       UserRepository,
       CohortRepository,
     );
+
+    // Sprint 004 T007: pass workspaceProvisioning so approve() can call provision().
+    this.provisioningRequests = new ProvisioningRequestService(
+      defaultPrisma,
+      this.audit,
+      this.externalAccounts,
+      this.workspaceProvisioning,
+    );
+
     this.scheduler = new SchedulerService(defaultPrisma);
     this.backups = new BackupService(defaultPrisma);
     this.sessions = new SessionService(defaultPrisma);
