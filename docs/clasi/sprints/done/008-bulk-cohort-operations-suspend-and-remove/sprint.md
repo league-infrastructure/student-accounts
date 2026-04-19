@@ -1,9 +1,11 @@
 ---
-id: "008"
-title: "Bulk Cohort Operations — Suspend and Remove"
-status: active
+id: 008
+title: "Bulk Cohort Operations \u2014 Suspend and Remove"
+status: done
 branch: sprint/008-bulk-cohort-operations-suspend-and-remove
-use-cases: [UC-013, UC-014]
+use-cases:
+- UC-013
+- UC-014
 ---
 
 # Sprint 008: Bulk Cohort Operations — Suspend and Remove
