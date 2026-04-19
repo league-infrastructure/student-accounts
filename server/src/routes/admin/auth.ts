@@ -39,6 +39,7 @@ adminAuthRouter.post('/admin/logout', (req, res) => {
 
 adminAuthRouter.get('/admin/check', (req, res) => {
   const isAdminSession = !!req.session.isAdmin;
-  const isAdminRole = !!(req.user && (req.user as any).role === 'ADMIN');
+  const role = (req.user as any)?.role;
+  const isAdminRole = role === 'admin' || role === 'ADMIN';
   res.json({ authenticated: isAdminSession || isAdminRole });
 });

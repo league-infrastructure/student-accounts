@@ -29,11 +29,76 @@ import type { LoginService } from '../login.service.js';
 import { AuditService } from '../audit.service.js';
 import { mergeScan } from './merge-scan.stub.js';
 import {
-  type AdminDirectoryClient,
+  type GoogleWorkspaceAdminClient,
   StaffOULookupError,
-} from './google-admin-directory.client.js';
+} from '../google-workspace/google-workspace-admin.client.js';
 
 const logger = pino({ name: 'sign-in.handler' });
+
+// ---------------------------------------------------------------------------
+// League-specific defaults
+// ---------------------------------------------------------------------------
+
+/**
+ * Default OU path prefix that identifies staff accounts.
+ * Used when GOOGLE_STAFF_OU_PATH is not set in the environment.
+ */
+export const DEFAULT_STAFF_OU_PATH = '/League Staff';
+
+/**
+ * Default domain that identifies League staff accounts for OU lookup.
+ * Used when GOOGLE_STAFF_OU_PATH is not set in the environment.
+ */
+export const DEFAULT_STAFF_DOMAIN = 'jointheleague.org';
+
+// Track whether the GOOGLE_STAFF_OU_PATH default has been logged so we
+// emit at most once per process.
+let _staffOuPathDefaultLogged = false;
+
+/**
+ * Read GOOGLE_STAFF_OU_PATH from process.env, falling back to the League
+ * default. Logs at INFO (once per process) when the default is in use.
+ */
+export function resolveStaffOuPath(): string | null {
+  const value = process.env.GOOGLE_STAFF_OU_PATH;
+  if (!value || value.trim() === '') {
+    // Unset → skip OU lookup entirely. ADMIN_EMAILS still elevates to admin.
+    return null;
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
+// Admin email set — parsed once at module load time (T006)
+// ---------------------------------------------------------------------------
+
+/**
+ * Set of lowercase email addresses that should receive role=admin on
+ * Google sign-in. Parsed from the ADMIN_EMAILS environment variable:
+ * a comma-separated list, whitespace-trimmed, lowercased. Empty entries
+ * are filtered out. An absent or empty ADMIN_EMAILS yields an empty set,
+ * meaning no user gets role=admin via this path.
+ *
+ * The set is intentionally module-level so it is constructed once per
+ * process (not per request), and can be replaced in tests via the
+ * re-exported setter.
+ */
+let _adminEmails: Set<string> = _parseAdminEmails(process.env.ADMIN_EMAILS);
+
+/** @internal Visible for testing only. */
+export function _parseAdminEmails(raw: string | undefined): Set<string> {
+  return new Set(
+    (raw ?? '')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+/** @internal Replaces the module-level set; used in tests to inject values. */
+export function _setAdminEmails(emails: Set<string>): void {
+  _adminEmails = emails;
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -58,8 +123,8 @@ export interface OAuthProfile {
  *   StaffOULookupError is thrown (RD-001).
  */
 export interface SignInOptions {
-  /** AdminDirectoryClient for @jointheleague.org OU lookups (T005). */
-  adminDirClient?: AdminDirectoryClient;
+  /** GoogleWorkspaceAdminClient for @jointheleague.org OU lookups. */
+  adminDirClient?: GoogleWorkspaceAdminClient;
   /**
    * AuditService instance for writing auth_denied events on StaffOULookupError.
    * Required alongside `prisma` for the audit path to function.
@@ -110,7 +175,8 @@ export async function signInHandler(
     // --- Step 2: Existing identity — load the User ---
     user = await userService.findById(existingLogin.user_id);
   } else {
-    // --- Step 3: New identity — create User and Login atomically ---
+    // --- Step 3: New identity — attach Login to an existing User (matched
+    // by primary email) or create a new User.
 
     // Resolve the primary email. For GitHub, if no public email is available,
     // fall back to <username>@github.invalid (RD-002). The .invalid TLD is
@@ -128,16 +194,26 @@ export async function signInHandler(
       resolvedEmail = `${providerUserId}@provider.invalid`;
     }
 
-    // 3a. Create User with audit event
-    user = await userService.createWithAudit(
-      {
-        display_name: displayName || providerEmail || providerUserId,
-        primary_email: resolvedEmail,
-        role: 'student',
-        created_via: 'social_login',
-      },
-      null, // system action; no acting user
-    );
+    // 3a. Look for an existing User by primary email. If one exists (e.g.
+    // created by admin seeding or a different provider on the same address),
+    // attach the new Login to it rather than attempting to create a duplicate
+    // User — the unique constraint on User.primary_email would otherwise
+    // throw and the caller would see a silent oauth_denied.
+    const existingUser = await userService.findByEmail(resolvedEmail);
+
+    if (existingUser) {
+      user = existingUser;
+    } else {
+      user = await userService.createWithAudit(
+        {
+          display_name: displayName || providerEmail || providerUserId,
+          primary_email: resolvedEmail,
+          role: 'student',
+          created_via: 'social_login',
+        },
+        null, // system action; no acting user
+      );
+    }
 
     // 3b. Create Login with audit event (pass provider_username for GitHub)
     await loginService.create(
@@ -149,8 +225,11 @@ export async function signInHandler(
       providerUsername ?? null,
     );
 
-    // 3c. Merge-scan stub (Sprint 007 replaces this module)
-    await mergeScan(user);
+    // 3c. Merge-scan stub (Sprint 007 replaces this module) — only for
+    // freshly created users.
+    if (!existingUser) {
+      await mergeScan(user);
+    }
   }
 
   // --- Step 4: Staff OU detection (@jointheleague.org accounts only) ---
@@ -167,11 +246,18 @@ export async function signInHandler(
   //   - getUserOU() throws StaffOULookupError → emit auth_denied audit event,
   //     log at ERROR, and re-throw so the caller denies sign-in (RD-001).
 
-  if (provider === 'google' && providerEmail?.endsWith('@jointheleague.org')) {
+  if (provider === 'google' && providerEmail?.toLowerCase().endsWith('@jointheleague.org')) {
     const adminDirClient = options?.adminDirClient;
-    const staffOuPath = process.env.GOOGLE_STAFF_OU_PATH ?? '/League Staff';
+    const staffOuPath = resolveStaffOuPath();
 
-    if (!adminDirClient) {
+    // GOOGLE_STAFF_OU_PATH unset → skip the OU lookup entirely.
+    // Role stays student (or gets elevated to admin below by ADMIN_EMAILS).
+    if (staffOuPath === null) {
+      logger.info(
+        { email: providerEmail },
+        '[sign-in.handler] GOOGLE_STAFF_OU_PATH unset — skipping OU lookup.',
+      );
+    } else if (!adminDirClient) {
       // No client injected — this is a coding error (passport.config.ts always
       // injects one). Log at ERROR and deny the sign-in as a fail-secure measure.
       logger.error(
@@ -181,41 +267,63 @@ export async function signInHandler(
       );
       await _writeAuthDeniedEvent(options, providerEmail, 'NO_ADMIN_CLIENT');
       throw new StaffOULookupError(
-        'No AdminDirectoryClient available for @jointheleague.org sign-in',
+        'No GoogleWorkspaceAdminClient available for @jointheleague.org sign-in',
         'NO_ADMIN_CLIENT',
         providerEmail,
       );
     }
 
-    let ouPath: string;
-    try {
-      ouPath = await adminDirClient.getUserOU(providerEmail);
-    } catch (err) {
-      if (err instanceof StaffOULookupError) {
-        // RD-001: fail-secure. Log, audit, and propagate.
-        logger.error(
-          { email: providerEmail, code: err.code, err },
-          '[sign-in.handler] StaffOULookupError during @jointheleague.org sign-in — ' +
-            'access denied (RD-001).',
-        );
-        await _writeAuthDeniedEvent(options, providerEmail, err.code);
-
-        // The user/login records created in step 3 remain in the database.
-        // No session is established, so the user cannot access the application.
-        // On the next sign-in attempt, the existing Login row will be found
-        // and the OU check will run again.
-
+    // Only call the Admin SDK if staffOuPath is set AND a client is injected.
+    // Admin role is treated as manually granted (via the Users panel or
+    // ADMIN_EMAILS) and is never overwritten by OU-based role resolution.
+    if (staffOuPath !== null && adminDirClient && user.role !== 'admin') {
+      let ouPath: string;
+      try {
+        ouPath = await adminDirClient.getUserOU(providerEmail);
+      } catch (err) {
+        if (err instanceof StaffOULookupError) {
+          logger.error(
+            { email: providerEmail, code: err.code, err },
+            '[sign-in.handler] StaffOULookupError during @jointheleague.org sign-in — ' +
+              'access denied (RD-001).',
+          );
+          await _writeAuthDeniedEvent(options, providerEmail, err.code);
+          throw err;
+        }
         throw err;
       }
-      throw err;
+
+      if (ouPath.startsWith(staffOuPath)) {
+        if (user.role !== 'staff') {
+          user = await userService.updateRole(user.id, 'staff');
+        }
+      } else if (user.role === 'staff') {
+        user = await userService.updateRole(user.id, 'student');
+      }
     }
 
-    // Determine role from OU path
-    if (ouPath.startsWith(staffOuPath)) {
-      // Staff OU matched → promote to staff
-      user = await userService.updateRole(user.id, 'staff');
+    // --- Step 5: Admin email check (T006) ---
+    //
+    // After the staff OU determination, check whether the user's email is in
+    // ADMIN_EMAILS. If so, elevate role to 'admin' regardless of OU membership.
+    // This check runs only for @jointheleague.org accounts (already inside the
+    // `provider === 'google' && endsWith('@jointheleague.org')` branch).
+    //
+    // The check is case-insensitive; _adminEmails stores lowercased values.
+    //
+    // On a returning user whose role was previously non-admin but whose email
+    // is now in ADMIN_EMAILS, the role is promoted and a role_changed audit
+    // event is emitted. If the email is REMOVED from ADMIN_EMAILS, the role
+    // reverts to the OU-based value determined in step 4.
+    const emailLower = providerEmail.toLowerCase();
+    if (_adminEmails.has(emailLower)) {
+      if (user.role !== 'admin') {
+        const previousRole = user.role;
+        user = await userService.updateRole(user.id, 'admin');
+        // Emit role_changed audit event (best-effort)
+        await _writeRoleChangedEvent(options, user.id, previousRole, 'admin');
+      }
     }
-    // else: OU does not match → role stays 'student' (RD-003)
   }
 
   return user;
@@ -224,6 +332,37 @@ export async function signInHandler(
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Write a role_changed AuditEvent when the admin email check promotes a user
+ * to admin on sign-in. Best-effort: if audit write fails, log the error but
+ * do not block the sign-in.
+ */
+async function _writeRoleChangedEvent(
+  options: SignInOptions | undefined,
+  userId: number,
+  previousRole: string,
+  newRole: string,
+): Promise<void> {
+  if (!options?.auditService || !options?.prisma) {
+    return;
+  }
+  try {
+    await options.auditService.record(options.prisma, {
+      actor_user_id: null,
+      action: 'role_changed',
+      target_user_id: userId,
+      target_entity_type: 'User',
+      target_entity_id: String(userId),
+      details: { previous_role: previousRole, new_role: newRole, reason: 'admin_emails_match' },
+    });
+  } catch (auditErr) {
+    logger.error(
+      { userId, err: auditErr },
+      '[sign-in.handler] Failed to write role_changed audit event.',
+    );
+  }
+}
 
 /**
  * Write an auth_denied AuditEvent if auditService and prisma are available

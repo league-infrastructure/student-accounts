@@ -86,15 +86,13 @@ import { signInHandler, type SignInOptions } from '../../../server/src/services/
 import { AuditService } from '../../../server/src/services/audit.service.js';
 import { UserService } from '../../../server/src/services/user.service.js';
 import { LoginService } from '../../../server/src/services/login.service.js';
-import {
-  FakeAdminDirectoryClient,
-  StaffOULookupError,
-} from '../../../server/src/services/auth/google-admin-directory.client.js';
+import { StaffOULookupError } from '../../../server/src/services/google-workspace/google-workspace-admin.client.js';
+import { FakeGoogleWorkspaceAdminClient } from '../helpers/fake-google-workspace-admin.client.js';
 
 // The verify callback that the real GoogleStrategy uses — we replicate it
 // here so the MockGoogleStrategy exercises the same sign-in handler path.
 // The optional `signInOptions` argument allows individual tests to inject a
-// FakeAdminDirectoryClient for OU detection cases.
+// FakeGoogleWorkspaceAdminClient for OU detection cases.
 function makeVerifyCallback(
   userService: UserService,
   loginService: LoginService,
@@ -160,7 +158,7 @@ beforeAll(() => {
   loginService = new LoginService(prisma, auditService);
 
   // Register the mock strategy — overrides the real google strategy for tests.
-  // Tests that need OU detection inject a FakeAdminDirectoryClient via useVerifyCallback().
+  // Tests that need OU detection inject a FakeGoogleWorkspaceAdminClient via useVerifyCallback().
   mockStrategy = new MockGoogleStrategy(makeVerifyCallback(userService, loginService));
   passport.use('google', mockStrategy as any);
 });
@@ -397,7 +395,8 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
   });
 
   it('creates user with role=staff when OU path matches', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient('/League Staff/Engineering');
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff/Engineering');
     useVerifyCallback({ adminDirClient, auditService, prisma });
 
     mockStrategy.setProfile({
@@ -419,7 +418,8 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
   });
 
   it('session carries role=staff for @jointheleague.org user in staff OU', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient('/League Staff');
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff');
     useVerifyCallback({ adminDirClient, auditService, prisma });
 
     mockStrategy.setProfile({
@@ -438,7 +438,8 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
   });
 
   it('creates user with role=student when OU path does not match (RD-003)', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient('/Students/Cohort2025');
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/Students/Cohort2025');
     useVerifyCallback({ adminDirClient, auditService, prisma });
 
     mockStrategy.setProfile({
@@ -461,9 +462,8 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
   });
 
   it('redirects to /?error=staff_lookup_failed when AdminClient throws StaffOULookupError (RD-001)', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient(
-      new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
-    );
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configureError('getUserOU', new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'));
     useVerifyCallback({ adminDirClient, auditService, prisma });
 
     mockStrategy.setProfile({
@@ -479,9 +479,8 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
   });
 
   it('does NOT establish a session when StaffOULookupError is thrown', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient(
-      new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
-    );
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configureError('getUserOU', new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'));
     useVerifyCallback({ adminDirClient, auditService, prisma });
 
     mockStrategy.setProfile({
@@ -499,9 +498,8 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
   });
 
   it('writes auth_denied AuditEvent when StaffOULookupError is thrown (RD-001)', async () => {
-    const adminDirClient = new FakeAdminDirectoryClient(
-      new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'),
-    );
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configureError('getUserOU', new StaffOULookupError('credentials missing', 'MISSING_CREDENTIALS'));
     useVerifyCallback({ adminDirClient, auditService, prisma });
 
     await (prisma as any).auditEvent.deleteMany();

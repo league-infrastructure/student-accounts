@@ -15,7 +15,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import passport from 'passport';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { StaffOULookupError } from '../services/auth/google-admin-directory.client.js';
+import { StaffOULookupError } from '../services/google-workspace/google-workspace-admin.client.js';
 import { AuditService } from '../services/audit.service.js';
 
 // Module-level AuditService instance for the logout route.
@@ -241,16 +241,17 @@ authRouter.get(
     passport.authenticate(
       'google',
       { session: false },
-      (err: unknown, user: Express.User | false | null) => {
+      (err: unknown, user: Express.User | false | null, info: unknown) => {
+        console.log('[google-callback] err=', err, 'user=', !!user, 'info=', info);
         if (err) {
-          // StaffOULookupError → staff_lookup_failed error page (RD-001).
-          // All other errors → generic oauth_denied.
+          console.error('[google-callback] error:', err);
           if (err instanceof StaffOULookupError) {
             return res.redirect('/?error=staff_lookup_failed');
           }
           return res.redirect('/?error=oauth_denied');
         }
         if (!user) {
+          console.error('[google-callback] no user returned by passport. info=', info);
           return res.redirect('/?error=oauth_denied');
         }
 
@@ -272,11 +273,21 @@ authRouter.get(
 
         // Normal sign-in path.
         req.login(user, (loginErr) => {
-          if (loginErr) return next(loginErr);
-          // Write typed session fields.
+          if (loginErr) {
+            console.error('[oauth-callback] req.login error:', loginErr);
+            return next(loginErr);
+          }
           (req.session as any).userId = (user as any).id;
           (req.session as any).role = (user as any).role;
-          res.redirect('/account');
+          console.log('[oauth-callback] session set userId=', (user as any).id, 'role=', (user as any).role);
+          req.session.save((saveErr) => {
+            if (saveErr) {
+              console.error('[oauth-callback] session.save error:', saveErr);
+              return res.redirect('/?error=oauth_denied');
+            }
+            console.log('[oauth-callback] session saved, redirecting to /account');
+            res.redirect('/account');
+          });
         });
       },
     )(req, res, next);
@@ -350,11 +361,21 @@ authRouter.get(
 
         // Normal sign-in path.
         req.login(user, (loginErr) => {
-          if (loginErr) return next(loginErr);
-          // Write typed session fields.
+          if (loginErr) {
+            console.error('[oauth-callback] req.login error:', loginErr);
+            return next(loginErr);
+          }
           (req.session as any).userId = (user as any).id;
           (req.session as any).role = (user as any).role;
-          res.redirect('/account');
+          console.log('[oauth-callback] session set userId=', (user as any).id, 'role=', (user as any).role);
+          req.session.save((saveErr) => {
+            if (saveErr) {
+              console.error('[oauth-callback] session.save error:', saveErr);
+              return res.redirect('/?error=oauth_denied');
+            }
+            console.log('[oauth-callback] session saved, redirecting to /account');
+            res.redirect('/account');
+          });
         });
       },
     )(req, res, next);

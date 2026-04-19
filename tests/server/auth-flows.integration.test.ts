@@ -19,7 +19,7 @@
  *     (authenticated but unauthorized — not 401).
  *
  *  4. @students.jointheleague.org via Google: role=student, OU lookup never
- *     invoked. Verified with a strict FakeAdminDirectoryClient that throws if
+ *     invoked. Verified with a strict inline client that throws if
  *     it is ever called.
  *
  *  5. Duplicate-Login path: a Login already exists for a provider+userId when
@@ -469,7 +469,7 @@ describe('Scenario 3: authenticated student hits admin route → 403 (not 401)',
 //
 // A student with a @students.jointheleague.org email signs in via Google.
 // The sign-in handler must NOT call the Admin Directory client for this domain.
-// We inject a strict FakeAdminDirectoryClient that throws if getUserOU() is
+// We inject a strict inline client that throws if getUserOU() is
 // called. The test passes only if no exception is thrown (i.e., the client
 // is never invoked).
 // ---------------------------------------------------------------------------

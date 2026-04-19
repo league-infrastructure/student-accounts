@@ -14,10 +14,12 @@ interface NavItem {
 }
 
 const MAIN_NAV: NavItem[] = [
-  { to: '/', label: 'Home', end: true },
+  { to: '/account', label: 'Account' },
 ];
 
 const ADMIN_NAV: NavItem[] = [
+  { to: '/admin/provisioning-requests', label: 'Provisioning Requests' },
+  { to: '/admin/cohorts', label: 'Cohorts' },
   { to: '/admin/users', label: 'Users' },
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },

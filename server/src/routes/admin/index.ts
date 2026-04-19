@@ -10,6 +10,8 @@ import { adminSessionsRouter } from './sessions';
 import { adminUsersRouter } from './users';
 import { adminSchedulerRouter } from './scheduler';
 import { adminBackupsRouter } from './backups';
+import { adminProvisioningRequestsRouter } from './provisioning-requests';
+import { adminCohortsRouter } from './cohorts';
 
 export const adminRouter = Router();
 
@@ -28,3 +30,5 @@ adminRouter.use('/admin', adminSessionsRouter);
 adminRouter.use('/admin', adminUsersRouter);
 adminRouter.use('/admin', adminSchedulerRouter);
 adminRouter.use('/admin', adminBackupsRouter);
+adminRouter.use('/admin', adminProvisioningRequestsRouter);
+adminRouter.use('/admin', adminCohortsRouter);

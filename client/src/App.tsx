@@ -1,8 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
-import HomePage from './pages/HomePage';
 import Login from './pages/Login';
 
 import About from './pages/About';
@@ -20,6 +19,8 @@ import SessionViewer from './pages/admin/SessionViewer';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
 import UsersPanel from './pages/admin/UsersPanel';
+import ProvisioningRequests from './pages/admin/ProvisioningRequests';
+import Cohorts from './pages/admin/Cohorts';
 
 const queryClient = new QueryClient();
 
@@ -37,7 +38,7 @@ function App() {
 
             {/* All authenticated routes share AppLayout (sidebar + topbar) */}
             <Route element={<AppLayout />}>
-              <Route path="/" element={<HomePage />} />
+              <Route path="/" element={<Navigate to="/account" replace />} />
 
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />
@@ -53,6 +54,8 @@ function App() {
                 <Route path="/admin/sessions" element={<SessionViewer />} />
                 <Route path="/admin/scheduler" element={<ScheduledJobsPanel />} />
                 <Route path="/admin/import-export" element={<ImportExport />} />
+                <Route path="/admin/provisioning-requests" element={<ProvisioningRequests />} />
+                <Route path="/admin/cohorts" element={<Cohorts />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />
