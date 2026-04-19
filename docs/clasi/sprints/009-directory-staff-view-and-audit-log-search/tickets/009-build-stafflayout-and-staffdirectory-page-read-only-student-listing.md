@@ -1,7 +1,7 @@
 ---
 id: "009"
 title: "Build StaffLayout and StaffDirectory page (read-only student listing)"
-status: todo
+status: done
 use-cases: [SUC-009-007]
 depends-on: ["004"]
 github-issue: ""
@@ -22,21 +22,21 @@ Add a "Directory" nav link that appears only for staff users.
 
 ## Acceptance Criteria
 
-- [ ] `StaffLayout.tsx` is a route guard: renders `<Outlet>` for `role=staff`
+- [x] `StaffLayout.tsx` is a route guard: renders `<Outlet>` for `role=staff`
       (and `role=admin` for admin test access); redirects to `/account` for
       other roles.
-- [ ] `StaffDirectory.tsx` fetches `GET /api/staff/directory` on mount.
-- [ ] Displays a table of students: Name (using `prettifyName`), Email, Cohort,
+- [x] `StaffDirectory.tsx` fetches `GET /api/staff/directory` on mount.
+- [x] Displays a table of students: Name (using `prettifyName`), Email, Cohort,
       External Account types (icon or badge per type).
-- [ ] Search box: substring match on name + email (client-side, within current
+- [x] Search box: substring match on name + email (client-side, within current
       filter).
-- [ ] Filter by cohort and External Account status (has Workspace, has Claude,
+- [x] Filter by cohort and External Account status (has Workspace, has Claude,
       has Pike13).
-- [ ] Clicking a student row shows a read-only profile view (inline or a simple
+- [x] Clicking a student row shows a read-only profile view (inline or a simple
       detail section): display name, email, cohort, account statuses. No buttons.
-- [ ] No provisioning, merge, or audit-log controls are rendered anywhere on
+- [x] No provisioning, merge, or audit-log controls are rendered anywhere on
       this page.
-- [ ] `AppLayout.tsx` nav: "Directory" link at `/staff/directory` visible only
+- [x] `AppLayout.tsx` nav: "Directory" link at `/staff/directory` visible only
       when `user.role === 'staff'`.
 
 ## Implementation Plan
