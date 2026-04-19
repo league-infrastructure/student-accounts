@@ -1,11 +1,12 @@
 ---
-id: "005"
-title: "Add GET /admin/audit-log route with filters and pagination"
-status: todo
-use-cases: [SUC-009-008]
+id: '005'
+title: Add GET /admin/audit-log route with filters and pagination
+status: done
+use-cases:
+- SUC-009-008
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 
 # Add GET /admin/audit-log route with filters and pagination
@@ -21,22 +22,22 @@ resolution via JOIN.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/admin/audit-log` accepts optional query params: `actorId`
+- [x] `GET /api/admin/audit-log` accepts optional query params: `actorId`
       (integer), `targetUserId` (integer), `action` (string), `from` (ISO date),
       `to` (ISO date), `page` (integer, default 1), `pageSize` (integer,
       default 50, max 200).
-- [ ] Response: `{ total, page, pageSize, items: [{ id, createdAt, actorId,
+- [x] Response: `{ total, page, pageSize, items: [{ id, createdAt, actorId,
       actorName, action, targetUserId, targetUserName, targetEntityType,
       targetEntityId, details }] }`.
-- [ ] Items are returned in descending `created_at` order.
-- [ ] `actorName` and `targetUserName` are resolved from the User table;
+- [x] Items are returned in descending `created_at` order.
+- [x] `actorName` and `targetUserName` are resolved from the User table;
       fall back to `null` if the user has been soft-deleted or FK is null.
-- [ ] Each filter param is optional; if omitted, that dimension is not
+- [x] Each filter param is optional; if omitted, that dimension is not
       constrained.
-- [ ] `from` / `to` are inclusive date range bounds on `created_at`.
-- [ ] Returns 400 for invalid param values (non-integer page, malformed date).
-- [ ] Requires admin role (inherited from `adminRouter`).
-- [ ] Server tests: no filters returns all events paginated; filter by action
+- [x] `from` / `to` are inclusive date range bounds on `created_at`.
+- [x] Returns 400 for invalid param values (non-integer page, malformed date).
+- [x] Requires admin role (inherited from `adminRouter`).
+- [x] Server tests: no filters returns all events paginated; filter by action
       returns only matching; filter by actorId returns only that actor's events;
       date range filter returns events within range; page 2 returns correct
       offset.
