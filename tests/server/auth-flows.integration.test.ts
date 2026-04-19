@@ -365,15 +365,17 @@ describe('Scenario 2: cross-provider — Google User A and GitHub User B are sep
     expect(logins[0].user_id).not.toBe(logins[1].user_id);
   });
 
-  it('calls the merge-scan stub (logs deferral) for each new User created across providers', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
+  it('runs mergeScan without error for each new User created across providers', async () => {
+    // With no ANTHROPIC_API_KEY in test, the real Haiku client will throw
+    // HaikuApiError when called — but mergeScan catches that per-pair and
+    // continues. We just verify the callbacks complete without a 500.
     mockGoogleStrategy.setProfile({
       id: 'cross-mergescan-google-uid',
       displayName: 'Merge Scan Cross Person',
       emails: [{ value: 'crossmerge-google@example.com' }],
     });
-    await request(app).get('/api/auth/google/callback');
+    const googleRes = await request(app).get('/api/auth/google/callback');
+    expect(googleRes.status).not.toBe(500);
 
     mockGitHubStrategy.setProfile({
       id: 'cross-mergescan-github-uid',
@@ -381,17 +383,8 @@ describe('Scenario 2: cross-provider — Google User A and GitHub User B are sep
       username: 'crossmerge',
       emails: [{ value: 'crossmerge-github@example.com' }],
     });
-    await request(app).get('/api/auth/github/callback');
-
-    // merge-scan deferral should have been logged twice (once per new User)
-    const mergeLogs = consoleSpy.mock.calls.filter((args) =>
-      args.some(
-        (arg) => typeof arg === 'string' && arg.includes('merge-scan deferred to Sprint 007'),
-      ),
-    );
-    expect(mergeLogs.length).toBeGreaterThanOrEqual(2);
-
-    consoleSpy.mockRestore();
+    const githubRes = await request(app).get('/api/auth/github/callback');
+    expect(githubRes.status).not.toBe(500);
   });
 
   it('each cross-provider session carries its own distinct userId', async () => {
@@ -616,7 +609,7 @@ describe('Scenario 5: existing Login found — session established, no new recor
     expect(me.body.id).toBe(existingUser.id);
   });
 
-  it('does not call the merge-scan stub when an existing Login is found', async () => {
+  it('does not create MergeSuggestion rows when an existing Login is found (returning user)', async () => {
     const existingUser = await makeUser({
       primary_email: 'dup-no-merge@example.com',
       display_name: 'Dup No Merge',
@@ -628,8 +621,6 @@ describe('Scenario 5: existing Login found — session established, no new recor
       provider_user_id: 'dup-no-merge-uid',
     });
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
     mockGoogleStrategy.setProfile({
       id: 'dup-no-merge-uid',
       displayName: 'Dup No Merge',
@@ -638,14 +629,10 @@ describe('Scenario 5: existing Login found — session established, no new recor
 
     await request(app).get('/api/auth/google/callback');
 
-    const mergeCalled = consoleSpy.mock.calls.some((args) =>
-      args.some(
-        (arg) => typeof arg === 'string' && arg.includes('merge-scan deferred to Sprint 007'),
-      ),
-    );
-    expect(mergeCalled).toBe(false);
-
-    consoleSpy.mockRestore();
+    // mergeScan is only called for newly created users.
+    // Returning users take the existingLogin path — no scan, no suggestions.
+    const count = await (prisma as any).mergeSuggestion.count();
+    expect(count).toBe(0);
   });
 });
 

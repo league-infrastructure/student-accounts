@@ -1,7 +1,7 @@
 ---
 id: "003"
 title: "MergeScanService — replace stub with real Haiku-powered similarity scanner"
-status: todo
+status: done
 use-cases: [SUC-007-001]
 depends-on: ["002"]
 github-issue: ""
@@ -31,20 +31,20 @@ The implementation:
 
 ## Acceptance Criteria
 
-- [ ] `merge-scan.stub.ts` is replaced (or re-exports from `merge-scan.service.ts`);
+- [x] `merge-scan.stub.ts` is replaced (or re-exports from `merge-scan.service.ts`);
       existing call sites in `sign-in.handler.ts` and `service.registry.ts` work
       without modification.
-- [ ] Scan is skipped (no API calls) for `role=staff` users.
-- [ ] Scan is skipped (no API calls) when no other users exist.
-- [ ] For a new user with 2 candidates: `HaikuClient.evaluate` is called twice.
-- [ ] Pairs with `confidence >= 0.6` result in a `MergeSuggestion` row in the database.
-- [ ] Pairs with `confidence < 0.6` produce no rows.
-- [ ] Duplicate pair (unique constraint violation) is caught silently; scan continues.
-- [ ] `HaikuApiError` or `HaikuParseError` is caught, logged at ERROR, scan continues;
+- [x] Scan is skipped (no API calls) for `role=staff` users.
+- [x] Scan is skipped (no API calls) when no other users exist.
+- [x] For a new user with 2 candidates: `HaikuClient.evaluate` is called twice.
+- [x] Pairs with `confidence >= 0.6` result in a `MergeSuggestion` row in the database.
+- [x] Pairs with `confidence < 0.6` produce no rows.
+- [x] Duplicate pair (unique constraint violation) is caught silently; scan continues.
+- [x] `HaikuApiError` or `HaikuParseError` is caught, logged at ERROR, scan continues;
       User creation is NOT rolled back.
-- [ ] An `AuditEvent` with `action=merge_suggestion_created` is written for each
+- [x] An `AuditEvent` with `action=merge_suggestion_created` is written for each
       suggestion created.
-- [ ] `MERGE_SCAN_CONFIDENCE_THRESHOLD` env var overrides the 0.6 default.
+- [x] `MERGE_SCAN_CONFIDENCE_THRESHOLD` env var overrides the 0.6 default.
 
 ## Implementation Plan
 
