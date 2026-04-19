@@ -1,9 +1,11 @@
 ---
-id: "004"
-title: "Google Workspace Integration — Cohort OUs and Workspace Provisioning"
-status: planning
+id: '004'
+title: "Google Workspace Integration \u2014 Cohort OUs and Workspace Provisioning"
+status: done
 branch: sprint/004-google-workspace-integration-cohort-ous-and-workspace-provisioning
-use-cases: [UC-005, UC-012]
+use-cases:
+- UC-005
+- UC-012
 ---
 
 # Sprint 004: Google Workspace Integration — Cohort OUs and Workspace Provisioning
