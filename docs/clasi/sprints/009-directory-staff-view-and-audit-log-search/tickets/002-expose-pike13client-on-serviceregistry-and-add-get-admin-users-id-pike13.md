@@ -1,7 +1,7 @@
 ---
 id: "002"
 title: "Expose pike13Client on ServiceRegistry and add GET /admin/users/:id/pike13"
-status: todo
+status: done
 use-cases: [SUC-009-005]
 depends-on: []
 github-issue: ""
@@ -24,20 +24,20 @@ Pike13 ExternalAccount. This requires:
 
 ## Acceptance Criteria
 
-- [ ] `ServiceRegistry` exposes a `readonly pike13Client: Pike13ApiClient`
+- [x] `ServiceRegistry` exposes a `readonly pike13Client: Pike13ApiClient`
       property (the same `Pike13ApiClientImpl` instance already constructed
       inside the registry constructor).
-- [ ] `GET /api/admin/users/:id/pike13` returns `{ present: false }` when the
+- [x] `GET /api/admin/users/:id/pike13` returns `{ present: false }` when the
       user has no Pike13 ExternalAccount.
-- [ ] `GET /api/admin/users/:id/pike13` returns
+- [x] `GET /api/admin/users/:id/pike13` returns
       `{ present: true, person: { display_name, email, phone, account_status,
       league_email, github_username } }` on success.
-- [ ] `GET /api/admin/users/:id/pike13` returns
+- [x] `GET /api/admin/users/:id/pike13` returns
       `{ present: true, error: string }` when the Pike13 API call fails
       (network error, non-2xx response), without throwing a 500.
-- [ ] Returns 404 if the user does not exist.
-- [ ] Route requires admin role (inherited from `adminRouter` guard).
-- [ ] Server tests cover present/absent/api-error paths using a
+- [x] Returns 404 if the user does not exist.
+- [x] Route requires admin role (inherited from `adminRouter` guard).
+- [x] Server tests cover present/absent/api-error paths using a
       `FakePike13ApiClient` or Jest mock.
 
 ## Implementation Plan

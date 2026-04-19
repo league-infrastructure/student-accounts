@@ -31,7 +31,11 @@ import {
   ClaudeTeamAdminClientImpl,
   type ClaudeTeamAdminClient,
 } from './claude-team/claude-team-admin.client';
-import { Pike13ApiClientImpl, resolvePike13ApiUrl } from './pike13/pike13-api.client';
+import {
+  Pike13ApiClientImpl,
+  resolvePike13ApiUrl,
+  type Pike13ApiClient,
+} from './pike13/pike13-api.client';
 import { Pike13SyncService } from './pike13/pike13-sync.service';
 import { mergeScan } from './auth/merge-scan.stub';
 
@@ -57,6 +61,8 @@ export class ServiceRegistry {
   readonly sessions: SessionService;
   /** Exposed so index.ts can wire the Google Workspace client into background jobs. */
   readonly googleClient: GoogleWorkspaceAdminClient;
+  /** Exposed so route handlers can call pike13Client.getPerson(...) directly. */
+  readonly pike13Client: Pike13ApiClient;
   readonly pike13Sync: Pike13SyncService;
   readonly workspaceSync: WorkspaceSyncService;
   readonly bulkCohort: BulkCohortService;
@@ -138,12 +144,12 @@ export class ServiceRegistry {
     this.googleClient = wsClient;
 
     // Pike13SyncService — Sprint 006 T003.
-    const pike13Client = new Pike13ApiClientImpl(
+    this.pike13Client = new Pike13ApiClientImpl(
       process.env.PIKE13_ACCESS_TOKEN ?? '',
       resolvePike13ApiUrl(),
     );
     this.pike13Sync = new Pike13SyncService(
-      pike13Client,
+      this.pike13Client,
       defaultPrisma,
       UserRepository,
       ExternalAccountRepository,
