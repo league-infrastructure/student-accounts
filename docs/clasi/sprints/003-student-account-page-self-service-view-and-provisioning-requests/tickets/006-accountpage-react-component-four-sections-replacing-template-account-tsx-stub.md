@@ -1,11 +1,21 @@
 ---
-id: "006"
-title: "AccountPage React component — four sections replacing template Account.tsx stub"
-status: todo
-use-cases: [SUC-001, SUC-002, SUC-003, SUC-004, SUC-005]
-depends-on: ["002", "003", "004", "005"]
-github-issue: ""
-todo: ""
+id: '006'
+title: "AccountPage React component \u2014 four sections replacing template Account.tsx\
+  \ stub"
+status: done
+use-cases:
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+depends-on:
+- '002'
+- '003'
+- '004'
+- '005'
+github-issue: ''
+todo: ''
 ---
 
 # AccountPage React component — four sections replacing template Account.tsx stub
@@ -26,40 +36,40 @@ This ticket includes the staff redirect (if role=staff, redirect to /staff).
 
 ## Acceptance Criteria
 
-- [ ] AccountPage fetches data from `GET /api/account` using React Query
+- [x] AccountPage fetches data from `GET /api/account` using React Query
       (`useQuery`).
-- [ ] Loading state: skeleton or spinner shown while data is loading.
-- [ ] Error state: retry button shown with error message on fetch failure.
-- [ ] Profile section shows: display name, primary email, cohort name (or
+- [x] Loading state: skeleton or spinner shown while data is loading.
+- [x] Error state: retry button shown with error message on fetch failure.
+- [x] Profile section shows: display name, primary email, cohort name (or
       "No cohort assigned" when null).
-- [ ] Logins section lists all connected providers (Google, GitHub).
-- [ ] Logins section shows "Add Google" link (`/api/auth/google?link=1`)
+- [x] Logins section lists all connected providers (Google, GitHub).
+- [x] Logins section shows "Add Google" link (`/api/auth/google?link=1`)
       when Google is not linked and Google OAuth is configured.
-- [ ] Logins section shows "Add GitHub" link (`/api/auth/github?link=1`)
+- [x] Logins section shows "Add GitHub" link (`/api/auth/github?link=1`)
       when GitHub is not linked and GitHub OAuth is configured.
-- [ ] "Add" buttons are hidden when the provider is not configured
+- [x] "Add" buttons are hidden when the provider is not configured
       (uses `useProviderStatus` to gate display).
-- [ ] "Remove" button is disabled when only one Login is linked.
-- [ ] Clicking "Remove" calls `DELETE /api/account/logins/:id`; on success,
+- [x] "Remove" button is disabled when only one Login is linked.
+- [x] Clicking "Remove" calls `DELETE /api/account/logins/:id`; on success,
       invalidates the `['account']` query and re-fetches.
-- [ ] Remove mutation shows an inline error when the API returns 409.
-- [ ] Services section shows a row for League Email, Claude Seat, and
+- [x] Remove mutation shows an inline error when the API returns 409.
+- [x] Services section shows a row for League Email, Claude Seat, and
       Pike13 with their current status derived from externalAccounts and
       provisioningRequests.
-- [ ] League Email row shows "Request" button when no active/pending workspace
+- [x] League Email row shows "Request" button when no active/pending workspace
       account or workspace request exists.
-- [ ] Claude Seat row shows "Request" button only when the League email
+- [x] Claude Seat row shows "Request" button only when the League email
       constraint is met (pending or active workspace account or workspace
       request exists); otherwise the option is disabled with explanatory text.
-- [ ] Clicking "Request League Email" POSTs `{ requestType: "workspace" }` to
+- [x] Clicking "Request League Email" POSTs `{ requestType: "workspace" }` to
       `/api/account/provisioning-requests`; on success, re-fetches account data.
-- [ ] Clicking "Request Email + Claude Seat" POSTs
+- [x] Clicking "Request Email + Claude Seat" POSTs
       `{ requestType: "workspace_and_claude" }`; on success, re-fetches.
-- [ ] Request mutation shows an inline error on API failure.
-- [ ] Help section shows a contact link (mailto: or equivalent).
-- [ ] If `user.role === 'staff'`, the page renders `<Navigate to="/staff" replace />`
+- [x] Request mutation shows an inline error on API failure.
+- [x] Help section shows a contact link (mailto: or equivalent).
+- [x] If `user.role === 'staff'`, the page renders `<Navigate to="/staff" replace />`
       immediately without fetching account data.
-- [ ] Existing `App.tsx` routing is unchanged; `/account` continues to point
+- [x] Existing `App.tsx` routing is unchanged; `/account` continues to point
       to this component.
 
 ## Implementation Plan
