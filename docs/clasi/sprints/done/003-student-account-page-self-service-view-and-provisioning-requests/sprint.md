@@ -1,9 +1,12 @@
 ---
-id: "003"
-title: "Student Account Page — Self-Service View and Provisioning Requests"
-status: planning
+id: '003'
+title: "Student Account Page \u2014 Self-Service View and Provisioning Requests"
+status: done
 branch: sprint/003-student-account-page-self-service-view-and-provisioning-requests
-use-cases: [UC-007, UC-010, UC-011]
+use-cases:
+- UC-007
+- UC-010
+- UC-011
 ---
 
 # Sprint 003: Student Account Page — Self-Service View and Provisioning Requests
