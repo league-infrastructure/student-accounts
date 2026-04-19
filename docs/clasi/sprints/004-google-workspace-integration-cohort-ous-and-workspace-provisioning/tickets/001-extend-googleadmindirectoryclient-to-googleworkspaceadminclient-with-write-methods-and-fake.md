@@ -1,11 +1,14 @@
 ---
-id: "001"
-title: "Extend GoogleAdminDirectoryClient to GoogleWorkspaceAdminClient with write methods and Fake"
-status: todo
-use-cases: [UC-005, UC-012]
+id: '001'
+title: Extend GoogleAdminDirectoryClient to GoogleWorkspaceAdminClient with write
+  methods and Fake
+status: in-progress
+use-cases:
+- UC-005
+- UC-012
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 
 # Extend GoogleAdminDirectoryClient to GoogleWorkspaceAdminClient with write methods and Fake
