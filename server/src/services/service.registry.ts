@@ -47,7 +47,6 @@ export class ServiceRegistry {
     this.source = source;
     this.audit = new AuditService();
     this.users = new UserService(defaultPrisma, this.audit);
-    this.cohorts = new CohortService(defaultPrisma, this.audit);
     this.logins = new LoginService(defaultPrisma, this.audit);
     this.externalAccounts = new ExternalAccountService(defaultPrisma, this.audit);
     this.provisioningRequests = new ProvisioningRequestService(defaultPrisma, this.audit, this.externalAccounts);
@@ -63,6 +62,9 @@ export class ServiceRegistry {
         process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '',
         process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '',
       );
+
+    // CohortService receives the Google client so createWithOU can call createOU.
+    this.cohorts = new CohortService(defaultPrisma, this.audit, wsClient);
 
     this.workspaceProvisioning = new WorkspaceProvisioningService(
       wsClient,

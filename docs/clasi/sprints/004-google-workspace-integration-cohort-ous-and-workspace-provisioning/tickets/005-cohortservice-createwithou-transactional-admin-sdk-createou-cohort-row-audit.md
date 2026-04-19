@@ -1,11 +1,15 @@
 ---
-id: "005"
-title: "CohortService.createWithOU — transactional Admin SDK createOU + Cohort row + audit"
-status: todo
-use-cases: [UC-012]
-depends-on: ["001", "002"]
-github-issue: ""
-todo: ""
+id: '005'
+title: "CohortService.createWithOU \u2014 transactional Admin SDK createOU + Cohort\
+  \ row + audit"
+status: done
+use-cases:
+- UC-012
+depends-on:
+- '001'
+- '002'
+github-issue: ''
+todo: ''
 ---
 
 # CohortService.createWithOU — transactional Admin SDK createOU + Cohort row + audit
@@ -30,33 +34,33 @@ dependency.
 
 ## Acceptance Criteria
 
-- [ ] Method `createWithOU(name: string, actorId: number): Promise<Cohort>` is
+- [x] Method `createWithOU(name: string, actorId: number): Promise<Cohort>` is
       added to `CohortService`.
-- [ ] Name is validated before any API call:
+- [x] Name is validated before any API call:
       - Not blank (throws `ValidationError`).
       - Not a duplicate of an existing Cohort name (throws `ConflictError`).
-- [ ] Calls `googleClient.createOU(name)`. The returned `ouPath` is used as
+- [x] Calls `googleClient.createOU(name)`. The returned `ouPath` is used as
       `google_ou_path` on the Cohort record.
-- [ ] If `createOU` throws, no Cohort row is created (function throws the
+- [x] If `createOU` throws, no Cohort row is created (function throws the
       error to the caller).
-- [ ] On `createOU` success, opens `prisma.$transaction`:
+- [x] On `createOU` success, opens `prisma.$transaction`:
       - `CohortRepository.create(tx, { name, google_ou_path: createdOU.ouPath })`.
       - `AuditService.record(tx, { action: 'create_cohort', actor_user_id: actorId,
         target_entity_type: 'Cohort', target_entity_id: String(cohort.id),
         details: { name, google_ou_path } })`.
       - Returns the created Cohort.
-- [ ] If the Prisma write fails (e.g., race condition on name uniqueness after
+- [x] If the Prisma write fails (e.g., race condition on name uniqueness after
       the earlier check): the transaction is rolled back; the function throws.
       The OU may already exist in Google — this is documented behavior.
-- [ ] `CohortService` constructor updated to accept
+- [x] `CohortService` constructor updated to accept
       `googleClient: GoogleWorkspaceAdminClient` (optional parameter, defaults
       to undefined for Sprint 001 compatibility, but required for `createWithOU`).
-- [ ] `ServiceRegistry` updated to pass `GoogleWorkspaceAdminClient` to
+- [x] `ServiceRegistry` updated to pass `GoogleWorkspaceAdminClient` to
       `CohortService`.
-- [ ] Existing `CohortService` tests (Sprint 001 findAll, findById, etc.)
+- [x] Existing `CohortService` tests (Sprint 001 findAll, findById, etc.)
       still pass — they use a cohort that already has `google_ou_path` set
       (or null) and do not call `createWithOU`.
-- [ ] `npm test` passes.
+- [x] `npm test` passes.
 
 ## Implementation Plan
 
