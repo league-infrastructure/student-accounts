@@ -547,7 +547,7 @@ describe('AccountPage', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 9. Staff redirect
+  // 9. Role-based redirects (T007)
   // -------------------------------------------------------------------------
 
   it('redirects staff to /staff without fetching account data', () => {
@@ -562,6 +562,29 @@ describe('AccountPage', () => {
     // fetch should NOT have been called for /api/account
     expect(fetchMock).not.toHaveBeenCalledWith('/api/account', expect.anything());
     expect(fetchMock).not.toHaveBeenCalledWith('/api/account');
+  });
+
+  it('redirects admin to /staff without fetching account data', () => {
+    mockAuthReturn = {
+      ...mockAuthReturn,
+      user: { ...mockAuthReturn.user, role: 'admin' },
+    };
+
+    const fetchMock = vi.fn();
+    renderAccount(fetchMock);
+
+    // fetch should NOT have been called for /api/account
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/account', expect.anything());
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/account');
+  });
+
+  it('does not redirect student user — renders account page normally', async () => {
+    // mockAuthReturn is already set to role: 'student' in beforeEach
+    renderAccount(accountFetch(makeAccountData()));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+    });
   });
 
   // -------------------------------------------------------------------------

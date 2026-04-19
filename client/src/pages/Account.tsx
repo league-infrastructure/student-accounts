@@ -4,7 +4,7 @@
  * Fetches data from GET /api/account (aggregate endpoint) and renders four
  * sections: Profile, Logins, Services, and Help.
  *
- * Staff users are redirected to /staff immediately without fetching.
+ * Staff and admin users are redirected to /staff immediately without fetching.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -405,7 +405,7 @@ function HelpSection() {
 export default function Account() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const isStaff = user?.role === 'staff';
+  const isNonStudent = user?.role === 'staff' || user?.role === 'admin';
 
   // All hooks must be called unconditionally before any early return.
   const {
@@ -417,8 +417,8 @@ export default function Account() {
   } = useQuery<AccountData>({
     queryKey: ['account'],
     queryFn: fetchAccount,
-    // Skip fetching if the user is staff — they will be redirected.
-    enabled: !isStaff,
+    // Skip fetching if the user is not a student — they will be redirected.
+    enabled: !isNonStudent,
   });
 
   const removeLoginMutation = useMutation({
@@ -435,8 +435,8 @@ export default function Account() {
     },
   });
 
-  // Staff redirect — rendered after all hooks are called.
-  if (isStaff) {
+  // Staff and admin redirect — rendered after all hooks are called.
+  if (isNonStudent) {
     return <Navigate to="/staff" replace />;
   }
 
