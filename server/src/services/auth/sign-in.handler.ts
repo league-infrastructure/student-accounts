@@ -225,10 +225,16 @@ export async function signInHandler(
       providerUsername ?? null,
     );
 
-    // 3c. Merge-scan stub (Sprint 007 replaces this module) — only for
-    // freshly created users.
+    // 3c. Merge-scan (Sprint 007) — only for freshly created users.
+    // Fire-and-forget: must not block the sign-in path. Any errors are
+    // logged inside mergeScan itself; failure here is non-fatal for auth.
     if (!existingUser) {
-      await mergeScan(user);
+      const scanUser = user;
+      setImmediate(() => {
+        mergeScan(scanUser).catch((err) => {
+          console.error('[sign-in.handler] background mergeScan failed:', err);
+        });
+      });
     }
   }
 
