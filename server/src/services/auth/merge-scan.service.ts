@@ -22,14 +22,14 @@
  *  - MERGE_SCAN_CONFIDENCE_THRESHOLD — overrides the 0.6 default.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 import type { User } from '../../generated/prisma/client.js';
 import type { HaikuClient, UserSnapshot } from '../merge/haiku.client.js';
 import { HaikuApiError, HaikuParseError } from '../merge/haiku.client.js';
 import { MergeSuggestionRepository } from '../repositories/merge-suggestion.repository.js';
 import { AuditService } from '../audit.service.js';
 
-const logger = pino({ name: 'merge-scan.service' });
+const logger = createLogger('merge-scan.service');
 
 /** Default confidence threshold below which no MergeSuggestion row is created. */
 const DEFAULT_THRESHOLD = 0.6;

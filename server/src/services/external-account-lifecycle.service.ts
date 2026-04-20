@@ -26,7 +26,7 @@
  *  - ClaudeTeamAdminClient errors      — propagated as-is.
  */
 
-import pino from 'pino';
+import { createLogger } from './logger.js';
 
 import { NotFoundError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
@@ -35,7 +35,7 @@ import type { ClaudeTeamAdminClient } from './claude-team/claude-team-admin.clie
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
 
-const logger = pino({ name: 'external-account-lifecycle' });
+const logger = createLogger('external-account-lifecycle');
 
 /** Default number of days between workspace removal and hard-delete. */
 const DEFAULT_WORKSPACE_DELETE_DELAY_DAYS = 3;

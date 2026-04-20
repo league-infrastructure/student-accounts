@@ -46,10 +46,10 @@
 
 import fs from 'fs';
 import path from 'path';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 import { google } from 'googleapis';
 
-const logger = pino({ name: 'google-workspace-admin' });
+const logger = createLogger('google-workspace-admin');
 
 // ---------------------------------------------------------------------------
 // League-specific defaults (logged once per process)

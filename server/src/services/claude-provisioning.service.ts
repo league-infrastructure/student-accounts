@@ -28,7 +28,7 @@
  *    Claude Team client as-is.
  */
 
-import pino from 'pino';
+import { createLogger } from './logger.js';
 
 import { ConflictError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
@@ -37,7 +37,7 @@ import { ExternalAccountRepository } from './repositories/external-account.repos
 import { UserRepository } from './repositories/user.repository.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
 
-const logger = pino({ name: 'claude-provisioning' });
+const logger = createLogger('claude-provisioning');
 
 export class ClaudeProvisioningService {
   constructor(

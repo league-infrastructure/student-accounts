@@ -16,13 +16,13 @@
  * record does not roll back successful deletes.
  */
 
-import pino from 'pino';
+import { createLogger } from '../services/logger.js';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import type { GoogleWorkspaceAdminClient } from '../services/google-workspace/google-workspace-admin.client.js';
 import { ExternalAccountRepository } from '../services/repositories/external-account.repository.js';
 import { AuditEventRepository } from '../services/repositories/audit-event.repository.js';
 
-const logger = pino({ name: 'workspace-delete-job' });
+const logger = createLogger('workspace-delete-job');
 
 /** Frequency string passed to SchedulerService.seedDefaults / calculateNextRun. */
 export const WORKSPACE_DELETE_JOB_NAME = 'workspace-delete';
