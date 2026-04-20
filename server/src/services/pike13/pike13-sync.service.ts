@@ -27,7 +27,7 @@
  *  - mergeScanFn      — Injected function that wraps mergeScan stub
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 import type { Pike13ApiClient, Pike13Person } from './pike13-api.client.js';
 import { UserRepository } from '../repositories/user.repository.js';
 import { ExternalAccountRepository } from '../repositories/external-account.repository.js';
@@ -35,7 +35,7 @@ import type { AuditService } from '../audit.service.js';
 import type { User } from '../../generated/prisma/client.js';
 import type { PrismaClient } from '../../generated/prisma/client.js';
 
-const logger = pino({ name: 'pike13-sync' });
+const logger = createLogger('pike13-sync');
 
 // ---------------------------------------------------------------------------
 // Public types

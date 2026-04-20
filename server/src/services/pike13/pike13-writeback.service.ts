@@ -26,7 +26,7 @@
  * See UC-020 for the full write-back specification.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import type { AuditAction } from '../audit.service.js';
 import { AuditService } from '../audit.service.js';
@@ -35,7 +35,7 @@ import type { Pike13ApiClient } from './pike13-api.client.js';
 import { Pike13ApiClientImpl } from './pike13-api.client.js';
 import { prisma } from '../prisma.js';
 
-const logger = pino({ name: 'pike13-writeback' });
+const logger = createLogger('pike13-writeback');
 
 // ---------------------------------------------------------------------------
 // Pike13WritebackService class

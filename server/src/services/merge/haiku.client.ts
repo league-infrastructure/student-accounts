@@ -20,9 +20,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'haiku-client' });
+const logger = createLogger('haiku-client');
 
 // ---------------------------------------------------------------------------
 // Model constant

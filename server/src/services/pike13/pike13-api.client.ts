@@ -69,9 +69,9 @@
  *    the first method call.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'pike13-api' });
+const logger = createLogger('pike13-api');
 
 // ---------------------------------------------------------------------------
 // Default API base URL

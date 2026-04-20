@@ -20,10 +20,10 @@
  * See Sprint 003 T005 for full acceptance criteria.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 import type { LoginService } from '../login.service.js';
 
-const logger = pino({ name: 'link.handler' });
+const logger = createLogger('link.handler');
 
 // ---------------------------------------------------------------------------
 // Public types

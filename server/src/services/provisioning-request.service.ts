@@ -26,7 +26,7 @@
  *  - notifyAdmin() is a no-op this sprint; Sprint 004+ will implement it.
  */
 
-import pino from 'pino';
+import { createLogger } from './logger.js';
 import { ConflictError, NotFoundError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import type { ExternalAccountService } from './external-account.service.js';
@@ -37,7 +37,7 @@ import { ExternalAccountRepository } from './repositories/external-account.repos
 import type { ProvisioningRequest } from '../generated/prisma/client.js';
 import type { Prisma } from '../generated/prisma/client.js';
 
-const logger = pino({ name: 'provisioning-request' });
+const logger = createLogger('provisioning-request');
 
 export type CreateRequestType = 'workspace' | 'claude' | 'workspace_and_claude';
 
