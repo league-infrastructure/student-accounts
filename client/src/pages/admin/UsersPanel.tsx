@@ -865,7 +865,9 @@ const dropdownMenuStyle: React.CSSProperties = {
   borderRadius: 8,
   boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
   zIndex: 50,
-  minWidth: 180,
+  minWidth: 220,
+  maxHeight: '70vh',
+  overflowY: 'auto',
   padding: '4px 0',
 };
 
