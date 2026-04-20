@@ -144,10 +144,12 @@ export class ServiceRegistry {
     this.googleClient = wsClient;
 
     // Pike13SyncService — Sprint 006 T003.
-    this.pike13Client = new Pike13ApiClientImpl(
-      process.env.PIKE13_ACCESS_TOKEN ?? '',
-      resolvePike13ApiUrl(),
-    );
+    this.pike13Client = new Pike13ApiClientImpl({
+      accessToken: process.env.PIKE13_ACCESS_TOKEN,
+      clientId: process.env.PIKE13_CLIENT_ID,
+      clientSecret: process.env.PIKE13_CLIENT_SECRET,
+      apiUrl: resolvePike13ApiUrl(),
+    });
     this.pike13Sync = new Pike13SyncService(
       this.pike13Client,
       defaultPrisma,
