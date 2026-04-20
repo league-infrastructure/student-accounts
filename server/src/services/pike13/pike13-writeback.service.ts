@@ -215,8 +215,11 @@ let _singleton: Pike13WritebackService | null = null;
 
 function getSingleton(): Pike13WritebackService {
   if (!_singleton) {
-    const accessToken = process.env.PIKE13_ACCESS_TOKEN ?? '';
-    const pike13Client = new Pike13ApiClientImpl(accessToken);
+    const pike13Client = new Pike13ApiClientImpl({
+      accessToken: process.env.PIKE13_ACCESS_TOKEN,
+      clientId: process.env.PIKE13_CLIENT_ID,
+      clientSecret: process.env.PIKE13_CLIENT_SECRET,
+    });
     _singleton = new Pike13WritebackService(pike13Client, prisma);
   }
   return _singleton;
