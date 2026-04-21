@@ -156,10 +156,10 @@ describe('POST /api/admin/sync/claude — admin success', () => {
   it('returns 503 when AnthropicAdminApiError is thrown during reconcile', async () => {
     const { fakeClient, restore } = injectFakeAnthropicSync();
     try {
-      // Make listWorkspaces throw an API error — reconcile calls it during workspace resolution
+      // listOrgUsers is called unconditionally on every reconcile.
       fakeClient.configureError(
-        'listWorkspaces',
-        new AnthropicAdminApiError('Anthropic API unavailable', 'listWorkspaces', 503),
+        'listOrgUsers',
+        new AnthropicAdminApiError('Anthropic API unavailable', 'listOrgUsers', 503),
       );
 
       const agent = await loginAs('admin3@example.com', 'admin');
