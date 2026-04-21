@@ -1,7 +1,7 @@
 ---
 id: '006'
 title: AdminOnlyRoute component and AppLayout nav split
-status: todo
+status: done
 use-cases:
   - SUC-010-001
 depends-on: []
@@ -29,14 +29,14 @@ and the route table ticket (T013):
 
 ## Acceptance Criteria
 
-- [ ] `client/src/components/AdminOnlyRoute.tsx` created. Renders `<Outlet />` for `role=admin`, redirects to `/account` for any other role (including unauthenticated).
-- [ ] `AppLayout.tsx` defines a new `ADMIN_WORKFLOW_NAV` array containing: Dashboard (`/`, `end: true`), Provisioning Requests (`/requests`), Cohorts (`/cohorts`), Users (`/users`), Sync (`/sync`), Merge Queue (`/merge-queue`).
-- [ ] `ADMIN_NAV` (ops-only) retains: Environment, Database, Logs, Sessions, Scheduled Jobs, Configuration, Import/Export. Removes the moved items.
-- [ ] When `user.role === 'admin'` and the current path is NOT under `/admin/*`, `ADMIN_WORKFLOW_NAV` items are rendered in the sidebar.
-- [ ] When the current path IS under `/admin/*`, the existing `ADMIN_NAV` (ops-only) items render as before.
-- [ ] The "Admin" link at the bottom of the sidebar (for admins) now links to `/admin/env` or another ops entry point (not `/admin/users` which has moved). Update as appropriate.
-- [ ] Non-admin users do not see `ADMIN_WORKFLOW_NAV` items.
-- [ ] `npm run test:client` passes.
+- [x] `client/src/components/AdminOnlyRoute.tsx` created. Renders `<Outlet />` for `role=admin`, redirects to `/account` for any other role (including unauthenticated).
+- [x] `AppLayout.tsx` defines a new `ADMIN_WORKFLOW_NAV` array containing: Dashboard (`/`, `end: true`), Provisioning Requests (`/requests`), Cohorts (`/cohorts`), Users (`/users`), Sync (`/sync`), Merge Queue (`/merge-queue`).
+- [x] `ADMIN_NAV` (ops-only) retains: Environment, Database, Logs, Sessions, Scheduled Jobs, Configuration, Import/Export. Removes the moved items.
+- [x] When `user.role === 'admin'` and the current path is NOT under `/admin/*`, `ADMIN_WORKFLOW_NAV` items are rendered in the sidebar.
+- [x] When the current path IS under `/admin/*`, the existing `ADMIN_NAV` (ops-only) items render as before.
+- [x] The "Admin" link at the bottom of the sidebar (for admins) now links to `/admin/env` or another ops entry point (not `/admin/users` which has moved). Update as appropriate.
+- [x] Non-admin users do not see `ADMIN_WORKFLOW_NAV` items.
+- [x] `npm run test:client` passes.
 
 ## Implementation Plan
 

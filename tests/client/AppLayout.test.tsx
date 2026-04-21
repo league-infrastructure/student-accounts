@@ -75,9 +75,9 @@ describe('AppLayout', () => {
     });
   });
 
-  it('renders sidebar with Home navigation link', () => {
+  it('renders sidebar with Account navigation link', () => {
     renderLayout();
-    expect(screen.getByText('Home')).toBeInTheDocument();
+    expect(screen.getByText('Account')).toBeInTheDocument();
   });
 
   it('shows Admin link when user has admin role', () => {
@@ -144,11 +144,86 @@ describe('AppLayout', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/admin/users']}>
+      <MemoryRouter initialEntries={['/admin/env']}>
         <AppLayout />
       </MemoryRouter>,
     );
     expect(screen.getByText('Audit Log')).toBeInTheDocument();
+  });
+
+  it('shows ADMIN_WORKFLOW_NAV items in main sidebar when user is admin and not in admin section', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Provisioning Requests')).toBeInTheDocument();
+    expect(screen.getByText('Cohorts')).toBeInTheDocument();
+    expect(screen.getByText('Users')).toBeInTheDocument();
+    expect(screen.getByText('Sync')).toBeInTheDocument();
+    expect(screen.getByText('Merge Queue')).toBeInTheDocument();
+  });
+
+  it('does not show ADMIN_WORKFLOW_NAV items for non-admin users', () => {
+    renderLayout();
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
+    expect(screen.queryByText('Provisioning Requests')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
+    expect(screen.queryByText('Users')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sync')).not.toBeInTheDocument();
+    expect(screen.queryByText('Merge Queue')).not.toBeInTheDocument();
+  });
+
+  it('does not show ADMIN_WORKFLOW_NAV items when admin is in /admin/* section', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/env']}>
+        <AppLayout />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
+    expect(screen.queryByText('Provisioning Requests')).not.toBeInTheDocument();
+  });
+
+  it('shows ops-only ADMIN_NAV items (not workflow items) when in /admin/* section', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/env']}>
+        <AppLayout />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Environment')).toBeInTheDocument();
+    expect(screen.getByText('Database')).toBeInTheDocument();
+    expect(screen.getByText('Configuration')).toBeInTheDocument();
+    expect(screen.getByText('Logs')).toBeInTheDocument();
+    expect(screen.getByText('Sessions')).toBeInTheDocument();
+    expect(screen.getByText('Scheduled Jobs')).toBeInTheDocument();
+    expect(screen.getByText('Import/Export')).toBeInTheDocument();
+  });
+
+  it('Admin bottom link points to /admin/env', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    const adminLink = screen.getByText('Admin').closest('a');
+    expect(adminLink).toHaveAttribute('href', '/admin/env');
   });
 
   it('does not show impersonation banner when not impersonating', () => {
