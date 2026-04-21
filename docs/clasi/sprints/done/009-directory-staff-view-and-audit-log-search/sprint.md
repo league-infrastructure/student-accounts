@@ -1,9 +1,20 @@
 ---
-id: "009"
-title: "Directory, Staff View, and Audit Log Search"
-status: active
+id: 009
+title: Directory, Staff View, and Audit Log Search
+status: done
 branch: sprint/009-directory-staff-view-and-audit-log-search
-use-cases: [UC-022, UC-023, SUC-009-001, SUC-009-002, SUC-009-003, SUC-009-004, SUC-009-005, SUC-009-006, SUC-009-007, SUC-009-008, SUC-009-009]
+use-cases:
+- UC-022
+- UC-023
+- SUC-009-001
+- SUC-009-002
+- SUC-009-003
+- SUC-009-004
+- SUC-009-005
+- SUC-009-006
+- SUC-009-007
+- SUC-009-008
+- SUC-009-009
 ---
 
 # Sprint 009: Directory, Staff View, and Audit Log Search
