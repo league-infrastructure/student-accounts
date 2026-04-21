@@ -376,6 +376,89 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
 }
 
 // ---------------------------------------------------------------------------
+// ClaudeCodeSection — onboarding instructions once the student's Claude
+// invite is active. Anthropic's Admin API doesn't let us mint API keys on
+// another member's behalf, so instead we point the student at Claude Code's
+// built-in OAuth flow — `claude auth login` — which authenticates against
+// their org membership without any key handling.
+// ---------------------------------------------------------------------------
+
+function ClaudeCodeSection({ data }: { data: AccountData }) {
+  const claudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
+  if (!claudeAccount) return null;
+
+  const active = claudeAccount.status === 'active';
+  const pending = claudeAccount.status === 'pending';
+
+  return (
+    <div style={styles.card}>
+      <h2 style={styles.sectionTitle}>Claude Code</h2>
+      {pending && (
+        <p style={styles.helpText}>
+          Your Claude invite is pending. Check your inbox for an email from
+          Anthropic and accept the invitation before continuing.
+        </p>
+      )}
+      {active && (
+        <>
+          <p style={styles.helpText}>
+            You can use <strong>Claude Code</strong> (the CLI) directly against
+            The League's Anthropic org — no API key needed. Usage is billed to
+            the school, not to you.
+          </p>
+          <ol style={styles.claudeSteps}>
+            <li>
+              <strong>Install Claude Code:</strong>{' '}
+              <code style={styles.code}>curl -fsSL https://claude.ai/install.sh | bash</code>{' '}
+              (or see{' '}
+              <a
+                href="https://docs.claude.com/claude-code"
+                target="_blank"
+                rel="noreferrer"
+                style={styles.helpLink}
+              >
+                the install guide
+              </a>
+              ).
+            </li>
+            <li>
+              <strong>Sign in:</strong>{' '}
+              <code style={styles.code}>claude auth login</code>
+              <div style={styles.claudeHint}>
+                A browser window opens. Sign in with your{' '}
+                <strong>{data.profile.primaryEmail}</strong> account — the one
+                invited into the League Anthropic org.
+              </div>
+            </li>
+            <li>
+              <strong>Verify:</strong>{' '}
+              <code style={styles.code}>claude "hello"</code>
+              <div style={styles.claudeHint}>
+                You should get a reply. If Claude Code asks for an API key,
+                you're signed into the wrong account — run{' '}
+                <code style={styles.codeInline}>claude auth logout</code> and
+                start over.
+              </div>
+            </li>
+          </ol>
+          <p style={styles.claudeFooter}>
+            Your tokens refresh automatically — you won't need to log in again
+            unless you switch machines.
+          </p>
+        </>
+      )}
+      {!active && !pending && (
+        <p style={styles.helpText}>
+          Claude access is not currently available on your account
+          ({claudeAccount.status}). Contact the League admin if this looks
+          wrong.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // HelpSection
 // ---------------------------------------------------------------------------
 
@@ -510,6 +593,10 @@ export default function Account() {
             : null
         }
       />
+
+      <div style={styles.spacer} />
+
+      <ClaudeCodeSection data={data} />
 
       <div style={styles.spacer} />
 
@@ -732,5 +819,41 @@ const styles: Record<string, React.CSSProperties> = {
   },
   helpLink: {
     color: '#4f46e5',
+  },
+  claudeSteps: {
+    fontSize: '0.9rem',
+    color: '#374151',
+    lineHeight: 1.8,
+    paddingLeft: '1.25rem',
+  } as const,
+  code: {
+    display: 'inline-block',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    padding: '3px 8px',
+    borderRadius: 4,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '0.82rem',
+    userSelect: 'all' as const,
+  },
+  codeInline: {
+    background: '#f1f5f9',
+    color: '#0f172a',
+    padding: '1px 5px',
+    borderRadius: 3,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '0.82rem',
+  },
+  claudeHint: {
+    fontSize: '0.8rem',
+    color: '#64748b',
+    marginTop: 4,
+    marginLeft: 2,
+  },
+  claudeFooter: {
+    fontSize: '0.82rem',
+    color: '#64748b',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 };
