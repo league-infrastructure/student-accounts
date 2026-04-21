@@ -582,3 +582,72 @@ describe('GET /staff', () => {
     expect(res.text).toMatch(/staff/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Post-login redirect: admin → '/', staff → '/staff/directory', student → '/account'
+// ---------------------------------------------------------------------------
+
+describe('GET /api/auth/google/callback — post-login redirect by role', () => {
+  it('redirects admin to / (dashboard root)', async () => {
+    const adminUser = await makeUser({
+      primary_email: 'admin@jointheleague.org',
+      display_name: 'Admin User',
+      role: 'admin',
+      created_via: 'admin_created',
+    });
+    await makeLogin(adminUser, {
+      provider: 'google',
+      provider_user_id: 'google-uid-admin-redirect',
+      provider_email: 'admin@jointheleague.org',
+    });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-admin-redirect',
+      displayName: 'Admin User',
+      emails: [{ value: 'admin@jointheleague.org' }],
+    });
+
+    const res = await request(app).get('/api/auth/google/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/');
+  });
+
+  it('redirects staff to /staff/directory', async () => {
+    const staffUser = await makeUser({
+      primary_email: 'staff@jointheleague.org',
+      display_name: 'Staff User',
+      role: 'staff',
+      created_via: 'admin_created',
+    });
+    await makeLogin(staffUser, {
+      provider: 'google',
+      provider_user_id: 'google-uid-staff-redirect',
+      provider_email: 'staff@jointheleague.org',
+    });
+
+    mockStrategy.setProfile({
+      id: 'google-uid-staff-redirect',
+      displayName: 'Staff User',
+      emails: [{ value: 'staff@jointheleague.org' }],
+    });
+
+    const res = await request(app).get('/api/auth/google/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/staff/directory');
+  });
+
+  it('redirects student to /account', async () => {
+    mockStrategy.setProfile({
+      id: 'google-uid-student-redirect',
+      displayName: 'Student User',
+      emails: [{ value: 'student-redirect@example.com' }],
+    });
+
+    const res = await request(app).get('/api/auth/google/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/account');
+  });
+});

@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: ProvisioningRequestService auto-chain and admin post-login redirect
-status: todo
+status: done
 use-cases:
   - SUC-010-001
   - SUC-010-003
@@ -27,17 +27,17 @@ Two small server-side changes that have no dependencies on other sprint tickets:
 ## Acceptance Criteria
 
 **Auto-chain:**
-- [ ] `ProvisioningRequestService.approve()` detects `requestType === 'claude'` + no active workspace ExternalAccount for the target user.
-- [ ] On detection, calls `WorkspaceProvisioningService.provision(user, actor)` followed by `ClaudeProvisioningService.provision(user, actor)`.
-- [ ] A single `request_approved` AuditEvent is recorded with `details.auto_chained = true`.
-- [ ] If the user is not a student, the existing `UnprocessableError` is thrown unchanged.
-- [ ] `ProvisioningRequestService` test suite includes a scenario: Claude request + no workspace → auto-chain produces both ExternalAccounts.
-- [ ] Existing `approve()` tests continue to pass.
+- [x] `ProvisioningRequestService.approve()` detects `requestType === 'claude'` + no active workspace ExternalAccount for the target user.
+- [x] On detection, calls `WorkspaceProvisioningService.provision(user, actor)` followed by `ClaudeProvisioningService.provision(user, actor)`.
+- [x] A single `request_approved` AuditEvent is recorded with `details.auto_chained = true`.
+- [x] If the user is not a student, the existing `UnprocessableError` is thrown unchanged.
+- [x] `ProvisioningRequestService` test suite includes a scenario: Claude request + no workspace → auto-chain produces both ExternalAccounts.
+- [x] Existing `approve()` tests continue to pass.
 
 **Post-login redirect:**
-- [ ] Admin OAuth callback in `server/src/routes/auth.ts` redirects to `/` not `/admin/provisioning-requests`.
-- [ ] Staff redirect (`/staff/directory`) is unchanged.
-- [ ] Student redirect (`/account`) is unchanged.
+- [x] Admin OAuth callback in `server/src/routes/auth.ts` redirects to `/` not `/admin/provisioning-requests`.
+- [x] Staff redirect (`/staff/directory`) is unchanged.
+- [x] Student redirect (`/account`) is unchanged.
 
 ## Implementation Plan
 

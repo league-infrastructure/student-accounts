@@ -612,6 +612,75 @@ describe('ProvisioningRequestService.approve — claude request', () => {
     });
     expect(stillPending.status).toBe('pending');
   });
+
+  it('auto-chains workspace then claude when student has no active workspace ExternalAccount', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/AutoChain' });
+    const user = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const admin = await makeUser({ role: 'staff' });
+    // No workspace ExternalAccount — this is the auto-chain scenario.
+    const svc = makeService(
+      undefined,
+      makeWorkspaceProvisioningService(fakeClient),
+      makeClaudeProvisioningService(fakeClaudeClient),
+    );
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+
+    const updated = await svc.approve(req.id, admin.id);
+
+    expect(updated.status).toBe('approved');
+
+    // Both a workspace and a claude ExternalAccount should have been created.
+    const workspaceAccounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'workspace' },
+    });
+    expect(workspaceAccounts).toHaveLength(1);
+    expect(workspaceAccounts[0].status).toBe('active');
+
+    const claudeAccounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'claude' },
+    });
+    expect(claudeAccounts).toHaveLength(1);
+    expect(claudeAccounts[0].status).toBe('active');
+
+    // The audit event should carry auto_chained: true.
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'approve_provisioning_request', target_entity_id: String(req.id) },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].details).toMatchObject({ auto_chained: true, requestedType: 'claude' });
+  });
+
+  it('does NOT auto-chain when student already has an active workspace ExternalAccount', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+    const svc = makeService(
+      undefined,
+      makeWorkspaceProvisioningService(fakeClient),
+      makeClaudeProvisioningService(fakeClaudeClient),
+    );
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+    await svc.approve(req.id, admin.id);
+
+    // Only one workspace account — no second one created by auto-chain.
+    const workspaceAccounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'workspace' },
+    });
+    expect(workspaceAccounts).toHaveLength(1);
+
+    // Audit event should NOT have auto_chained.
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'approve_provisioning_request', target_entity_id: String(req.id) },
+    });
+    expect(events).toHaveLength(1);
+    expect((events[0].details as any).auto_chained).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
