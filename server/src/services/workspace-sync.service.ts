@@ -404,8 +404,10 @@ export class WorkspaceSyncService {
 
   /**
    * For every workspace ExternalAccount whose user's primary_email is NOT in
-   * seenEmails, set status=removed and record a workspace_sync_flagged audit
-   * event.
+   * seenEmails, set status=removed, record a workspace_sync_flagged audit
+   * event, AND soft-delete the User (User.is_active=false) so the suspended
+   * account drops out of the Users panel and all downstream queries. Admins
+   * can always flip is_active back on manually if they want the user back.
    *
    * Returns the list of flagged emails.
    */
@@ -420,25 +422,45 @@ export class WorkspaceSyncService {
         type: 'workspace',
         status: { in: ['pending', 'active'] },
       },
-      include: { user: { select: { primary_email: true } } },
+      include: { user: { select: { id: true, primary_email: true, is_active: true } } },
     });
 
     const flagged: string[] = [];
 
     for (const account of activeAccounts) {
       const email: string = account.user.primary_email;
-      if (!seenEmails.has(email)) {
-        await this.externalAccountRepo.updateStatus(db, account.id, 'removed');
+      if (seenEmails.has(email)) continue;
+
+      // Flag the external account.
+      await this.externalAccountRepo.updateStatus(db, account.id, 'removed');
+      await this.audit.record(db, {
+        actor_user_id: actorId,
+        action: 'workspace_sync_flagged',
+        target_user_id: account.user_id,
+        target_entity_type: 'ExternalAccount',
+        target_entity_id: String(account.id),
+        details: { primary_email: email },
+      });
+
+      // Soft-delete the User row if they're still active. The Google
+      // account is suspended / moved to /graveyard / deleted — there's no
+      // reason to keep surfacing them in the app.
+      if (account.user.is_active) {
+        await (db as any).user.update({
+          where: { id: account.user_id },
+          data: { is_active: false },
+        });
         await this.audit.record(db, {
           actor_user_id: actorId,
-          action: 'workspace_sync_flagged',
+          action: 'user_deactivated_by_sync',
           target_user_id: account.user_id,
-          target_entity_type: 'ExternalAccount',
-          target_entity_id: String(account.id),
-          details: { primary_email: email },
+          target_entity_type: 'User',
+          target_entity_id: String(account.user_id),
+          details: { primary_email: email, reason: 'workspace_account_gone' },
         });
-        flagged.push(email);
       }
+
+      flagged.push(email);
     }
 
     return flagged;
