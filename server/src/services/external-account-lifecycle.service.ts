@@ -31,7 +31,7 @@ import { createLogger } from './logger.js';
 import { NotFoundError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
-import type { ClaudeTeamAdminClient } from './claude-team/claude-team-admin.client.js';
+import type { AnthropicAdminClient } from './anthropic/anthropic-admin.client.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
 
@@ -43,7 +43,7 @@ const DEFAULT_WORKSPACE_DELETE_DELAY_DAYS = 3;
 export class ExternalAccountLifecycleService {
   constructor(
     private readonly googleClient: GoogleWorkspaceAdminClient,
-    private readonly claudeTeamClient: ClaudeTeamAdminClient,
+    private readonly claudeTeamClient: AnthropicAdminClient,
     private readonly externalAccountRepo: typeof ExternalAccountRepository,
     private readonly auditService: AuditService,
   ) {}
@@ -96,16 +96,10 @@ export class ExternalAccountLifecycleService {
       await this.googleClient.suspendUser(email);
       logger.info({ accountId, email }, '[external-account-lifecycle] suspend: workspace user suspended');
     } else if (account.type === 'claude') {
-      const memberId = account.external_id;
-      if (!memberId) {
-        throw new UnprocessableError(
-          `ExternalAccount ${accountId} has no external_id (Claude member id); cannot suspend`,
-        );
-      }
-      // OQ-003: suspendMember is currently a no-op in ClaudeTeamAdminClientImpl.
-      // We still call it so the behaviour can be swapped in without changing callers.
-      await this.claudeTeamClient.suspendMember(memberId);
-      logger.info({ accountId, memberId }, '[external-account-lifecycle] suspend: claude member suspend called (OQ-003 no-op)');
+      // AnthropicAdminClient has no suspend operation. Suspend for claude
+      // accounts is a status-only change; the org member remains active in
+      // the Anthropic API until explicitly removed via deleteOrgUser.
+      logger.info({ accountId }, '[external-account-lifecycle] suspend: claude account — status-only change (no Anthropic API call)');
     }
 
     // --- 3. Persist status change ---
@@ -208,8 +202,8 @@ export class ExternalAccountLifecycleService {
           `ExternalAccount ${accountId} has no external_id (Claude member id); cannot remove`,
         );
       }
-      await this.claudeTeamClient.removeMember(memberId);
-      logger.info({ accountId, memberId }, '[external-account-lifecycle] remove: claude member removed');
+      await this.claudeTeamClient.deleteOrgUser(memberId);
+      logger.info({ accountId, memberId }, '[external-account-lifecycle] remove: claude org user deleted');
     }
 
     // --- 3. Persist status change ---
