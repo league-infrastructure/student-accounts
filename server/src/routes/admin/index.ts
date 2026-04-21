@@ -19,6 +19,8 @@ import { adminSyncRouter } from './sync';
 import { adminMergeQueueRouter } from './merge-queue';
 import { adminBulkCohortRouter } from './bulk-cohort';
 import { adminAuditLogRouter } from './audit-log';
+import { adminStatsRouter } from './stats';
+import { adminProvisionWorkspaceRouter } from './provision-workspace';
 
 export const adminRouter = Router();
 
@@ -46,3 +48,5 @@ adminRouter.use('/admin', adminSyncRouter);
 adminRouter.use('/admin', adminMergeQueueRouter);
 adminRouter.use('/admin', adminBulkCohortRouter);
 adminRouter.use('/admin', adminAuditLogRouter);
+adminRouter.use('/admin', adminStatsRouter);
+adminRouter.use('/admin', adminProvisionWorkspaceRouter);
