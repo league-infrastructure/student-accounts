@@ -60,17 +60,41 @@ type FilterOption =
 type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'admin' | 'joined';
 
 // Account chip identifiers rendered in the Accounts column, ordered so
-// they sort in a stable, meaningful way.
-type AccountKind = 'google' | 'league' | 'pike13' | 'claude';
-const ACCOUNT_ORDER: AccountKind[] = ['league', 'google', 'claude', 'pike13'];
+// they sort in a stable, meaningful way. League accounts are split into
+// staff (flag) vs student (bolt) by whether "student" appears in any
+// jointheleague.org address on the user.
+type AccountKind = 'google' | 'league-staff' | 'league-student' | 'pike13' | 'claude';
+const ACCOUNT_ORDER: AccountKind[] = ['league-staff', 'league-student', 'google', 'claude', 'pike13'];
+
+/** Any @jointheleague.org address attached to the user (primary, a login
+ *  email, or a workspace external_id). */
+function leagueEmails(u: AdminUser): string[] {
+  const out: string[] = [];
+  const add = (e?: string | null) => {
+    if (e && e.toLowerCase().endsWith('@jointheleague.org')) out.push(e.toLowerCase());
+    else if (e && e.toLowerCase().endsWith('.jointheleague.org')) out.push(e.toLowerCase());
+  };
+  add(u.email);
+  for (const p of u.providers ?? []) add(p.email ?? null);
+  for (const a of u.externalAccounts ?? []) {
+    if (a.type === 'workspace') add(a.externalId ?? null);
+  }
+  return out;
+}
 
 function userAccounts(u: AdminUser): AccountKind[] {
   const out = new Set<AccountKind>();
-  // Google Login (external OAuth sign-in)
+  // League account: any @jointheleague.org address. Split staff vs student
+  // by whether the token "student" appears in any of those emails (covers
+  // @students.jointheleague.org and any other student.* local parts).
+  const leagues = leagueEmails(u);
+  if (leagues.length > 0) {
+    const hasStudent = leagues.some((e) => /student/i.test(e));
+    out.add(hasStudent ? 'league-student' : 'league-staff');
+  }
+  // Google Login (external Google sign-in, e.g. gmail.com)
   if (u.providers?.some((p) => p.provider === 'google')) out.add('google');
-  // League workspace account
   const eats = u.externalAccountTypes ?? [];
-  if (eats.includes('workspace')) out.add('league');
   if (eats.includes('claude')) out.add('claude');
   if (eats.includes('pike13')) out.add('pike13');
   return ACCOUNT_ORDER.filter((k) => out.has(k));
@@ -250,22 +274,23 @@ function AccountIcon({ kind }: { kind: AccountKind }) {
       />
     );
   }
-  if (kind === 'league') {
+  if (kind === 'league-staff') {
     return (
       <img
-        src="https://www.jointheleague.org/favicon.ico"
-        alt="League"
-        title="League Workspace account (@jointheleague.org)"
+        src="https://images.jointheleague.org/logos/flag.png"
+        alt="League staff"
+        title="League staff account (@jointheleague.org)"
         style={common}
-        onError={(e) => {
-          // Fallback to a flag emoji when the League favicon 404s.
-          const el = e.currentTarget;
-          const span = document.createElement('span');
-          span.title = 'League Workspace account';
-          span.style.fontSize = '16px';
-          span.textContent = '🏴';
-          el.replaceWith(span);
-        }}
+      />
+    );
+  }
+  if (kind === 'league-student') {
+    return (
+      <img
+        src="https://images.jointheleague.org/logos/bolt.png"
+        alt="League student"
+        title="League student account (student in address)"
+        style={common}
       />
     );
   }
