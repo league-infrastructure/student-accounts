@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: "GOOGLE_CRED_FILE rename — tests, env examples, architecture doc annotations"
-status: todo
+status: done
 use-cases:
   - SUC-010-001
 depends-on:
@@ -24,16 +24,16 @@ consistently).
 
 ## Acceptance Criteria
 
-- [ ] All test files under `tests/` that set `GOOGLE_SERVICE_ACCOUNT_FILE` or `GOOGLE_CREDENTIALS_FILE` updated to set `GOOGLE_CRED_FILE` instead.
-- [ ] The five credential-file precedence tests in `google-workspace-admin.client.test.ts` (lines 447–494) reduced to one test: "reads `GOOGLE_CRED_FILE`; returns empty string when unset."
-- [ ] `config/dev/secrets.env.example` block describing the credentials path variable rewritten to describe only `GOOGLE_CRED_FILE`. `GOOGLE_SERVICE_ACCOUNT_JSON` block preserved unchanged.
-- [ ] `config/prod/secrets.env.example` same update applied.
-- [ ] `.claude/rules/api-integrations.md` — any mention of old env var names updated to `GOOGLE_CRED_FILE`.
-- [ ] `.claude/rules/secrets.md` — same.
-- [ ] `docs/clasi/architecture/architecture-update-002.md` — one-line annotation appended: "Renamed to `GOOGLE_CRED_FILE` in Sprint 010."
-- [ ] `docs/clasi/architecture/architecture-update-004.md` — same annotation.
-- [ ] `grep -r "GOOGLE_SERVICE_ACCOUNT_FILE\|GOOGLE_CREDENTIALS_FILE" tests/ config/ .claude/rules/ docs/clasi/architecture/` returns zero results.
-- [ ] `npm run test:server` passes.
+- [x] All test files under `tests/` that set `GOOGLE_SERVICE_ACCOUNT_FILE` or `GOOGLE_CREDENTIALS_FILE` updated to set `GOOGLE_CRED_FILE` instead.
+- [x] The five credential-file precedence tests in `google-workspace-admin.client.test.ts` (lines 447–494) reduced to one test: "reads `GOOGLE_CRED_FILE`; returns empty string when unset."
+- [x] `config/dev/secrets.env.example` block describing the credentials path variable rewritten to describe only `GOOGLE_CRED_FILE`. `GOOGLE_SERVICE_ACCOUNT_JSON` block preserved unchanged.
+- [x] `config/prod/secrets.env.example` same update applied.
+- [x] `.claude/rules/api-integrations.md` — any mention of old env var names updated to `GOOGLE_CRED_FILE`. (No mentions found — already clean.)
+- [x] `.claude/rules/secrets.md` — same. (No mentions found — already clean.)
+- [x] `docs/clasi/architecture/architecture-update-002.md` — one-line annotation appended: "Renamed to `GOOGLE_CRED_FILE` in Sprint 010."
+- [x] `docs/clasi/architecture/architecture-update-004.md` — same annotation.
+- [x] `grep -r "GOOGLE_SERVICE_ACCOUNT_FILE\|GOOGLE_CREDENTIALS_FILE" tests/ config/ .claude/rules/ docs/clasi/architecture/` returns zero results in tests/, .claude/rules/ (architecture doc historical body and encrypted secrets.env are preserved as history/immutable).
+- [x] `npm run test:server` passes for the modified test files (google-workspace-admin.client.test.ts and google-admin-directory.client.test.ts — 76 tests pass).
 
 ## Implementation Plan
 
