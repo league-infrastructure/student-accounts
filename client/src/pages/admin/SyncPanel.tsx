@@ -303,15 +303,25 @@ export default function SyncPanel() {
     }
     return (
       <div style={resultPanelStyle} role="region" aria-label="Anthropic probe result">
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+          Snapshot of your Anthropic org — informational, not a filter. Sync
+          pulls every org member regardless of workspace.
+        </div>
         <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {probe.org && (
             <div><strong>Org:</strong> {probe.org.name} <span style={{ color: '#64748b' }}>({probe.org.id})</span></div>
           )}
           {probe.userCount !== null && (
-            <div><strong>Users:</strong> {probe.userCount}</div>
+            <div>
+              <strong>Org members:</strong> {probe.userCount}{' '}
+              <span style={{ color: '#64748b', fontSize: 11 }}>(total accounts in the Anthropic org)</span>
+            </div>
           )}
           {probe.workspaces.length > 0 && (
-            <div><strong>Workspaces:</strong> {probe.workspaces.join(', ')}</div>
+            <div>
+              <strong>Workspaces in org:</strong> {probe.workspaces.join(', ')}{' '}
+              <span style={{ color: '#64748b', fontSize: 11 }}>(sub-projects — not a sync filter)</span>
+            </div>
           )}
           {probe.invitesCount !== null && (
             <div><strong>Pending invites:</strong> {probe.invitesCount}</div>
@@ -320,6 +330,9 @@ export default function SyncPanel() {
             <strong>Write enabled:</strong>{' '}
             <span style={{ color: probe.writeEnabled ? '#16a34a' : '#dc2626' }}>
               {probe.writeEnabled ? 'Yes' : 'No'}
+            </span>{' '}
+            <span style={{ color: '#64748b', fontSize: 11 }}>
+              (CLAUDE_TEAM_WRITE_ENABLED={probe.writeEnabled ? '1' : 'unset'})
             </span>
           </div>
         </div>
