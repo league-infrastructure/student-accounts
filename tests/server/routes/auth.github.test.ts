@@ -434,3 +434,75 @@ describe('mergeScan — GitHub new user', () => {
     expect(res.status).not.toBe(500);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Post-login redirect: admin → '/', staff → '/staff/directory', student → '/account'
+// ---------------------------------------------------------------------------
+
+describe('GET /api/auth/github/callback — post-login redirect by role', () => {
+  it('redirects admin to / (dashboard root)', async () => {
+    const adminUser = await makeUser({
+      primary_email: 'admin-gh@jointheleague.org',
+      display_name: 'Admin GH User',
+      role: 'admin',
+      created_via: 'admin_created',
+    });
+    await makeLogin(adminUser, {
+      provider: 'github',
+      provider_user_id: 'gh-uid-admin-redirect',
+      provider_email: 'admin-gh@jointheleague.org',
+    });
+
+    mockStrategy.setProfile({
+      id: 'gh-uid-admin-redirect',
+      displayName: 'Admin GH User',
+      username: 'adminghuser',
+      emails: [{ value: 'admin-gh@jointheleague.org' }],
+    });
+
+    const res = await request(app).get('/api/auth/github/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/');
+  });
+
+  it('redirects staff to /staff/directory', async () => {
+    const staffUser = await makeUser({
+      primary_email: 'staff-gh@jointheleague.org',
+      display_name: 'Staff GH User',
+      role: 'staff',
+      created_via: 'admin_created',
+    });
+    await makeLogin(staffUser, {
+      provider: 'github',
+      provider_user_id: 'gh-uid-staff-redirect',
+      provider_email: 'staff-gh@jointheleague.org',
+    });
+
+    mockStrategy.setProfile({
+      id: 'gh-uid-staff-redirect',
+      displayName: 'Staff GH User',
+      username: 'staffghuser',
+      emails: [{ value: 'staff-gh@jointheleague.org' }],
+    });
+
+    const res = await request(app).get('/api/auth/github/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/staff/directory');
+  });
+
+  it('redirects student to /account', async () => {
+    mockStrategy.setProfile({
+      id: 'gh-uid-student-redirect',
+      displayName: 'Student GH User',
+      username: 'studentghuser',
+      emails: [{ value: 'student-redirect-gh@example.com' }],
+    });
+
+    const res = await request(app).get('/api/auth/github/callback');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/account');
+  });
+});

@@ -33,7 +33,7 @@ export const authRouter = Router();
  * Domain roles: 'admin', 'staff', 'student'.
  */
 function postLoginRedirect(role: string | undefined): string {
-  if (role === 'admin') return '/admin/users';
+  if (role === 'admin') return '/';
   if (role === 'staff') return '/staff/directory';
   return '/account';
 }

@@ -238,14 +238,9 @@ export class ProvisioningRequestService {
         deciderId,
         new Date(),
       );
-      await this.audit.record(tx, {
-        actor_user_id: deciderId,
-        action: 'approve_provisioning_request',
-        target_user_id: existing.user_id,
-        target_entity_type: 'ProvisioningRequest',
-        target_entity_id: String(requestId),
-        details: { requestedType: existing.requested_type },
-      });
+
+      // Build audit details — may be extended below for auto-chain.
+      const auditDetails: Record<string, unknown> = { requestedType: existing.requested_type };
 
       if (existing.requested_type === 'workspace') {
         if (!this.workspaceProvisioningService) {
@@ -265,12 +260,42 @@ export class ProvisioningRequestService {
             'ProvisioningRequestService: claudeProvisioningService is required to approve claude requests but was not injected',
           );
         }
+
+        // Auto-chain: if the user has no active workspace ExternalAccount,
+        // provision the workspace first so ClaudeProvisioningService can
+        // find it when it looks up the workspace email.
+        const activeWorkspace = await (tx as any).externalAccount.findFirst({
+          where: { user_id: existing.user_id, type: 'workspace', status: 'active' },
+        });
+        if (!activeWorkspace) {
+          if (!this.workspaceProvisioningService) {
+            throw new Error(
+              'ProvisioningRequestService: workspaceProvisioningService is required for auto-chain but was not injected',
+            );
+          }
+          logger.info(
+            { requestId, userId: existing.user_id, deciderId },
+            '[provisioning-request] Auto-chain: no active workspace — provisioning workspace before Claude',
+          );
+          await this.workspaceProvisioningService.provision(existing.user_id, deciderId, tx);
+          auditDetails.auto_chained = true;
+        }
+
         logger.info(
           { requestId, userId: existing.user_id, deciderId },
           '[provisioning-request] Calling ClaudeProvisioningService.provision for claude request',
         );
         await this.claudeProvisioningService.provision(existing.user_id, deciderId, tx);
       }
+
+      await this.audit.record(tx, {
+        actor_user_id: deciderId,
+        action: 'approve_provisioning_request',
+        target_user_id: existing.user_id,
+        target_entity_type: 'ProvisioningRequest',
+        target_entity_id: String(requestId),
+        details: auditDetails,
+      });
 
       return updated;
     });
