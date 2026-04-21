@@ -82,34 +82,55 @@ export class AnthropicSyncService {
    *  3. listWorkspaces() — find the workspace whose name matches
    *     CLAUDE_STUDENT_WORKSPACE (default "Students").
    *
-   * Throws if no workspace with the target name is found.
+   * Returns null when no matching workspace is found — sync is not gated
+   * on workspace membership. We sync every Anthropic org user regardless
+   * of which workspace they belong to.
    */
-  async resolveStudentsWorkspace(): Promise<string> {
+  async resolveStudentsWorkspace(): Promise<string | null> {
     if (this.studentsWorkspaceIdCache !== undefined) {
       return this.studentsWorkspaceIdCache;
     }
 
-    const targetName = process.env.CLAUDE_STUDENT_WORKSPACE ?? 'Students';
-    logger.info({ targetName }, '[anthropic-sync] resolveStudentsWorkspace: looking up workspace by name');
-
-    const workspaces = await this.anthropicClient.listWorkspaces();
-    const workspace = workspaces.find((ws) => ws.name === targetName);
-
-    if (!workspace) {
-      const names = workspaces.map((ws) => ws.name).join(', ');
-      throw new Error(
-        `AnthropicSyncService: could not find workspace named "${targetName}". ` +
-          `Available workspaces: [${names}]`,
+    const targetName = process.env.CLAUDE_STUDENT_WORKSPACE;
+    if (!targetName) {
+      logger.info(
+        '[anthropic-sync] CLAUDE_STUDENT_WORKSPACE not set — skipping workspace add on invite acceptance.',
       );
+      this.studentsWorkspaceIdCache = null as any;
+      return null;
     }
 
-    logger.info(
-      { workspaceId: workspace.id, workspaceName: workspace.name },
-      '[anthropic-sync] resolveStudentsWorkspace: workspace found and cached',
-    );
+    logger.info({ targetName }, '[anthropic-sync] resolveStudentsWorkspace: looking up workspace by name');
 
-    this.studentsWorkspaceIdCache = workspace.id;
-    return workspace.id;
+    try {
+      const workspaces = await this.anthropicClient.listWorkspaces();
+      const workspace = workspaces.find((ws) => ws.name === targetName);
+
+      if (!workspace) {
+        const names = workspaces.map((ws) => ws.name).join(', ');
+        logger.warn(
+          { targetName, available: names },
+          '[anthropic-sync] target workspace not found — continuing sync without workspace-add',
+        );
+        this.studentsWorkspaceIdCache = null as any;
+        return null;
+      }
+
+      logger.info(
+        { workspaceId: workspace.id, workspaceName: workspace.name },
+        '[anthropic-sync] resolveStudentsWorkspace: workspace found and cached',
+      );
+
+      this.studentsWorkspaceIdCache = workspace.id;
+      return workspace.id;
+    } catch (err) {
+      logger.warn(
+        { err },
+        '[anthropic-sync] listWorkspaces failed — continuing sync without workspace-add',
+      );
+      this.studentsWorkspaceIdCache = null as any;
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -302,7 +323,16 @@ export class AnthropicSyncService {
             },
           });
 
-          await this.anthropicClient.addUserToWorkspace(studentsWsId, orgUserForInvite.id);
+          if (studentsWsId) {
+            try {
+              await this.anthropicClient.addUserToWorkspace(studentsWsId, orgUserForInvite.id);
+            } catch (wsErr) {
+              logger.warn(
+                { err: wsErr, anthropicUserId: orgUserForInvite.id },
+                '[anthropic-sync] addUserToWorkspace failed — continuing (non-fatal)',
+              );
+            }
+          }
 
           await this.auditService.record(tx, {
             actor_user_id: actorId,

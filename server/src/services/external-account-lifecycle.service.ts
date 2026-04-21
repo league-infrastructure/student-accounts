@@ -60,27 +60,40 @@ export class ExternalAccountLifecycleService {
    * this service instance. Uses CLAUDE_STUDENT_WORKSPACE env var (default
    * "Students") as the target name.
    *
-   * Throws if no matching workspace is found.
+   * Returns null when CLAUDE_STUDENT_WORKSPACE is not set, or when the
+   * named workspace is not found. Suspend on Claude is still allowed in
+   * that case; it just becomes a no-op at the workspace layer and only
+   * records the status change locally.
    */
-  private async resolveStudentsWorkspaceId(): Promise<string> {
+  private async resolveStudentsWorkspaceId(): Promise<string | null> {
     if (this.studentsWorkspaceIdCache !== undefined) {
       return this.studentsWorkspaceIdCache;
     }
 
-    const targetName = process.env.CLAUDE_STUDENT_WORKSPACE ?? 'Students';
-    const workspaces = await this.claudeTeamClient.listWorkspaces();
-    const workspace = workspaces.find((ws) => ws.name === targetName);
-
-    if (!workspace) {
-      const names = workspaces.map((ws) => ws.name).join(', ');
-      throw new Error(
-        `ExternalAccountLifecycleService: could not find Anthropic workspace named "${targetName}". ` +
-          `Available: [${names}]`,
-      );
+    const targetName = process.env.CLAUDE_STUDENT_WORKSPACE;
+    if (!targetName) {
+      this.studentsWorkspaceIdCache = null as any;
+      return null;
     }
 
-    this.studentsWorkspaceIdCache = workspace.id;
-    return workspace.id;
+    try {
+      const workspaces = await this.claudeTeamClient.listWorkspaces();
+      const workspace = workspaces.find((ws) => ws.name === targetName);
+      if (!workspace) {
+        logger.warn(
+          { targetName, available: workspaces.map((w) => w.name) },
+          '[external-account-lifecycle] target workspace not found — suspend will only update local status',
+        );
+        this.studentsWorkspaceIdCache = null as any;
+        return null;
+      }
+      this.studentsWorkspaceIdCache = workspace.id;
+      return workspace.id;
+    } catch (err) {
+      logger.warn({ err }, '[external-account-lifecycle] listWorkspaces failed — suspend will only update local status');
+      this.studentsWorkspaceIdCache = null as any;
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -138,11 +151,20 @@ export class ExternalAccountLifecycleService {
         );
       }
       const studentsWsId = await this.resolveStudentsWorkspaceId();
-      await this.claudeTeamClient.removeUserFromWorkspace(studentsWsId, memberId);
-      logger.info(
-        { accountId, memberId, studentsWsId },
-        '[external-account-lifecycle] suspend: claude user removed from Students workspace',
-      );
+      if (studentsWsId) {
+        try {
+          await this.claudeTeamClient.removeUserFromWorkspace(studentsWsId, memberId);
+          logger.info(
+            { accountId, memberId, studentsWsId },
+            '[external-account-lifecycle] suspend: claude user removed from Students workspace',
+          );
+        } catch (err) {
+          logger.warn(
+            { accountId, memberId, studentsWsId, err },
+            '[external-account-lifecycle] suspend: removeUserFromWorkspace failed — continuing with local status update',
+          );
+        }
+      }
     }
 
     // --- 3. Persist status change ---

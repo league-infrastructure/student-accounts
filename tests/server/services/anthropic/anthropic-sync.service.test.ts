@@ -159,6 +159,8 @@ describe('AnthropicSyncService.reconcile — link by email', () => {
 
 describe('AnthropicSyncService.reconcile — invite accepted', () => {
   it('transitions pending ExternalAccount to active when invite email appears in org users', async () => {
+    // CLAUDE_STUDENT_WORKSPACE opts us in to the workspace-add side effect.
+    process.env.CLAUDE_STUDENT_WORKSPACE = 'Students';
     const user = await makeUser({ primary_email: 'bob@students.jointheleague.org' });
     // Local ExternalAccount with external_id = invite id
     const pendingAccount = await makeExternalAccount(user, {
@@ -346,8 +348,16 @@ describe('AnthropicSyncService.reconcile — stale removal', () => {
 // Workspace resolution
 // ---------------------------------------------------------------------------
 
-describe('AnthropicSyncService — Students workspace resolution', () => {
-  it('resolves workspace by name "Students" by default', async () => {
+describe('AnthropicSyncService — workspace resolution (opt-in)', () => {
+  it('returns null when CLAUDE_STUDENT_WORKSPACE is unset — sync runs without workspace-add', async () => {
+    // No env var set (beforeEach deletes it).
+    const svc = makeService(fakeClient);
+    const wsId = await svc.resolveStudentsWorkspace();
+    expect(wsId).toBeNull();
+  });
+
+  it('resolves workspace by name when CLAUDE_STUDENT_WORKSPACE is set', async () => {
+    process.env.CLAUDE_STUDENT_WORKSPACE = 'Students';
     fakeClient.configure('listWorkspaces', [
       { id: 'ws-other', name: 'OtherWorkspace' },
       { id: 'ws-students-001', name: 'Students' },
@@ -371,25 +381,24 @@ describe('AnthropicSyncService — Students workspace resolution', () => {
     expect(wsId).toBe('ws-learners-999');
   });
 
-  it('caches the workspace ID (listWorkspaces called only once)', async () => {
+  it('caches the workspace ID (listWorkspaces called only once) when configured', async () => {
+    process.env.CLAUDE_STUDENT_WORKSPACE = 'Students';
     fakeClient.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
     fakeClient.configure('listOrgUsers', { data: [], nextCursor: undefined });
     fakeClient.configure('listInvites', { data: [], nextCursor: undefined });
 
     const svc = makeService(fakeClient);
-    // Call reconcile twice — listWorkspaces should be called once total
     await svc.reconcile(null);
     await svc.reconcile(null);
 
     expect(fakeClient.calls.listWorkspaces).toHaveLength(1);
   });
 
-  it('throws when the named workspace is not found', async () => {
+  it('returns null (instead of throwing) when the named workspace is not found', async () => {
+    process.env.CLAUDE_STUDENT_WORKSPACE = 'Students';
     fakeClient.configure('listWorkspaces', [{ id: 'ws-other', name: 'OtherWorkspace' }]);
 
     const svc = makeService(fakeClient);
-    await expect(svc.resolveStudentsWorkspace()).rejects.toThrow(
-      /could not find workspace named "Students"/,
-    );
+    await expect(svc.resolveStudentsWorkspace()).resolves.toBeNull();
   });
 });
