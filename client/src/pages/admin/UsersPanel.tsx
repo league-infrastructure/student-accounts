@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { prettifyName } from './utils/prettifyName';
@@ -49,6 +50,7 @@ type FilterOption =
   | { type: 'account-google' }
   | { type: 'account-league' }
   | { type: 'account-pike13' }
+  | { type: 'account-claude' }
   | { type: 'cohort'; cohortId: number; cohortName: string };
 
 // ---------------------------------------------------------------------------
@@ -136,9 +138,24 @@ function filterUsers(users: AdminUser[], filter: FilterOption): AdminUser[] {
     case 'account-google':
       return users.filter((u) => u.providers.some((p) => p.provider === 'google'));
     case 'account-league':
-      return users.filter((u) => u.externalAccountTypes.includes('workspace'));
+      // Anyone whose primary_email, a login email, or their workspace
+      // ExternalAccount external_id ends in @jointheleague.org — covers
+      // students/staff/admins whether or not we've minted an app-local
+      // workspace ExternalAccount row for them.
+      return users.filter((u) => {
+        if (u.email?.toLowerCase().endsWith('@jointheleague.org')) return true;
+        if ((u.providers ?? []).some((p) => p.email?.toLowerCase().endsWith('@jointheleague.org'))) return true;
+        if (
+          (u.externalAccounts ?? []).some(
+            (a) => a.type === 'workspace' && a.externalId?.toLowerCase().endsWith('@jointheleague.org'),
+          )
+        ) return true;
+        return false;
+      });
     case 'account-pike13':
       return users.filter((u) => u.externalAccountTypes.includes('pike13'));
+    case 'account-claude':
+      return users.filter((u) => u.externalAccountTypes.includes('claude'));
     case 'cohort':
       return users.filter((u) => u.cohort?.id === filter.cohortId);
     default:
@@ -202,6 +219,8 @@ function filterLabel(filter: FilterOption): string {
       return 'Filter: League';
     case 'account-pike13':
       return 'Filter: Pike13';
+    case 'account-claude':
+      return 'Filter: Claude';
     case 'cohort':
       return `Filter: ${filter.cohortName}`;
     default:
@@ -318,17 +337,41 @@ interface FilterDropdownProps {
 
 function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  // Close on outside click (the menu is a portal so we check both refs).
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const t = e.target as Node;
+      if (buttonRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  // Compute viewport-relative coords whenever the menu opens or the
+  // window resizes. Using viewport coords + position:fixed means the
+  // menu escapes any ancestor with overflow:auto.
+  useLayoutEffect(() => {
+    if (!open) return;
+    function update() {
+      const el = buttonRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setCoords({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 220) });
+    }
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
 
   function choose(f: FilterOption) {
     onSelect(f);
@@ -337,19 +380,20 @@ function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
 
   const isActive = (f: FilterOption) => JSON.stringify(f) === JSON.stringify(filter);
 
-  return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={dropdownButtonStyle}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {filterLabel(filter)}
-        <span style={{ marginLeft: 6, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div style={dropdownMenuStyle} role="listbox">
+  const menu = open && coords
+    ? createPortal(
+        <div
+          ref={menuRef}
+          role="listbox"
+          style={{
+            ...dropdownMenuStyle,
+            position: 'fixed',
+            top: coords.top,
+            left: coords.left,
+            minWidth: coords.width,
+            maxHeight: `calc(100vh - ${coords.top + 16}px)`,
+          }}
+        >
           {/* Role section */}
           <div style={sectionHeaderStyle}>Role</div>
           {[
@@ -375,6 +419,7 @@ function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
           {[
             { label: 'Google', value: { type: 'account-google' } as FilterOption },
             { label: 'League', value: { type: 'account-league' } as FilterOption },
+            { label: 'Claude', value: { type: 'account-claude' } as FilterOption },
             { label: 'Pike13', value: { type: 'account-pike13' } as FilterOption },
           ].map((item) => (
             <button
@@ -409,8 +454,24 @@ function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
               })}
             </>
           )}
-        </div>
-      )}
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        ref={buttonRef}
+        onClick={() => setOpen((v) => !v)}
+        style={dropdownButtonStyle}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {filterLabel(filter)}
+        <span style={{ marginLeft: 6, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {menu}
     </div>
   );
 }
