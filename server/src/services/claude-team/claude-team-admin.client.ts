@@ -1,4 +1,16 @@
 /**
+ * @deprecated Use AnthropicAdminClient from '../anthropic/anthropic-admin.client' instead.
+ *
+ * This file is a backward-compatibility shim. It retains the original
+ * ClaudeTeamAdminClient interface and ClaudeTeamAdminClientImpl class so
+ * that existing code and tests continue to compile and run without changes.
+ * New code should use AnthropicAdminClient and AnthropicAdminClientImpl.
+ *
+ * Re-exports of the new types are added at the bottom of this file for
+ * callers that want to import from a single location.
+ */
+
+/**
  * Claude Team Admin client abstraction (Sprint 005 T002).
  *
  * Provides an API layer for all Claude Team seat-management operations:
@@ -449,3 +461,24 @@ export class ClaudeTeamAdminClientImpl implements ClaudeTeamAdminClient {
     return members;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Re-exports from the new Anthropic Admin client module (Sprint 010 T002/T008).
+// New code should import directly from '../anthropic/anthropic-admin.client'.
+// ---------------------------------------------------------------------------
+
+export type {
+  AnthropicAdminClient,
+  AnthropicUser,
+  AnthropicInvite,
+  AnthropicWorkspace,
+  AnthropicPagedResult,
+  InviteToOrgParams,
+} from '../anthropic/anthropic-admin.client.js';
+export {
+  AnthropicAdminClientImpl,
+  AnthropicAdminApiError,
+  AnthropicAdminNotFoundError,
+  AnthropicAdminWriteDisabledError,
+  resolveAnthropicAdminApiKey,
+} from '../anthropic/anthropic-admin.client.js';

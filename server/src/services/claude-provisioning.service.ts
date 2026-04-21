@@ -32,7 +32,7 @@ import { createLogger } from './logger.js';
 
 import { ConflictError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
-import type { ClaudeTeamAdminClient } from './claude-team/claude-team-admin.client.js';
+import type { AnthropicAdminClient } from './anthropic/anthropic-admin.client.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import { UserRepository } from './repositories/user.repository.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
@@ -41,7 +41,7 @@ const logger = createLogger('claude-provisioning');
 
 export class ClaudeProvisioningService {
   constructor(
-    private readonly claudeTeamClient: ClaudeTeamAdminClient,
+    private readonly claudeTeamClient: AnthropicAdminClient,
     private readonly externalAccountRepo: typeof ExternalAccountRepository,
     private readonly auditService: AuditService,
     private readonly userRepo: typeof UserRepository,
@@ -114,11 +114,11 @@ export class ClaudeProvisioningService {
 
     logger.info(
       { userId, actorId, workspaceEmail },
-      '[claude-provisioning] Calling ClaudeTeamAdminClient.inviteMember',
+      '[claude-provisioning] Calling AnthropicAdminClient.inviteToOrg',
     );
 
-    // --- 4. Call Claude Team API (may throw; caller's tx rolls back) ---
-    const member = await this.claudeTeamClient.inviteMember({ email: workspaceEmail });
+    // --- 4. Call Anthropic Admin API (may throw; caller's tx rolls back) ---
+    const member = await this.claudeTeamClient.inviteToOrg({ email: workspaceEmail });
 
     logger.info(
       { userId, memberId: member.id, email: member.email, status: member.status },
