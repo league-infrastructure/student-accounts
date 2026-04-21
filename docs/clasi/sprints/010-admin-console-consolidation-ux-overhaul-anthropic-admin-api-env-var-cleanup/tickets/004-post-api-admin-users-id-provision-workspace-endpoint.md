@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: POST /api/admin/users/:id/provision-workspace endpoint
-status: todo
+status: done
 use-cases:
   - SUC-010-004
 depends-on: []
@@ -23,15 +23,15 @@ added in Sprint 005.
 
 ## Acceptance Criteria
 
-- [ ] `POST /admin/users/:id/provision-workspace` route handler added to `server/src/routes/admin/users.ts`.
-- [ ] Returns 422 if the user is not `role=student`.
-- [ ] Returns 422 if the user has no cohort assigned.
-- [ ] Returns 422 if the user already has an active `type=workspace` ExternalAccount.
-- [ ] On success, returns 201 with the new ExternalAccount record.
-- [ ] Calls `WorkspaceProvisioningService.provision(user, actor)` — same service as used by `ProvisioningRequestService`.
-- [ ] AuditEvent recorded (handled internally by `WorkspaceProvisioningService`).
-- [ ] Route-level tests covering all 422 conditions and the 201 success path.
-- [ ] `npm run test:server` passes.
+- [x] `POST /admin/users/:id/provision-workspace` route handler added (in `server/src/routes/admin/provision-workspace.ts`, mounted via `index.ts`).
+- [x] Returns 422 if the user is not `role=student`.
+- [x] Returns 422 if the user has no cohort assigned.
+- [x] Returns 422 if the user already has an active `type=workspace` ExternalAccount.
+- [x] On success, returns 201 with the new ExternalAccount record.
+- [x] Calls `WorkspaceProvisioningService.provision(user, actor)` — same service as used by `ProvisioningRequestService`.
+- [x] AuditEvent recorded (handled internally by `WorkspaceProvisioningService`).
+- [x] Route-level tests covering all 422 conditions and the 201 success path.
+- [x] `npm run test:server` passes.
 
 ## Implementation Plan
 
