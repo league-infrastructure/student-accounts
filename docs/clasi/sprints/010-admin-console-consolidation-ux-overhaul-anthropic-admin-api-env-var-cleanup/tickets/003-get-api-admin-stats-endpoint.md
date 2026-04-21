@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: GET /api/admin/stats endpoint
-status: todo
+status: done
 use-cases:
   - SUC-010-005
 depends-on: []
@@ -20,12 +20,12 @@ in a single Prisma aggregation. No external API calls.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/routes/admin/stats.ts` created and exports `adminStatsRouter`.
-- [ ] `GET /admin/stats` returns `{ totalStudents, totalStaff, totalAdmins, pendingRequests, openMergeSuggestions, cohortCount }` (all integers).
-- [ ] Endpoint is protected by `requireAuth` + `requireRole('admin')` (enforced by `adminRouter` mount — confirm this is automatic via the existing `adminRouter` setup).
-- [ ] `adminStatsRouter` is mounted in `server/src/routes/admin/index.ts`.
-- [ ] Route-level test for `GET /admin/stats` covering: 200 with correct shape; 403 for non-admin user.
-- [ ] `npm run test:server` passes.
+- [x] `server/src/routes/admin/stats.ts` created and exports `adminStatsRouter`.
+- [x] `GET /admin/stats` returns `{ totalStudents, totalStaff, totalAdmins, pendingRequests, openMergeSuggestions, cohortCount }` (all integers).
+- [x] Endpoint is protected by `requireAuth` + `requireRole('admin')` (enforced by `adminRouter` mount — confirm this is automatic via the existing `adminRouter` setup).
+- [x] `adminStatsRouter` is mounted in `server/src/routes/admin/index.ts`.
+- [x] Route-level test for `GET /admin/stats` covering: 200 with correct shape; 403 for non-admin user.
+- [x] `npm run test:server` passes.
 
 ## Implementation Plan
 
