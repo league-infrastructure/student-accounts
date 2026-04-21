@@ -1,7 +1,7 @@
 ---
 id: '009'
 title: probe-anthropic-admin.mjs script
-status: todo
+status: done
 use-cases:
   - SUC-010-008
 depends-on:
@@ -24,13 +24,13 @@ The script does not depend on the compiled TypeScript server; it uses
 
 ## Acceptance Criteria
 
-- [ ] `scripts/probe-anthropic-admin.mjs` created as a standalone ESM script.
-- [ ] Reads `ANTHROPIC_ADMIN_API_KEY` from the environment. Exits with a clear error if not set.
-- [ ] Hits four endpoints: `GET /v1/organizations/me`, `GET /v1/organizations/users?limit=1`, `GET /v1/organizations/workspaces?limit=10`, `GET /v1/organizations/invites?limit=1`.
-- [ ] Prints a single OK/FAIL summary line per endpoint with the response shape (org name, user count, workspace names, invite count).
-- [ ] Exits with code 0 if all endpoints return 2xx; exits with non-zero if any fail.
-- [ ] Works with `node scripts/probe-anthropic-admin.mjs` (no compilation step).
-- [ ] Manual verification: running the script with the real `ANTHROPIC_ADMIN_API_KEY` set prints OK with "The League of Amazing Programmers" org name.
+- [x] `scripts/probe-anthropic-admin.mjs` created as a standalone ESM script.
+- [x] Reads `ANTHROPIC_ADMIN_API_KEY` from the environment. Exits with a clear error if not set.
+- [x] Hits four endpoints: `GET /v1/organizations/me`, `GET /v1/organizations/users?limit=1`, `GET /v1/organizations/workspaces?limit=10`, `GET /v1/organizations/invites?limit=1`.
+- [x] Prints a single OK/FAIL summary line per endpoint with the response shape (org name, user count, workspace names, invite count).
+- [x] Exits with code 0 if all endpoints return 2xx; exits with non-zero if any fail.
+- [x] Works with `node scripts/probe-anthropic-admin.mjs` (no compilation step).
+- [x] Manual verification: running the script with the real `ANTHROPIC_ADMIN_API_KEY` set prints OK with "The League of Amazing Programmers" org name.
 
 ## Implementation Plan
 
