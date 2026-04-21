@@ -18,6 +18,8 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { NotFoundError } from '../errors.js';
 import type { ExternalAccountLifecycleService } from './external-account-lifecycle.service.js';
+import type { WorkspaceProvisioningService } from './workspace-provisioning.service.js';
+import type { ClaudeProvisioningService } from './claude-provisioning.service.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { CohortRepository } from './repositories/cohort.repository.js';
@@ -58,7 +60,70 @@ export class BulkCohortService {
     private readonly userRepo: typeof UserRepository,
     private readonly externalAccountRepo: typeof ExternalAccountRepository,
     private readonly cohortRepo: typeof CohortRepository,
+    private readonly workspaceProvisioning?: WorkspaceProvisioningService,
+    private readonly claudeProvisioning?: ClaudeProvisioningService,
   ) {}
+
+  // ---------------------------------------------------------------------------
+  // provisionCohort — create accounts for all students in the cohort that
+  // don't yet have one of the given type.
+  //
+  // Fail-soft: one student's failure does not abort the batch. Each
+  // provision call runs in its own prisma.$transaction.
+  // ---------------------------------------------------------------------------
+  async provisionCohort(
+    cohortId: number,
+    accountType: AccountType,
+    actorId: number,
+  ): Promise<BulkOperationResult> {
+    await this._assertCohortExists(cohortId);
+
+    const provisioner =
+      accountType === 'workspace' ? this.workspaceProvisioning : this.claudeProvisioning;
+    if (!provisioner) {
+      throw new Error(
+        `[BulkCohortService] ${accountType} provisioning service not wired. Check ServiceRegistry.`,
+      );
+    }
+
+    // Active students in the cohort who do NOT already have an
+    // active/pending ExternalAccount of the given type.
+    const users: any[] = await (this.prisma as any).user.findMany({
+      where: {
+        cohort_id: cohortId,
+        is_active: true,
+        role: 'student',
+        external_accounts: {
+          none: {
+            type: accountType,
+            status: { in: ['active', 'pending'] },
+          },
+        },
+      },
+      select: { id: true, display_name: true, primary_email: true },
+    });
+
+    const succeeded: number[] = [];
+    const failed: BulkOperationFailure[] = [];
+
+    for (const u of users) {
+      try {
+        await (this.prisma as any).$transaction(async (tx: any) => {
+          await provisioner.provision(u.id, actorId, tx);
+        });
+        succeeded.push(u.id);
+      } catch (err: any) {
+        failed.push({
+          accountId: u.id, // reuse shape: use user id when no account exists yet
+          userId: u.id,
+          userName: u.display_name ?? u.primary_email ?? String(u.id),
+          error: err?.message ?? String(err),
+        });
+      }
+    }
+
+    return { succeeded, failed };
+  }
 
   // ---------------------------------------------------------------------------
   // suspendCohort

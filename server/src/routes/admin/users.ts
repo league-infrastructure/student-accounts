@@ -87,9 +87,9 @@ adminUsersRouter.get('/users', async (req, res, next) => {
       where: { is_active: true },
       orderBy: { created_at: 'desc' },
       include: {
-        logins: { select: { provider: true, provider_username: true } },
+        logins: { select: { provider: true, provider_username: true, provider_email: true } },
         cohort: { select: { id: true, name: true } },
-        external_accounts: { select: { type: true } },
+        external_accounts: { select: { type: true, external_id: true, status: true } },
       },
     });
     res.json(users.map(serializeUser));
@@ -264,11 +264,19 @@ function serializeUser(user: any) {
       ? user.logins.map((l: any) => ({
           provider: l.provider,
           username: l.provider_username ?? null,
+          email: l.provider_email ?? null,
         }))
       : [],
     cohort: user.cohort ? { id: user.cohort.id, name: user.cohort.name } : null,
     externalAccountTypes: Array.isArray(user.external_accounts)
       ? [...new Set(user.external_accounts.map((a: any) => a.type))]
+      : [],
+    externalAccounts: Array.isArray(user.external_accounts)
+      ? user.external_accounts.map((a: any) => ({
+          type: a.type,
+          externalId: a.external_id ?? null,
+          status: a.status,
+        }))
       : [],
     createdAt: user.created_at,
     updatedAt: user.updated_at,
