@@ -1,12 +1,12 @@
 ---
 id: '012'
 title: Anthropic sync routes and SyncPanel Anthropic section
-status: todo
+status: done
 use-cases:
-  - SUC-010-006
-  - SUC-010-007
+- SUC-010-006
+- SUC-010-007
 depends-on:
-  - "010-011"
+- 010-011
 github-issue: ''
 todo: plan-claude-team-account-management-real-admin-api-integration.md
 ---
@@ -23,17 +23,17 @@ extend the `SyncPanel` UI with an Anthropic section. Depends on T011
 ## Acceptance Criteria
 
 **Backend routes:**
-- [ ] `server/src/routes/admin/anthropic-sync.ts` created and exports `anthropicSyncRouter`.
-- [ ] `POST /admin/sync/claude` runs `AnthropicSyncService.reconcile()`. Returns `SyncReport` as JSON. Returns 503 if the Anthropic API is unreachable.
-- [ ] `GET /admin/anthropic/probe` calls probe helper. Returns `{ ok: boolean, org: { id, name } | null, userCount: number | null, workspaces: string[], invitesCount: number | null, writeEnabled: boolean, error?: string }`.
-- [ ] `anthropicSyncRouter` mounted in `server/src/routes/admin/index.ts`.
-- [ ] Route-level tests for both endpoints.
+- [x] `server/src/routes/admin/anthropic-sync.ts` created and exports `anthropicSyncRouter`.
+- [x] `POST /admin/sync/claude` runs `AnthropicSyncService.reconcile()`. Returns `SyncReport` as JSON. Returns 503 if the Anthropic API is unreachable.
+- [x] `GET /admin/anthropic/probe` calls probe helper. Returns `{ ok: boolean, org: { id, name } | null, userCount: number | null, workspaces: string[], invitesCount: number | null, writeEnabled: boolean, error?: string }`.
+- [x] `anthropicSyncRouter` mounted in `server/src/routes/admin/index.ts`.
+- [x] Route-level tests for both endpoints.
 
 **Frontend:**
-- [ ] `SyncPanel.tsx` gains a third section "Anthropic (Claude)" below the existing Google and Pike13 sections.
-- [ ] Section auto-loads probe data via `GET /api/admin/anthropic/probe` on mount. Renders: org name, user count, workspace list, write-enabled status. Shows error if probe fails.
-- [ ] "Sync Claude accounts" button POSTs to `POST /api/admin/sync/claude`. Shows spinner during sync. On success, renders `SyncReport` inline: created, linked, invitedAccepted, removed, and unmatched email list.
-- [ ] `npm run test:server` and `npm run test:client` pass.
+- [x] `SyncPanel.tsx` gains a third section "Anthropic (Claude)" below the existing Google and Pike13 sections.
+- [x] Section auto-loads probe data via `GET /api/admin/anthropic/probe` on mount. Renders: org name, user count, workspace list, write-enabled status. Shows error if probe fails.
+- [x] "Sync Claude accounts" button POSTs to `POST /api/admin/sync/claude`. Shows spinner during sync. On success, renders `SyncReport` inline: created, linked, invitedAccepted, removed, and unmatched email list.
+- [x] `npm run test:server` and `npm run test:client` pass.
 
 ## Implementation Plan
 
