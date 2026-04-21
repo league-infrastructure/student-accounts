@@ -14,8 +14,7 @@
  *  - CreatedOU                   — return type for createOU
  *  - WorkspaceUser               — element type for listUsersInOU
  *  - resolveCredentialsFileEnvVar — helper that resolves the credentials file
- *    env var, accepting both GOOGLE_CREDENTIALS_FILE (wins) and the legacy
- *    GOOGLE_SERVICE_ACCOUNT_FILE as an alias (OOP fix, Sprint 004).
+ *    env var, reading GOOGLE_CRED_FILE.
  *
  * Design decisions:
  *  - Extends in place (Architecture Decision 1): credential loading, auth
@@ -28,9 +27,8 @@
  *    implemented in T002. This ticket delivers the structural extension only.
  *  - GOOGLE_STUDENT_OU_ROOT is read from process.env inside createOU().
  *    The guard against an invalid/missing root is T002's responsibility.
- *  - Credential file env var alias (OOP fix): GOOGLE_CREDENTIALS_FILE takes
- *    precedence over GOOGLE_SERVICE_ACCOUNT_FILE when both are set. One INFO
- *    log per process records which var and which default is active.
+ *  - Credential file env var: GOOGLE_CRED_FILE is the single canonical name
+ *    for the service account credentials file path (Sprint 010 rename).
  *  - League-specific defaults (OOP fix): GOOGLE_STUDENT_DOMAIN defaults to
  *    "students.jointheleague.org", GOOGLE_STUDENT_OU_ROOT defaults to
  *    "/Students". Each default is logged at INFO once per process.
@@ -119,16 +117,11 @@ export function resolveStudentOuRoot(): string {
 /**
  * Resolve the Google service account credentials file env var.
  *
- * Accepts two names — newer name wins when both are set:
- *  1. GOOGLE_CREDENTIALS_FILE  (preferred — the name the stakeholder added)
- *  2. GOOGLE_SERVICE_ACCOUNT_FILE  (Sprint 002 legacy name, still accepted)
- *
- * Returns the resolved value (possibly an empty string when neither is set).
+ * Reads GOOGLE_CRED_FILE. Returns the value (possibly an empty string when
+ * not set).
  */
 export function resolveCredentialsFileEnvVar(): string {
-  const newName = process.env.GOOGLE_CREDENTIALS_FILE ?? '';
-  const legacyName = process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '';
-  return newName || legacyName;
+  return process.env.GOOGLE_CRED_FILE ?? '';
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +296,7 @@ const ADMIN_SDK_SCOPES = [
  *     new GoogleWorkspaceAdminClientImpl(
  *       '',
  *       process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL!,
- *       process.env.GOOGLE_SERVICE_ACCOUNT_FILE,
+ *       process.env.GOOGLE_CRED_FILE,
  *     );
  *
  *   Option 2 — inline JSON string (preferred for Docker Swarm secrets):
@@ -327,7 +320,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
   }
 
   /**
-   * Resolve the filesystem path from GOOGLE_SERVICE_ACCOUNT_FILE.
+   * Resolve the filesystem path from GOOGLE_CRED_FILE.
    *
    * Rules:
    *  - If the value contains a path separator (absolute or relative path),
@@ -375,7 +368,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         raw = fs.readFileSync(resolvedPath, 'utf-8');
       } catch (readErr) {
         const msg =
-          `[google-workspace-admin] Cannot read GOOGLE_SERVICE_ACCOUNT_FILE ` +
+          `[google-workspace-admin] Cannot read GOOGLE_CRED_FILE ` +
           `'${this.serviceAccountFile}' (resolved: '${resolvedPath}'). ` +
           `Cannot look up OU for ${callerEmail}. @jointheleague.org sign-in denied (RD-001).`;
         logger.error({ email: callerEmail, err: readErr }, msg);
@@ -390,7 +383,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         JSON.parse(raw);
       } catch (parseErr) {
         const msg =
-          `[google-workspace-admin] GOOGLE_SERVICE_ACCOUNT_FILE ` +
+          `[google-workspace-admin] GOOGLE_CRED_FILE ` +
           `'${this.serviceAccountFile}' (resolved: '${resolvedPath}') is not valid JSON. ` +
           `Cannot look up OU for ${callerEmail}. @jointheleague.org sign-in denied (RD-001).`;
         logger.error({ email: callerEmail, err: parseErr }, msg);
@@ -402,7 +395,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         );
       }
       logger.info(
-        { email: callerEmail, source: 'GOOGLE_SERVICE_ACCOUNT_FILE', resolvedPath },
+        { email: callerEmail, source: 'GOOGLE_CRED_FILE', resolvedPath },
         '[google-workspace-admin] Using service account credentials from file.',
       );
       return raw;
@@ -417,7 +410,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
     }
 
     const msg =
-      '[google-workspace-admin] Neither GOOGLE_SERVICE_ACCOUNT_FILE nor ' +
+      '[google-workspace-admin] Neither GOOGLE_CRED_FILE nor ' +
       'GOOGLE_SERVICE_ACCOUNT_JSON is set. ' +
       `Cannot look up OU for ${callerEmail}. @jointheleague.org sign-in denied (RD-001).`;
     logger.error({ email: callerEmail }, msg);
@@ -438,7 +431,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
     if (!this.serviceAccountFile && !this.serviceAccountJson) {
       const msg =
         '[google-workspace-admin] GOOGLE_SERVICE_ACCOUNT_JSON or ' +
-        'GOOGLE_SERVICE_ACCOUNT_FILE and GOOGLE_ADMIN_DELEGATED_USER_EMAIL are missing. ' +
+        'GOOGLE_CRED_FILE and GOOGLE_ADMIN_DELEGATED_USER_EMAIL are missing. ' +
         `Cannot perform operation for ${callerRef}. Access denied (RD-001).`;
       logger.error({ ref: callerRef }, msg);
       throw new StaffOULookupError(
