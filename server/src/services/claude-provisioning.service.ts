@@ -126,10 +126,12 @@ export class ClaudeProvisioningService {
     );
 
     // --- 5. Persist ExternalAccount inside the caller's transaction ---
+    // The invite creates a pending seat — status transitions to active once the
+    // invitee accepts (reconciled by AnthropicSyncService.reconcile).
     const newAccount = await this.externalAccountRepo.create(tx, {
       user_id: userId,
       type: 'claude',
-      status: 'active',
+      status: 'pending',
       external_id: member.id,
       status_changed_at: new Date(),
     });

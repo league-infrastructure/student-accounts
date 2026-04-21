@@ -11,19 +11,21 @@
  *
  * Dependency injection:
  *  - googleClient          — GoogleWorkspaceAdminClient (real or fake)
- *  - claudeTeamClient      — ClaudeTeamAdminClient (real or fake)
+ *  - claudeTeamClient      — AnthropicAdminClient (real or fake)
  *  - externalAccountRepo   — ExternalAccountRepository (writes inside tx)
  *  - auditService          — AuditService
  *
  * Environment variables consumed:
- *  - WORKSPACE_DELETE_DELAY_DAYS — optional; number of days before a removed
+ *  - WORKSPACE_DELETE_DELAY_DAYS  — optional; number of days before a removed
  *    workspace account is hard-deleted (default 3).
+ *  - CLAUDE_STUDENT_WORKSPACE     — name of the Students workspace in Anthropic
+ *    (default "Students"). Used to look up the workspace ID for suspend calls.
  *
  * Errors thrown:
  *  - NotFoundError (404)       — accountId does not exist.
  *  - UnprocessableError (422)  — account is already in status=removed.
  *  - GoogleWorkspaceAdminClient errors — propagated as-is.
- *  - ClaudeTeamAdminClient errors      — propagated as-is.
+ *  - AnthropicAdminClient errors       — propagated as-is.
  */
 
 import { createLogger } from './logger.js';
@@ -41,12 +43,45 @@ const logger = createLogger('external-account-lifecycle');
 const DEFAULT_WORKSPACE_DELETE_DELAY_DAYS = 3;
 
 export class ExternalAccountLifecycleService {
+  /** Cached Students workspace ID (resolved once per process). */
+  private studentsWorkspaceIdCache: string | undefined;
+
   constructor(
     private readonly googleClient: GoogleWorkspaceAdminClient,
     private readonly claudeTeamClient: AnthropicAdminClient,
     private readonly externalAccountRepo: typeof ExternalAccountRepository,
     private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Resolve the Students workspace ID for Anthropic workspace operations.
+   *
+   * Calls listWorkspaces() once and caches the result for the lifetime of
+   * this service instance. Uses CLAUDE_STUDENT_WORKSPACE env var (default
+   * "Students") as the target name.
+   *
+   * Throws if no matching workspace is found.
+   */
+  private async resolveStudentsWorkspaceId(): Promise<string> {
+    if (this.studentsWorkspaceIdCache !== undefined) {
+      return this.studentsWorkspaceIdCache;
+    }
+
+    const targetName = process.env.CLAUDE_STUDENT_WORKSPACE ?? 'Students';
+    const workspaces = await this.claudeTeamClient.listWorkspaces();
+    const workspace = workspaces.find((ws) => ws.name === targetName);
+
+    if (!workspace) {
+      const names = workspaces.map((ws) => ws.name).join(', ');
+      throw new Error(
+        `ExternalAccountLifecycleService: could not find Anthropic workspace named "${targetName}". ` +
+          `Available: [${names}]`,
+      );
+    }
+
+    this.studentsWorkspaceIdCache = workspace.id;
+    return workspace.id;
+  }
 
   // ---------------------------------------------------------------------------
   // suspend
@@ -96,10 +131,18 @@ export class ExternalAccountLifecycleService {
       await this.googleClient.suspendUser(email);
       logger.info({ accountId, email }, '[external-account-lifecycle] suspend: workspace user suspended');
     } else if (account.type === 'claude') {
-      // AnthropicAdminClient has no suspend operation. Suspend for claude
-      // accounts is a status-only change; the org member remains active in
-      // the Anthropic API until explicitly removed via deleteOrgUser.
-      logger.info({ accountId }, '[external-account-lifecycle] suspend: claude account — status-only change (no Anthropic API call)');
+      const memberId = account.external_id;
+      if (!memberId) {
+        throw new UnprocessableError(
+          `ExternalAccount ${accountId} has no external_id (Claude member id); cannot suspend`,
+        );
+      }
+      const studentsWsId = await this.resolveStudentsWorkspaceId();
+      await this.claudeTeamClient.removeUserFromWorkspace(studentsWsId, memberId);
+      logger.info(
+        { accountId, memberId, studentsWsId },
+        '[external-account-lifecycle] suspend: claude user removed from Students workspace',
+      );
     }
 
     // --- 3. Persist status change ---

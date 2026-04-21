@@ -493,7 +493,8 @@ describe('ProvisioningRequestService.approve — claude request', () => {
       where: { user_id: user.id, type: 'claude' },
     });
     expect(accounts).toHaveLength(1);
-    expect(accounts[0].status).toBe('active');
+    // Invite creates a pending seat; transitions to active once invite is accepted
+    expect(accounts[0].status).toBe('pending');
     expect(accounts[0].external_id).toBe('fake-claude-member-id');
   });
 
@@ -641,7 +642,8 @@ describe('ProvisioningRequestService.approve — claude request', () => {
       where: { user_id: user.id, type: 'claude' },
     });
     expect(claudeAccounts).toHaveLength(1);
-    expect(claudeAccounts[0].status).toBe('active');
+    // Invite creates a pending seat; transitions to active once invite is accepted
+    expect(claudeAccounts[0].status).toBe('pending');
 
     // The audit event should carry auto_chained: true.
     const events = await (prisma as any).auditEvent.findMany({

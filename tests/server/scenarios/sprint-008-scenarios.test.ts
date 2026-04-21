@@ -286,6 +286,8 @@ describe('Scenario 3 (T004): POST /bulk-suspend claude — 3 accounts all succee
 
     const googleFake = new FakeGoogleWorkspaceAdminClient();
     const claudeFake = new FakeClaudeTeamAdminClient();
+    // Provide a Students workspace for the claude suspend (removeUserFromWorkspace)
+    claudeFake.configure('listWorkspaces', [{ id: 'ws-students-test', name: 'Students' }]);
     const restore = injectFakeClients(googleFake, claudeFake);
 
     try {

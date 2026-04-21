@@ -77,7 +77,7 @@ beforeEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('ClaudeProvisioningService.provision — happy path', () => {
-  it('creates an active ExternalAccount with the Claude member id', async () => {
+  it('creates a pending ExternalAccount with the Claude invite id', async () => {
     const student = await makeUser({ role: 'student' });
     const admin = await makeUser({ role: 'admin' });
     // Workspace account whose external_id is the workspace email
@@ -92,7 +92,8 @@ describe('ClaudeProvisioningService.provision — happy path', () => {
 
     expect(account.user_id).toBe(student.id);
     expect(account.type).toBe('claude');
-    expect(account.status).toBe('active');
+    // Invite creates a pending seat; transitions to active once accepted via reconcile
+    expect(account.status).toBe('pending');
     expect(account.external_id).toBe('fake-claude-member-id');
     expect(account.status_changed_at).not.toBeNull();
   });
@@ -302,7 +303,8 @@ describe('ClaudeProvisioningService.provision — existing claude account', () =
     const svc = makeService(fakeClient);
     const account = await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
 
-    expect(account.status).toBe('active');
+    // Invite creates a pending seat
+    expect(account.status).toBe('pending');
     expect(fakeClient.calls.inviteMember).toHaveLength(1);
   });
 });
