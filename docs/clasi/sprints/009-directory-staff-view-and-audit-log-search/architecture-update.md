@@ -1,6 +1,6 @@
 ---
-sprint: "009"
-status: draft
+sprint: 009
+status: active
 ---
 
 # Architecture Update — Sprint 009: Directory, Staff View, Audit Log Search, and Users Panel UX Overhaul
