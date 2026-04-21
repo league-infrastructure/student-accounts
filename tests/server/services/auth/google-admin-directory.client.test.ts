@@ -375,7 +375,7 @@ function writeTempFile(content: string): string {
   return tmpPath;
 }
 
-describe('GoogleWorkspaceAdminClientImpl — file path (GOOGLE_SERVICE_ACCOUNT_FILE)', () => {
+describe('GoogleWorkspaceAdminClientImpl — file path (GOOGLE_CRED_FILE)', () => {
   // Track temp files created so we can clean them up.
   const tempFiles: string[] = [];
 

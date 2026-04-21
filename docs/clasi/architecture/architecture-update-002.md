@@ -649,3 +649,5 @@ Impact: The sign-in handler does not deny access on OU mismatch for
 `@jointheleague.org` accounts; it continues with `role=student`. Only a
 `StaffOULookupError` (missing credentials, API failure — covered by RD-001)
 causes a deny.
+
+> **Sprint 010 note:** `GOOGLE_SERVICE_ACCOUNT_FILE` renamed to `GOOGLE_CRED_FILE` in Sprint 010.

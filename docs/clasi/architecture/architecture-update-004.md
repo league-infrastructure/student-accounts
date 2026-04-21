@@ -770,3 +770,5 @@ Updated secrets table:
 | `GOOGLE_STAFF_OU_PATH` | No | `/League Staff` | OU prefix that identifies staff accounts |
 | `GOOGLE_WORKSPACE_WRITE_ENABLED` | Yes (for writes) | — | Must be exactly `"1"` to allow write calls |
 | `ADMIN_EMAILS` | Yes (for admin login) | — | Comma-separated admin email list |
+
+> **Sprint 010 note:** `GOOGLE_CREDENTIALS_FILE` and `GOOGLE_SERVICE_ACCOUNT_FILE` consolidated to `GOOGLE_CRED_FILE` in Sprint 010.
