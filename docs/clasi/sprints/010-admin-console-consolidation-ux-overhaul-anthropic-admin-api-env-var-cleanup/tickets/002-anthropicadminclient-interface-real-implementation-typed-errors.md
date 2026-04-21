@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: "AnthropicAdminClient — interface, real implementation, typed errors"
-status: todo
+status: done
 use-cases:
   - SUC-010-006
   - SUC-010-007
@@ -28,15 +28,15 @@ ServiceRegistry and existing tests).
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/anthropic/anthropic-admin.client.ts` exists with `AnthropicAdminClient` interface and `AnthropicAdminClientImpl` class.
-- [ ] Interface exposes all required methods: `listOrgUsers`, `getOrgUser`, `inviteToOrg`, `listInvites`, `cancelInvite`, `deleteOrgUser`, `listWorkspaces`, `addUserToWorkspace`, `removeUserFromWorkspace`.
-- [ ] Auth header is `x-api-key: <key>` (not `Authorization: Bearer`). Header `anthropic-version: 2023-06-01` included on all requests.
-- [ ] No `product_id` / `CLAUDE_TEAM_PRODUCT_ID` in the new implementation.
-- [ ] Typed errors exported: `AnthropicAdminApiError` (non-2xx), `AnthropicAdminNotFoundError` (404), `AnthropicAdminWriteDisabledError` (write flag not set).
-- [ ] `CLAUDE_TEAM_WRITE_ENABLED=1` kill switch enforced on all mutating methods.
-- [ ] Pagination cursor handling: `listOrgUsers` and `listInvites` accept an optional `cursor` parameter; response includes `nextCursor`.
-- [ ] Unit tests covering: 200 success, 401 → `AnthropicAdminApiError`, 404 → `AnthropicAdminNotFoundError`, 429 → `AnthropicAdminApiError`, write-disabled path; all against mocked `fetch`.
-- [ ] `npm run test:server` passes.
+- [x] `server/src/services/anthropic/anthropic-admin.client.ts` exists with `AnthropicAdminClient` interface and `AnthropicAdminClientImpl` class.
+- [x] Interface exposes all required methods: `listOrgUsers`, `getOrgUser`, `inviteToOrg`, `listInvites`, `cancelInvite`, `deleteOrgUser`, `listWorkspaces`, `addUserToWorkspace`, `removeUserFromWorkspace`.
+- [x] Auth header is `x-api-key: <key>` (not `Authorization: Bearer`). Header `anthropic-version: 2023-06-01` included on all requests.
+- [x] No `product_id` / `CLAUDE_TEAM_PRODUCT_ID` in the new implementation.
+- [x] Typed errors exported: `AnthropicAdminApiError` (non-2xx), `AnthropicAdminNotFoundError` (404), `AnthropicAdminWriteDisabledError` (write flag not set).
+- [x] `CLAUDE_TEAM_WRITE_ENABLED=1` kill switch enforced on all mutating methods.
+- [x] Pagination cursor handling: `listOrgUsers` and `listInvites` accept an optional `cursor` parameter; response includes `nextCursor`.
+- [x] Unit tests covering: 200 success, 401 → `AnthropicAdminApiError`, 404 → `AnthropicAdminNotFoundError`, 429 → `AnthropicAdminApiError`, write-disabled path; all against mocked `fetch`.
+- [x] `npm run test:server` passes.
 
 ## Implementation Plan
 
