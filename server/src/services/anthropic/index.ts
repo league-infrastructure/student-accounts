@@ -15,3 +15,5 @@ export {
   type AnthropicPagedResult,
   type InviteToOrgParams,
 } from './anthropic-admin.client.js';
+
+export { AnthropicSyncService, type SyncReport } from './anthropic-sync.service.js';

@@ -162,10 +162,9 @@ describe('ExternalAccountLifecycleService.suspend — workspace', () => {
 // ---------------------------------------------------------------------------
 
 describe('ExternalAccountLifecycleService.suspend — claude', () => {
-  it('does not call any Anthropic Admin API for claude suspend (status-only change)', async () => {
-    // AnthropicAdminClient has no suspend operation. Claude account suspend is
-    // a status-only change in our database; the org member remains active in
-    // the Anthropic API until explicitly removed via deleteOrgUser.
+  it('calls removeUserFromWorkspace with the Students workspace id and member id', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
     const user = await makeUser();
     const admin = await makeUser({ role: 'admin' });
     const account = await makeExternalAccount(user, {
@@ -177,11 +176,33 @@ describe('ExternalAccountLifecycleService.suspend — claude', () => {
     const svc = makeService(fakeGoogle, fakeClaude);
     await runInTransaction((tx) => svc.suspend(account.id, admin.id, tx));
 
-    expect(fakeClaude.calls.suspendMember).toHaveLength(0);
+    expect(fakeClaude.calls.removeUserFromWorkspace).toHaveLength(1);
+    expect(fakeClaude.calls.removeUserFromWorkspace[0]).toMatchObject({
+      workspaceId: 'ws-students-001',
+      userId: 'claude-member-abc',
+    });
+  });
+
+  it('does not call deleteOrgUser for claude suspend', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
+    const user = await makeUser();
+    const admin = await makeUser({ role: 'admin' });
+    const account = await makeExternalAccount(user, {
+      type: 'claude',
+      status: 'active',
+      external_id: 'claude-member-abc',
+    });
+
+    const svc = makeService(fakeGoogle, fakeClaude);
+    await runInTransaction((tx) => svc.suspend(account.id, admin.id, tx));
+
     expect(fakeClaude.calls.deleteOrgUser).toHaveLength(0);
   });
 
   it('sets status=suspended', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
     const user = await makeUser();
     const admin = await makeUser({ role: 'admin' });
     const account = await makeExternalAccount(user, {
@@ -197,6 +218,8 @@ describe('ExternalAccountLifecycleService.suspend — claude', () => {
   });
 
   it('records a suspend_claude audit event', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
     const user = await makeUser();
     const admin = await makeUser({ role: 'admin' });
     const account = await makeExternalAccount(user, {
@@ -218,6 +241,8 @@ describe('ExternalAccountLifecycleService.suspend — claude', () => {
   });
 
   it('does not call suspendUser for a claude account', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
     const user = await makeUser();
     const admin = await makeUser({ role: 'admin' });
     const account = await makeExternalAccount(user, {

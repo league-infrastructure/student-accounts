@@ -20,6 +20,7 @@ import { ClaudeProvisioningService } from './claude-provisioning.service';
 import { ExternalAccountLifecycleService } from './external-account-lifecycle.service';
 import { WorkspaceSyncService } from './workspace-sync.service';
 import { BulkCohortService } from './bulk-cohort.service';
+import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -69,6 +70,7 @@ export class ServiceRegistry {
   readonly pike13Sync: Pike13SyncService;
   readonly workspaceSync: WorkspaceSyncService;
   readonly bulkCohort: BulkCohortService;
+  readonly anthropicSync: AnthropicSyncService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -180,6 +182,13 @@ export class ServiceRegistry {
       UserRepository,
       ExternalAccountRepository,
       CohortRepository,
+    );
+
+    // AnthropicSyncService — Sprint 010 T011.
+    this.anthropicSync = new AnthropicSyncService(
+      this.anthropicAdmin,
+      defaultPrisma,
+      this.audit,
     );
   }
 

@@ -1,7 +1,7 @@
 ---
 id: '011'
 title: AnthropicSyncService and ExternalAccountLifecycleService real Claude ops
-status: todo
+status: done
 use-cases:
   - SUC-010-006
 depends-on:
@@ -33,32 +33,32 @@ Also update `ClaudeProvisioningService.provision()` to use the real invite flow
 ## Acceptance Criteria
 
 **AnthropicSyncService:**
-- [ ] `server/src/services/anthropic/anthropic-sync.service.ts` created.
-- [ ] `reconcile()` method: fetches all org users (paginated), all invites (paginated).
-- [ ] For each org user whose email matches a local User (case-insensitive) and who has no `type=claude` ExternalAccount: creates `ExternalAccount(type='claude', status='active', external_id=<anthropic user id>)`.
-- [ ] For each pending invite in the API: finds the local `ExternalAccount` with `external_id=<invite id>`. If the invite email now appears in org users list: transitions to `active`, rewrites `external_id` to org user id, calls `addUserToWorkspace(studentsWorkspaceId, userId)`.
-- [ ] For each local `type=claude` ExternalAccount whose `external_id` is absent from both the org users list and the invites list: transitions to `removed`, emits `claude_sync_flagged` AuditEvent.
-- [ ] Returns `SyncReport { created: number; linked: number; invitedAccepted: number; removed: number; unmatched: string[] }`.
-- [ ] Students workspace ID resolved once per process from `CLAUDE_STUDENT_WORKSPACE` env var (default `"Students"`), cached.
-- [ ] `ServiceRegistry` gains `readonly anthropicSync: AnthropicSyncService`.
+- [x] `server/src/services/anthropic/anthropic-sync.service.ts` created.
+- [x] `reconcile()` method: fetches all org users (paginated), all invites (paginated).
+- [x] For each org user whose email matches a local User (case-insensitive) and who has no `type=claude` ExternalAccount: creates `ExternalAccount(type='claude', status='active', external_id=<anthropic user id>)`.
+- [x] For each pending invite in the API: finds the local `ExternalAccount` with `external_id=<invite id>`. If the invite email now appears in org users list: transitions to `active`, rewrites `external_id` to org user id, calls `addUserToWorkspace(studentsWorkspaceId, userId)`.
+- [x] For each local `type=claude` ExternalAccount whose `external_id` is absent from both the org users list and the invites list: transitions to `removed`, emits `claude_sync_flagged` AuditEvent.
+- [x] Returns `SyncReport { created: number; linked: number; invitedAccepted: number; removed: number; unmatched: string[] }`.
+- [x] Students workspace ID resolved once per process from `CLAUDE_STUDENT_WORKSPACE` env var (default `"Students"`), cached.
+- [x] `ServiceRegistry` gains `readonly anthropicSync: AnthropicSyncService`.
 
 **ExternalAccountLifecycleService:**
-- [ ] Claude `suspend()`: calls `AnthropicAdminClient.removeUserFromWorkspace(studentsWorkspaceId, externalId)`. Status → `suspended`. Existing audit event emitted.
-- [ ] Claude `remove()`: calls `AnthropicAdminClient.deleteOrgUser(externalId)`. Status → `removed`. Existing audit event emitted.
-- [ ] Existing workspace (Google) suspend/remove paths unchanged.
+- [x] Claude `suspend()`: calls `AnthropicAdminClient.removeUserFromWorkspace(studentsWorkspaceId, externalId)`. Status → `suspended`. Existing audit event emitted.
+- [x] Claude `remove()`: calls `AnthropicAdminClient.deleteOrgUser(externalId)`. Status → `removed`. Existing audit event emitted.
+- [x] Existing workspace (Google) suspend/remove paths unchanged.
 
 **ClaudeProvisioningService:**
-- [ ] `provision()`: calls `AnthropicAdminClient.inviteToOrg({ email: leagueEmail })`. Creates ExternalAccount with `status='pending'`, `external_id=<invite id>`.
-- [ ] Existing `WorkspaceProvisioningService` prerequisite check unchanged.
+- [x] `provision()`: calls `AnthropicAdminClient.inviteToOrg({ email: leagueEmail })`. Creates ExternalAccount with `status='pending'`, `external_id=<invite id>`.
+- [x] Existing `WorkspaceProvisioningService` prerequisite check unchanged.
 
 **Tests:**
-- [ ] `AnthropicSyncService` scenario tests using `FakeAnthropicAdminClient`:
+- [x] `AnthropicSyncService` scenario tests using `FakeAnthropicAdminClient`:
   - 3 org users, 1 matching local user → creates 1 link, 2 unmatched.
   - Pending invite accepted → ExternalAccount transitions active, `addUserToWorkspace` called.
   - Local claude ExternalAccount with unknown external_id → transitions to removed.
-- [ ] `ExternalAccountLifecycleService` updated tests: Claude suspend calls workspace-revoke; Claude remove calls org-delete.
-- [ ] `ClaudeProvisioningService` updated tests: provision calls `inviteToOrg`, not old `inviteMember`.
-- [ ] `npm run test:server` passes.
+- [x] `ExternalAccountLifecycleService` updated tests: Claude suspend calls workspace-revoke; Claude remove calls org-delete.
+- [x] `ClaudeProvisioningService` updated tests: provision calls `inviteToOrg`, not old `inviteMember`.
+- [x] `npm run test:server` passes.
 
 ## Implementation Plan
 

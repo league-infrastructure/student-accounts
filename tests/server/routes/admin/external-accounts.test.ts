@@ -129,6 +129,8 @@ describe('POST /api/admin/external-accounts/:id/suspend — success', () => {
   it('returns 200 with updated account when suspending a claude account', async () => {
     const fakeGoogle = new FakeGoogleWorkspaceAdminClient();
     const fakeClaude = new FakeClaudeTeamAdminClient();
+    // Provide a Students workspace for the suspend call (removeUserFromWorkspace)
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-test', name: 'Students' }]);
     const restore = injectFakeClaudeClient(fakeGoogle, fakeClaude);
 
     try {
@@ -386,7 +388,8 @@ describe('POST /api/admin/users/:id/provision-claude — success', () => {
       expect(res.body).toMatchObject({
         userId: student.id,
         type: 'claude',
-        status: 'active',
+        // Invite creates a pending seat; transitions to active once the invite is accepted
+        status: 'pending',
       });
       expect(res.body.externalId).toBe('fake-claude-member-id');
 
@@ -395,7 +398,8 @@ describe('POST /api/admin/users/:id/provision-claude — success', () => {
         where: { user_id: student.id, type: 'claude' },
       });
       expect(dbRow).not.toBeNull();
-      expect(dbRow.status).toBe('active');
+      // Invite creates a pending seat; transitions to active once invite is accepted
+      expect(dbRow.status).toBe('pending');
     } finally {
       restore();
     }
