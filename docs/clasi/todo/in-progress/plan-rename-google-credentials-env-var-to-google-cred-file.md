@@ -1,5 +1,19 @@
 ---
-status: pending
+status: in-progress
+sprint: '010'
+tickets:
+- 010-001
+- 010-004
+- 010-005
+- 010-006
+- 010-007
+- 010-008
+- 010-009
+- 010-010
+- 010-011
+- 010-012
+- 010-013
+- 010-014
 ---
 
 # Plan — Rename Google credentials env var to `GOOGLE_CRED_FILE`
