@@ -23,6 +23,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/cohorts', label: 'Cohorts' },
   { to: '/admin/sync', label: 'Sync' },
   { to: '/admin/users', label: 'Users' },
+  { to: '/admin/audit-log', label: 'Audit Log' },
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },
   { to: '/admin/config', label: 'Configuration' },
@@ -449,6 +450,15 @@ export default function AppLayout() {
             {item.label}
           </NavLink>
         ))}
+        {user.role === 'staff' && !isAdminSection && (
+          <NavLink
+            to="/staff/directory"
+            onClick={closeSidebarIfMobile}
+            style={({ isActive }) => styles.navLink(isActive)}
+          >
+            Directory
+          </NavLink>
+        )}
         {isAdmin && !isAdminSection && (
           <NavLink
             to="/admin/users"

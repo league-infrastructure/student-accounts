@@ -22,14 +22,14 @@
  *  - MERGE_SCAN_CONFIDENCE_THRESHOLD — overrides the 0.6 default.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 import type { User } from '../../generated/prisma/client.js';
 import type { HaikuClient, UserSnapshot } from '../merge/haiku.client.js';
 import { HaikuApiError, HaikuParseError } from '../merge/haiku.client.js';
 import { MergeSuggestionRepository } from '../repositories/merge-suggestion.repository.js';
 import { AuditService } from '../audit.service.js';
 
-const logger = pino({ name: 'merge-scan.service' });
+const logger = createLogger('merge-scan.service');
 
 /** Default confidence threshold below which no MergeSuggestion row is created. */
 const DEFAULT_THRESHOLD = 0.6;
@@ -51,6 +51,35 @@ function resolveThreshold(): number {
     );
   }
   return DEFAULT_THRESHOLD;
+}
+
+/** Common stop-words that carry no identity signal. */
+const TOKEN_STOP_WORDS = new Set([
+  'student', 'students', 'parent', 'parents', 'guardian', 'family',
+  'test', 'demo', 'example', 'user', 'admin',
+  'com', 'org', 'edu', 'net',
+]);
+
+/**
+ * Tokenize a user's display name and email local part into a set of
+ * lowercase tokens for cheap lexical overlap comparison.
+ */
+function tokensFor(displayName: string | null | undefined, email: string | null | undefined): Set<string> {
+  const out = new Set<string>();
+  const add = (s: string | null | undefined) => {
+    if (!s) return;
+    for (const raw of s.toLowerCase().split(/[^a-z0-9]+/)) {
+      if (raw.length < 2) continue;
+      if (TOKEN_STOP_WORDS.has(raw)) continue;
+      out.add(raw);
+    }
+  };
+  add(displayName);
+  if (email) {
+    const local = email.split('@')[0] ?? '';
+    add(local);
+  }
+  return out;
 }
 
 /**
@@ -101,7 +130,7 @@ export async function mergeScanWithDeps(
   const threshold = resolveThreshold();
 
   // Load all other active non-staff users with their external accounts and cohort.
-  const candidates: any[] = await (prisma as any).user.findMany({
+  const allCandidates: any[] = await (prisma as any).user.findMany({
     where: {
       id: { not: user.id },
       is_active: true,
@@ -114,11 +143,47 @@ export async function mergeScanWithDeps(
   });
 
   // Rule 2: Skip when no candidates exist.
-  if (candidates.length === 0) {
+  if (allCandidates.length === 0) {
     logger.debug(
       { userId: user.id },
       '[merge-scan] No candidate users — skipping scan.',
     );
+    return;
+  }
+
+  // Cheap pre-filter: when the candidate pool is large, only evaluate
+  // candidates that share at least one lexical token with the new user.
+  // A fresh user imported from Workspace/Pike13 typically has zero lexical
+  // overlap with 99% of the population, so sending every pair to Haiku is
+  // wasteful and blocks the sign-in path. For small pools (test fixtures,
+  // fresh installs) the full scan is cheap and correctness-preserving.
+  const PREFILTER_THRESHOLD_SIZE = 20;
+  let candidates: any[];
+  if (allCandidates.length > PREFILTER_THRESHOLD_SIZE) {
+    const newTokens = tokensFor(user.display_name, user.primary_email);
+    candidates = allCandidates.filter((c) => {
+      if (c.primary_email?.toLowerCase() === user.primary_email?.toLowerCase()) {
+        return true;
+      }
+      const ctokens = tokensFor(c.display_name, c.primary_email);
+      for (const t of ctokens) {
+        if (newTokens.has(t)) return true;
+      }
+      return false;
+    });
+    logger.info(
+      {
+        userId: user.id,
+        totalCandidates: allCandidates.length,
+        afterPrefilter: candidates.length,
+      },
+      '[merge-scan] Candidate pre-filter applied.',
+    );
+  } else {
+    candidates = allCandidates;
+  }
+
+  if (candidates.length === 0) {
     return;
   }
 
@@ -140,6 +205,16 @@ export async function mergeScanWithDeps(
       rationale = result.rationale;
     } catch (err) {
       if (err instanceof HaikuApiError || err instanceof HaikuParseError) {
+        // Abort the entire scan on auth failures — no point hammering the
+        // API with an invalid key for every remaining candidate.
+        const msg = String((err as Error).message ?? '');
+        if (msg.includes('401') || msg.includes('authentication_error') || msg.includes('invalid x-api-key')) {
+          logger.error(
+            { userId: user.id, err },
+            '[merge-scan] Haiku authentication failure — aborting scan.',
+          );
+          return;
+        }
         logger.error(
           { userId: user.id, candidateId: candidate.id, err },
           '[merge-scan] Haiku evaluation error — skipping pair, continuing scan.',

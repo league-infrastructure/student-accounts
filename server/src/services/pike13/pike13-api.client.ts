@@ -69,9 +69,9 @@
  *    the first method call.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'pike13-api' });
+const logger = createLogger('pike13-api');
 
 // ---------------------------------------------------------------------------
 // Default API base URL
@@ -101,6 +101,22 @@ export function resolvePike13ApiUrl(): string {
     process.env.PIKE13_API_BASE ||
     DEFAULT_PIKE13_API_URL
   );
+}
+
+/**
+ * Derive the OAuth token endpoint from the API URL.
+ * For https://jtl.pike13.com/api/v2/desk → https://jtl.pike13.com/oauth/token.
+ * The caller may override with PIKE13_OAUTH_TOKEN_URL if the inference is wrong.
+ */
+export function deriveOauthTokenUrl(apiUrl: string): string {
+  const override = process.env.PIKE13_OAUTH_TOKEN_URL;
+  if (override) return override;
+  try {
+    const parsed = new URL(apiUrl);
+    return `${parsed.protocol}//${parsed.host}/oauth/token`;
+  } catch {
+    return 'https://pike13.com/oauth/token';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -262,23 +278,42 @@ export interface Pike13ApiClient {
 /**
  * Real implementation of Pike13ApiClient using fetch + Pike13 Bearer token.
  *
- * Authentication uses the PIKE13_ACCESS_TOKEN environment variable.
- * Pike13 access tokens obtained via the OAuth2 flow do not expire (per
- * api-integrations.md), so no refresh logic is needed.
+ * Authentication: the client lazily exchanges PIKE13_CLIENT_ID +
+ * PIKE13_CLIENT_SECRET for a bearer token via POST /oauth/token
+ * (client_credentials grant) on first use, and caches it in memory. On a
+ * 401 from any API call, the cached token is cleared and the request is
+ * retried once so that mid-lifetime rotations are handled automatically.
  *
- * Missing credentials do NOT prevent app startup. Errors are deferred to the
- * first method call.
+ * PIKE13_ACCESS_TOKEN, if set, short-circuits the exchange and is used
+ * as-is — useful for testing or when the operator wants to pin a
+ * specific token.
+ *
+ * Missing credentials do NOT prevent app startup. Errors are deferred to
+ * the first method call.
  *
  * OQ-001: List pagination and OQ-002: custom-field endpoint shape are both
  * unconfirmed — see module-level comments.
  */
 export class Pike13ApiClientImpl implements Pike13ApiClient {
-  private readonly accessToken: string;
+  private readonly staticAccessToken: string | null;
+  private readonly clientId: string | null;
+  private readonly clientSecret: string | null;
   private readonly apiUrl: string;
+  private readonly oauthTokenUrl: string;
+  private cachedAccessToken: string | null = null;
 
-  constructor(accessToken: string, apiUrl?: string) {
-    this.accessToken = accessToken;
-    this.apiUrl = apiUrl ?? resolvePike13ApiUrl();
+  constructor(opts: {
+    accessToken?: string | null;
+    clientId?: string | null;
+    clientSecret?: string | null;
+    apiUrl?: string;
+    oauthTokenUrl?: string;
+  } = {}) {
+    this.staticAccessToken = opts.accessToken?.trim() || null;
+    this.clientId = opts.clientId?.trim() || null;
+    this.clientSecret = opts.clientSecret?.trim() || null;
+    this.apiUrl = opts.apiUrl ?? resolvePike13ApiUrl();
+    this.oauthTokenUrl = opts.oauthTokenUrl ?? deriveOauthTokenUrl(this.apiUrl);
   }
 
   // ---------------------------------------------------------------------------
@@ -301,34 +336,120 @@ export class Pike13ApiClientImpl implements Pike13ApiClient {
   }
 
   /**
-   * Throws Pike13ApiError with a clear message if the access token is not set.
-   * Called before every request so the error is obvious in logs.
+   * Throws Pike13ApiError with a clear message if NO credentials are available —
+   * neither a pinned access token nor a client_id/client_secret pair.
    */
   private assertCredentials(methodName: string): void {
-    if (!this.accessToken) {
-      const msg =
-        `[pike13-api] PIKE13_ACCESS_TOKEN is not set. ` +
-        `Cannot call ${methodName}. Set PIKE13_ACCESS_TOKEN in your environment.`;
-      logger.error({ method: methodName }, msg);
-      throw new Pike13ApiError(
-        'PIKE13_ACCESS_TOKEN is not set',
-        methodName,
-        undefined,
-      );
-    }
+    if (this.staticAccessToken) return;
+    if (this.clientId && this.clientSecret) return;
+    const msg =
+      `[pike13-api] Cannot authenticate: neither PIKE13_ACCESS_TOKEN nor ` +
+      `PIKE13_CLIENT_ID/PIKE13_CLIENT_SECRET are set. Cannot call ${methodName}.`;
+    logger.error({ method: methodName }, msg);
+    throw new Pike13ApiError(
+      'Pike13 credentials are not configured',
+      methodName,
+      undefined,
+    );
   }
 
   /**
-   * Build common request headers for the Pike13 API.
-   *
-   * OQ-003: Authentication scheme is assumed to be Bearer token. If the real
-   * API uses a different header name (e.g., X-Api-Token) update this method.
+   * Return a bearer token, lazily exchanging client_credentials on first use
+   * and caching the result. A pinned PIKE13_ACCESS_TOKEN always wins.
    */
-  private buildHeaders(): Record<string, string> {
+  private async getAccessToken(callerMethod: string): Promise<string> {
+    if (this.staticAccessToken) return this.staticAccessToken;
+    if (this.cachedAccessToken) return this.cachedAccessToken;
+    return this.exchangeClientCredentials(callerMethod);
+  }
+
+  /**
+   * POST client_credentials → Pike13 and cache the returned bearer token.
+   * Called both on first use and on forced refresh after a 401.
+   */
+  private async exchangeClientCredentials(callerMethod: string): Promise<string> {
+    if (!this.clientId || !this.clientSecret) {
+      throw new Pike13ApiError(
+        'Pike13 client credentials are not configured',
+        callerMethod,
+        undefined,
+      );
+    }
+
+    logger.info(
+      { url: this.oauthTokenUrl, callerMethod },
+      '[pike13-api] Exchanging client_credentials for access token.',
+    );
+
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+    }).toString();
+
+    let response: Response;
+    try {
+      response = await fetch(this.oauthTokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body,
+      });
+    } catch (networkErr) {
+      logger.error(
+        { url: this.oauthTokenUrl, err: networkErr },
+        '[pike13-api] Network error during client_credentials exchange.',
+      );
+      throw new Pike13ApiError(
+        `Network error exchanging Pike13 client_credentials: ${String(networkErr)}`,
+        callerMethod,
+        undefined,
+        networkErr,
+      );
+    }
+
+    if (!response.ok) {
+      let errBody: unknown;
+      try { errBody = await response.json(); } catch { errBody = null; }
+      logger.error(
+        { url: this.oauthTokenUrl, status: response.status, body: errBody },
+        '[pike13-api] client_credentials exchange failed.',
+      );
+      throw new Pike13ApiError(
+        `Pike13 client_credentials exchange returned ${response.status}`,
+        callerMethod,
+        response.status,
+      );
+    }
+
+    const payload = (await response.json()) as { access_token?: string; token_type?: string };
+    if (!payload.access_token) {
+      throw new Pike13ApiError(
+        'Pike13 /oauth/token response missing access_token',
+        callerMethod,
+        response.status,
+      );
+    }
+
+    this.cachedAccessToken = payload.access_token;
+    logger.info(
+      { callerMethod, tokenLength: payload.access_token.length },
+      '[pike13-api] client_credentials exchange succeeded.',
+    );
+    return payload.access_token;
+  }
+
+  /**
+   * Build common request headers for the Pike13 API. Authorization is added
+   * by the caller after a fresh token has been resolved.
+   */
+  private buildHeaders(token: string): Record<string, string> {
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Authorization': `Bearer ${this.accessToken}`,
+      'Authorization': `Bearer ${token}`,
     };
   }
 
@@ -346,14 +467,19 @@ export class Pike13ApiClientImpl implements Pike13ApiClient {
     options?: { body?: unknown; personId?: number },
   ): Promise<T> {
     const url = `${this.apiUrl}${path}`;
-    let response: Response;
 
-    try {
-      response = await fetch(url, {
+    const doFetch = async (token: string): Promise<Response> => {
+      return fetch(url, {
         method,
-        headers: this.buildHeaders(),
+        headers: this.buildHeaders(token),
         body: options?.body !== undefined ? JSON.stringify(options.body) : undefined,
       });
+    };
+
+    let token = await this.getAccessToken(callerMethod);
+    let response: Response;
+    try {
+      response = await doFetch(token);
     } catch (networkErr) {
       logger.error(
         { url, method, callerMethod, err: networkErr },
@@ -365,6 +491,27 @@ export class Pike13ApiClientImpl implements Pike13ApiClient {
         undefined,
         networkErr,
       );
+    }
+
+    // On 401, the cached token may be expired/revoked. Only retry when we
+    // have client_credentials to mint a new one — a pinned static token
+    // cannot be refreshed.
+    if (response.status === 401 && !this.staticAccessToken && this.clientId && this.clientSecret) {
+      logger.warn(
+        { url, method, callerMethod },
+        '[pike13-api] 401 from Pike13 — refreshing access token and retrying once.',
+      );
+      this.cachedAccessToken = null;
+      try {
+        token = await this.exchangeClientCredentials(callerMethod);
+        response = await doFetch(token);
+      } catch (retryErr) {
+        logger.error(
+          { url, method, callerMethod, err: retryErr },
+          '[pike13-api] Retry after 401 failed.',
+        );
+        throw retryErr;
+      }
     }
 
     if (response.status === 404) {

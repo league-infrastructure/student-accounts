@@ -28,7 +28,7 @@
  *    — propagated from GoogleWorkspaceAdminClient as-is.
  */
 
-import pino from 'pino';
+import { createLogger } from './logger.js';
 
 import { ConflictError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
@@ -40,7 +40,7 @@ import { displayNameToSlug, splitDisplayName } from '../utils/email-slug.js';
 import * as pike13Writeback from './pike13/pike13-writeback.service.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
 
-const logger = pino({ name: 'workspace-provisioning' });
+const logger = createLogger('workspace-provisioning');
 
 export class WorkspaceProvisioningService {
   constructor(

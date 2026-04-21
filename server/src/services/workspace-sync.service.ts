@@ -24,7 +24,7 @@
  *    whose user email was not seen in any OU listing are set to status=removed.
  */
 
-import pino from 'pino';
+import { createLogger } from './logger.js';
 import type { AuditService } from './audit.service.js';
 import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
 import type { CohortService } from './cohort.service.js';
@@ -33,7 +33,7 @@ import { ExternalAccountRepository } from './repositories/external-account.repos
 import { CohortRepository } from './repositories/cohort.repository.js';
 import type { Cohort } from '../generated/prisma/client.js';
 
-const logger = pino({ name: 'workspace-sync' });
+const logger = createLogger('workspace-sync');
 
 // ---------------------------------------------------------------------------
 // Report types

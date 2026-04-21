@@ -11,6 +11,7 @@ import Account from './pages/Account';
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
+import AuditLogPanel from './pages/admin/AuditLogPanel';
 import EnvironmentInfo from './pages/admin/EnvironmentInfo';
 import DatabaseViewer from './pages/admin/DatabaseViewer';
 import ConfigPanel from './pages/admin/ConfigPanel';
@@ -24,6 +25,9 @@ import ProvisioningRequests from './pages/admin/ProvisioningRequests';
 import Cohorts from './pages/admin/Cohorts';
 import SyncPanel from './pages/admin/SyncPanel';
 import MergeQueuePanel from './pages/admin/MergeQueuePanel';
+
+import StaffLayout from './pages/staff/StaffLayout';
+import StaffDirectory from './pages/staff/StaffDirectory';
 
 const queryClient = new QueryClient();
 
@@ -47,6 +51,11 @@ function App() {
               <Route path="/account" element={<Account />} />
               <Route path="/mcp-setup" element={<McpSetup />} />
 
+              {/* Staff pages — role-gated by StaffLayout */}
+              <Route element={<StaffLayout />}>
+                <Route path="/staff/directory" element={<StaffDirectory />} />
+              </Route>
+
               {/* Admin pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
                 <Route path="/admin/users" element={<UsersPanel />} />
@@ -62,6 +71,7 @@ function App() {
                 <Route path="/admin/cohorts" element={<Cohorts />} />
                 <Route path="/admin/sync" element={<SyncPanel />} />
                 <Route path="/admin/merge-queue" element={<MergeQueuePanel />} />
+                <Route path="/admin/audit-log" element={<AuditLogPanel />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />

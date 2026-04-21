@@ -1,5 +1,8 @@
 ---
-status: pending
+status: done
+sprint: 009
+tickets:
+- 009-001
 ---
 
 # Plan — Users panel + user detail UX overhaul (create TODO artifact)

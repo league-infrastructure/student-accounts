@@ -26,7 +26,7 @@
  * See UC-020 for the full write-back specification.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import type { AuditAction } from '../audit.service.js';
 import { AuditService } from '../audit.service.js';
@@ -35,7 +35,7 @@ import type { Pike13ApiClient } from './pike13-api.client.js';
 import { Pike13ApiClientImpl } from './pike13-api.client.js';
 import { prisma } from '../prisma.js';
 
-const logger = pino({ name: 'pike13-writeback' });
+const logger = createLogger('pike13-writeback');
 
 // ---------------------------------------------------------------------------
 // Pike13WritebackService class
@@ -215,8 +215,11 @@ let _singleton: Pike13WritebackService | null = null;
 
 function getSingleton(): Pike13WritebackService {
   if (!_singleton) {
-    const accessToken = process.env.PIKE13_ACCESS_TOKEN ?? '';
-    const pike13Client = new Pike13ApiClientImpl(accessToken);
+    const pike13Client = new Pike13ApiClientImpl({
+      accessToken: process.env.PIKE13_ACCESS_TOKEN,
+      clientId: process.env.PIKE13_CLIENT_ID,
+      clientSecret: process.env.PIKE13_CLIENT_SECRET,
+    });
     _singleton = new Pike13WritebackService(pike13Client, prisma);
   }
   return _singleton;

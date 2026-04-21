@@ -22,7 +22,7 @@
  * See Sprint 002 architecture update for full flow description.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 import type { User } from '../../generated/prisma/client.js';
 import type { UserService } from '../user.service.js';
 import type { LoginService } from '../login.service.js';
@@ -33,7 +33,7 @@ import {
   StaffOULookupError,
 } from '../google-workspace/google-workspace-admin.client.js';
 
-const logger = pino({ name: 'sign-in.handler' });
+const logger = createLogger('sign-in.handler');
 
 // ---------------------------------------------------------------------------
 // League-specific defaults
@@ -225,10 +225,16 @@ export async function signInHandler(
       providerUsername ?? null,
     );
 
-    // 3c. Merge-scan stub (Sprint 007 replaces this module) — only for
-    // freshly created users.
+    // 3c. Merge-scan (Sprint 007) — only for freshly created users.
+    // Fire-and-forget: must not block the sign-in path. Any errors are
+    // logged inside mergeScan itself; failure here is non-fatal for auth.
     if (!existingUser) {
-      await mergeScan(user);
+      const scanUser = user;
+      setImmediate(() => {
+        mergeScan(scanUser).catch((err) => {
+          console.error('[sign-in.handler] background mergeScan failed:', err);
+        });
+      });
     }
   }
 

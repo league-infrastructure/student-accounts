@@ -3,13 +3,13 @@ import express from 'express';
 import session from 'express-session';
 import { PrismaSessionStore } from './services/prisma-session-store';
 import passport from 'passport';
-import pino from 'pino';
 import pinoHttp from 'pino-http';
-import { Writable } from 'stream';
+import { createLogger } from './services/logger';
 import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
 import { accountRouter } from './routes/account';
+import { staffDirectoryRouter } from './routes/staff/directory';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -17,7 +17,6 @@ import { errorHandler } from './middleware/errorHandler';
 import { attachServices } from './middleware/services';
 import { ServiceRegistry } from './services/service.registry';
 import { configurePassport } from './services/auth/passport.config';
-import { logBuffer } from './services/logBuffer';
 import { prisma } from './services/prisma';
 
 const app = express();
@@ -27,23 +26,9 @@ app.set('trust proxy', 1);
 
 app.use(express.json());
 
-// Pino logger: writes to stdout and in-memory ring buffer for the admin log viewer.
-const logLevel = process.env.NODE_ENV === 'test' ? 'silent' : (process.env.LOG_LEVEL || 'info');
-const bufferStream = new Writable({
-  write(chunk, _encoding, callback) {
-    logBuffer.ingest(chunk.toString());
-    callback();
-  },
-});
-const logger = pino(
-  { level: logLevel },
-  pino.multistream([
-    { stream: process.stdout },
-    { stream: bufferStream },
-  ]),
-);
-
-app.use(pinoHttp({ logger }));
+// Pino logger: shared multistream (stdout + in-memory ring buffer for
+// the admin Logs panel). See services/logger.ts for the factory.
+app.use(pinoHttp({ logger: createLogger('http') }));
 
 // Session middleware — Prisma-based store works on both SQLite and Postgres.
 // Falls back to MemoryStore in test environment.
@@ -80,6 +65,7 @@ app.use('/api', healthRouter);
 app.use('/api', authRouter);
 app.use('/api', adminRouter);
 app.use('/api', accountRouter);
+app.use('/api', staffDirectoryRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());

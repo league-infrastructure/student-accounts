@@ -7,14 +7,14 @@
  *  - Google Workspace OU provisioning via createWithOU (Sprint 004)
  */
 
-import pino from 'pino';
+import { createLogger } from './logger.js';
 import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
 import { CohortRepository } from './repositories/cohort.repository.js';
 import type { Cohort } from '../generated/prisma/client.js';
 
-const logger = pino({ name: 'cohort-service' });
+const logger = createLogger('cohort-service');
 
 export class CohortService {
   constructor(

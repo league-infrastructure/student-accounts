@@ -35,7 +35,7 @@ const FAKE_TOKEN = 'fake-pike13-access-token';
 const FAKE_API_URL = 'https://fake-pike13.example.com/api/v2/desk';
 
 function makeClient(): Pike13ApiClientImpl {
-  return new Pike13ApiClientImpl(FAKE_TOKEN, FAKE_API_URL);
+  return new Pike13ApiClientImpl({ accessToken: FAKE_TOKEN, apiUrl: FAKE_API_URL });
 }
 
 // ---------------------------------------------------------------------------
@@ -170,9 +170,9 @@ describe('Pike13ApiClientImpl write-enable flag — updateCustomField', () => {
 // Missing credentials tests
 // ---------------------------------------------------------------------------
 
-describe('Pike13ApiClientImpl — missing PIKE13_ACCESS_TOKEN', () => {
-  it('listPeople throws Pike13ApiError with clear message when access token is empty', async () => {
-    const client = new Pike13ApiClientImpl('', FAKE_API_URL);
+describe('Pike13ApiClientImpl — missing credentials', () => {
+  it('listPeople throws Pike13ApiError when neither token nor client credentials are set', async () => {
+    const client = new Pike13ApiClientImpl({ apiUrl: FAKE_API_URL });
     let caught: unknown;
     try {
       await client.listPeople();
@@ -180,11 +180,11 @@ describe('Pike13ApiClientImpl — missing PIKE13_ACCESS_TOKEN', () => {
       caught = err;
     }
     expect(caught).toBeInstanceOf(Pike13ApiError);
-    expect((caught as Pike13ApiError).message).toContain('PIKE13_ACCESS_TOKEN');
+    expect((caught as Pike13ApiError).message).toContain('credentials');
   });
 
-  it('getPerson throws Pike13ApiError with clear message when access token is empty', async () => {
-    const client = new Pike13ApiClientImpl('', FAKE_API_URL);
+  it('getPerson throws Pike13ApiError when neither token nor client credentials are set', async () => {
+    const client = new Pike13ApiClientImpl({ apiUrl: FAKE_API_URL });
     await expect(client.getPerson(42)).rejects.toBeInstanceOf(Pike13ApiError);
   });
 });

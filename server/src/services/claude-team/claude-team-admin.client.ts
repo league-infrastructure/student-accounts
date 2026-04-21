@@ -43,9 +43,9 @@
  *    method so callers compile without change if a real implementation is added.
  */
 
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'claude-team-admin' });
+const logger = createLogger('claude-team-admin');
 
 // ---------------------------------------------------------------------------
 // Claude Team API base URL
