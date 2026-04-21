@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: "GOOGLE_CRED_FILE rename — server code, passport, sanity script"
-status: todo
+status: done
 use-cases:
   - SUC-010-001
 depends-on: []
@@ -24,12 +24,12 @@ Update server code, passport config, and the sanity script to read only
 
 ## Acceptance Criteria
 
-- [ ] `resolveCredentialsFileEnvVar()` in `google-workspace-admin.client.ts` returns `process.env.GOOGLE_CRED_FILE ?? ''` with no fallback to old names.
-- [ ] All log strings in `google-workspace-admin.client.ts` that named `GOOGLE_SERVICE_ACCOUNT_FILE` or `GOOGLE_CREDENTIALS_FILE` now name `GOOGLE_CRED_FILE`.
-- [ ] Fail-secure warning in `passport.config.ts` references `GOOGLE_CRED_FILE` only.
-- [ ] All occurrences of `GOOGLE_SERVICE_ACCOUNT_FILE` in `scripts/sanity-check-service-account.mjs` replaced with `GOOGLE_CRED_FILE`.
-- [ ] `grep -r "GOOGLE_SERVICE_ACCOUNT_FILE\|GOOGLE_CREDENTIALS_FILE" server/src/ scripts/` returns zero results.
-- [ ] `npm run test:server` passes (tests using old names addressed in T007).
+- [x] `resolveCredentialsFileEnvVar()` in `google-workspace-admin.client.ts` returns `process.env.GOOGLE_CRED_FILE ?? ''` with no fallback to old names.
+- [x] All log strings in `google-workspace-admin.client.ts` that named `GOOGLE_SERVICE_ACCOUNT_FILE` or `GOOGLE_CREDENTIALS_FILE` now name `GOOGLE_CRED_FILE`.
+- [x] Fail-secure warning in `passport.config.ts` references `GOOGLE_CRED_FILE` only.
+- [x] All occurrences of `GOOGLE_SERVICE_ACCOUNT_FILE` in `scripts/sanity-check-service-account.mjs` replaced with `GOOGLE_CRED_FILE`.
+- [x] `grep -r "GOOGLE_SERVICE_ACCOUNT_FILE\|GOOGLE_CREDENTIALS_FILE" server/src/ scripts/` returns zero results.
+- [x] `npm run test:server` passes (tests using old names addressed in T007).
 
 ## Implementation Plan
 

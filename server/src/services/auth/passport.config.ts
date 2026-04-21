@@ -43,15 +43,14 @@ import {
  */
 function buildAdminDirectoryClient(): GoogleWorkspaceAdminClient {
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '';
-  // Accept GOOGLE_CREDENTIALS_FILE (preferred) or GOOGLE_SERVICE_ACCOUNT_FILE (legacy alias).
+  // Read GOOGLE_CRED_FILE as the canonical credentials file path.
   const serviceAccountFile = resolveCredentialsFileEnvVar();
   const delegatedUser = process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '';
 
   if (!serviceAccountJson && !serviceAccountFile) {
     console.warn(
       '[passport.config] Google Admin Directory client: ' +
-        'Neither GOOGLE_SERVICE_ACCOUNT_JSON nor GOOGLE_CREDENTIALS_FILE ' +
-        '(or legacy GOOGLE_SERVICE_ACCOUNT_FILE) is set. ' +
+        'Neither GOOGLE_SERVICE_ACCOUNT_JSON nor GOOGLE_CRED_FILE is set. ' +
         '@jointheleague.org sign-ins will be rejected (fail-secure RD-001).',
     );
   }

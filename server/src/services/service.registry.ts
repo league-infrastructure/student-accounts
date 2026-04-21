@@ -87,7 +87,7 @@ export class ServiceRegistry {
       new GoogleWorkspaceAdminClientImpl(
         process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '',
         process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '',
-        process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '',
+        process.env.GOOGLE_CRED_FILE ?? '',
       );
 
     // CohortService receives the Google client so createWithOU can call createOU.
