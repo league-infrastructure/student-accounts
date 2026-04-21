@@ -117,6 +117,10 @@ export default function UserDetailPanel() {
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Inline error state for the "Create League Account" button (separate from
+  // the page-level actionError so 422/409/502 show near the button).
+  const [workspaceProvisionError, setWorkspaceProvisionError] = useState('');
+
   // Pike13 record (fetched independently so failures don't break the main view)
   const [pike13Data, setPike13Data] = useState<Pike13Result | null>(null);
 
@@ -207,6 +211,44 @@ export default function UserDetailPanel() {
       await refresh();
     } catch (err: any) {
       setActionError(err.message ?? 'Provision failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Provision workspace (Create League Account)
+  // -------------------------------------------------------------------------
+
+  async function handleProvisionWorkspace() {
+    if (!user) return;
+    if (
+      !window.confirm(
+        `Create a Google Workspace (League) account for ${user.email}?\n\n` +
+          'This will provision a new @jointheleague.org email address in the ' +
+          "student's cohort OU. The action cannot be undone automatically — " +
+          'use Remove to schedule the account for deletion.',
+      )
+    )
+      return;
+    setBusy(true);
+    setWorkspaceProvisionError('');
+    setActionError('');
+    try {
+      await apiPost(`/api/admin/users/${user.id}/provision-workspace`);
+      await refresh();
+    } catch (err: any) {
+      const msg: string = err.message ?? 'Provision failed';
+      // Map well-known HTTP error patterns to friendly messages.
+      if (msg.includes('422') || msg.toLowerCase().includes('missing') || msg.toLowerCase().includes('cohort')) {
+        setWorkspaceProvisionError('Cannot provision: student is missing required information (check cohort assignment).');
+      } else if (msg.includes('409') || msg.toLowerCase().includes('already')) {
+        setWorkspaceProvisionError('A workspace account already exists for this student.');
+      } else if (msg.includes('502') || msg.toLowerCase().includes('upstream') || msg.toLowerCase().includes('google')) {
+        setWorkspaceProvisionError('Google Workspace service is unavailable. Try again later.');
+      } else {
+        setWorkspaceProvisionError(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -513,6 +555,24 @@ export default function UserDetailPanel() {
           )}
         </div>
 
+        {/* Create League Account button — students only, no active workspace, cohort required */}
+        {isStudent && user.cohort && !hasActiveWorkspace() && (
+          <div style={{ marginBottom: 12 }}>
+            <button
+              style={createLeagueAccountButtonStyle}
+              disabled={busy}
+              onClick={handleProvisionWorkspace}
+            >
+              {busy ? 'Creating...' : 'Create League Account'}
+            </button>
+            {workspaceProvisionError && (
+              <p style={inlineErrorStyle} role="alert">
+                {workspaceProvisionError}
+              </p>
+            )}
+          </div>
+        )}
+
         {user.externalAccounts.length === 0 ? (
           <p style={emptyStyle}>No external accounts.</p>
         ) : (
@@ -562,29 +622,32 @@ export default function UserDetailPanel() {
                         : <em style={{ color: '#94a3b8' }}>—</em>}
                     </td>
                     <td style={tdStyle}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {canSuspend && (
-                          <button
-                            style={suspendButtonStyle}
-                            disabled={busy}
-                            onClick={() => handleSuspend(account)}
-                            title={isClaude ? 'Suspend is a no-op for Claude accounts (per OQ-003)' : undefined}
-                          >
-                            {suspendLabel}
-                          </button>
-                        )}
-                        {canRemove && (
-                          <span title={isWorkspace ? 'Will hard-delete the Google Workspace account after 3 days' : undefined}>
+                      {/* Lifecycle buttons are student-only; staff/admin rows are read-only */}
+                      {isStudent && (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {canSuspend && (
                             <button
-                              style={removeButtonStyle}
+                              style={suspendButtonStyle}
                               disabled={busy}
-                              onClick={() => handleRemoveAccount(account)}
+                              onClick={() => handleSuspend(account)}
+                              title={isClaude ? 'Suspend is a no-op for Claude accounts (per OQ-003)' : undefined}
                             >
-                              {removeLabel}
+                              {suspendLabel}
                             </button>
-                          </span>
-                        )}
-                      </div>
+                          )}
+                          {canRemove && (
+                            <span title={isWorkspace ? 'Will hard-delete the Google Workspace account after 3 days' : undefined}>
+                              <button
+                                style={removeButtonStyle}
+                                disabled={busy}
+                                onClick={() => handleRemoveAccount(account)}
+                              >
+                                {removeLabel}
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -938,6 +1001,17 @@ const provisionButtonStyle: React.CSSProperties = {
   padding: '4px 12px',
   fontSize: 12,
   background: '#7c3aed',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontWeight: 600,
+};
+
+const createLeagueAccountButtonStyle: React.CSSProperties = {
+  padding: '6px 14px',
+  fontSize: 13,
+  background: '#0369a1',
   color: '#fff',
   border: 'none',
   borderRadius: 4,
