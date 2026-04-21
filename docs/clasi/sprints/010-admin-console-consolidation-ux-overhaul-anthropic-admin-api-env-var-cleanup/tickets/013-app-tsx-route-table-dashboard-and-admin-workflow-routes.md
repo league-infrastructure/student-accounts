@@ -1,12 +1,12 @@
 ---
 id: '013'
-title: "App.tsx route table — Dashboard and admin-workflow routes"
-status: todo
+title: "App.tsx route table \u2014 Dashboard and admin-workflow routes"
+status: done
 use-cases:
-  - SUC-010-001
+- SUC-010-001
 depends-on:
-  - "010-006"
-  - "010-010"
+- 010-006
+- 010-010
 github-issue: ''
 todo: plan-admin-ux-overhaul-dashboard-route-split-user-detail-account-lifecycle.md
 ---
@@ -28,8 +28,8 @@ Depends on T006 (`AdminOnlyRoute` component) and T010 (`Dashboard.tsx`).
 
 ## Acceptance Criteria
 
-- [ ] `App.tsx` imports `AdminOnlyRoute` and `Dashboard`.
-- [ ] An `<AdminOnlyRoute>` group exists inside `<AppLayout>` with these routes:
+- [x] `App.tsx` imports `AdminOnlyRoute` and `Dashboard`.
+- [x] An `<AdminOnlyRoute>` group exists inside `<AppLayout>` with these routes:
   - `path="/"` → `<Dashboard />` (with `end` flag or exact match)
   - `path="/requests"` → `<ProvisioningRequests />`
   - `path="/cohorts"` → `<Cohorts />`
@@ -37,9 +37,9 @@ Depends on T006 (`AdminOnlyRoute` component) and T010 (`Dashboard.tsx`).
   - `path="/users/:id"` → `<UserDetailPanel />`
   - `path="/sync"` → `<SyncPanel />`
   - `path="/merge-queue"` → `<MergeQueuePanel />`
-- [ ] Non-admin users navigating to `/` see `<Account />` (existing behaviour preserved — the current `<Navigate to="/account" />` should remain as the default for non-admin users; `AdminOnlyRoute` redirects admins to its contents and non-admins to `/account`).
-- [ ] All existing `/admin/*` routes under `AdminLayout` remain unchanged and functional.
-- [ ] `npm run test:client` passes.
+- [x] Non-admin users navigating to `/` see `<Account />` (existing behaviour preserved — the current `<Navigate to="/account" />` should remain as the default for non-admin users; `AdminOnlyRoute` redirects admins to its contents and non-admins to `/account`).
+- [x] All existing `/admin/*` routes under `AdminLayout` remain unchanged and functional.
+- [x] `npm run test:client` passes.
 
 ## Implementation Plan
 

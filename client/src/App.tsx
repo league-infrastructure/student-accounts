@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import AppLayout from './components/AppLayout';
+import AdminOnlyRoute from './components/AdminOnlyRoute';
 import Login from './pages/Login';
 
 import About from './pages/About';
@@ -25,6 +26,7 @@ import ProvisioningRequests from './pages/admin/ProvisioningRequests';
 import Cohorts from './pages/admin/Cohorts';
 import SyncPanel from './pages/admin/SyncPanel';
 import MergeQueuePanel from './pages/admin/MergeQueuePanel';
+import Dashboard from './pages/admin/Dashboard';
 
 import StaffLayout from './pages/staff/StaffLayout';
 import StaffDirectory from './pages/staff/StaffDirectory';
@@ -45,8 +47,6 @@ function App() {
 
             {/* All authenticated routes share AppLayout (sidebar + topbar) */}
             <Route element={<AppLayout />}>
-              <Route path="/" element={<Navigate to="/account" replace />} />
-
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />
               <Route path="/mcp-setup" element={<McpSetup />} />
@@ -56,10 +56,20 @@ function App() {
                 <Route path="/staff/directory" element={<StaffDirectory />} />
               </Route>
 
-              {/* Admin pages — auth-gated by AdminLayout */}
+              {/* Admin workflow pages — role-gated by AdminOnlyRoute.
+                  Non-admin users at any of these paths are redirected to /account. */}
+              <Route element={<AdminOnlyRoute />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/requests" element={<ProvisioningRequests />} />
+                <Route path="/cohorts" element={<Cohorts />} />
+                <Route path="/users" element={<UsersPanel />} />
+                <Route path="/users/:id" element={<UserDetailPanel />} />
+                <Route path="/sync" element={<SyncPanel />} />
+                <Route path="/merge-queue" element={<MergeQueuePanel />} />
+              </Route>
+
+              {/* Admin ops pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
-                <Route path="/admin/users" element={<UsersPanel />} />
-                <Route path="/admin/users/:id" element={<UserDetailPanel />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />
                 <Route path="/admin/config" element={<ConfigPanel />} />
@@ -67,10 +77,6 @@ function App() {
                 <Route path="/admin/sessions" element={<SessionViewer />} />
                 <Route path="/admin/scheduler" element={<ScheduledJobsPanel />} />
                 <Route path="/admin/import-export" element={<ImportExport />} />
-                <Route path="/admin/provisioning-requests" element={<ProvisioningRequests />} />
-                <Route path="/admin/cohorts" element={<Cohorts />} />
-                <Route path="/admin/sync" element={<SyncPanel />} />
-                <Route path="/admin/merge-queue" element={<MergeQueuePanel />} />
                 <Route path="/admin/audit-log" element={<AuditLogPanel />} />
               </Route>
 
