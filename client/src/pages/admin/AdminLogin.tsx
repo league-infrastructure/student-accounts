@@ -14,7 +14,7 @@ export default function AdminLogin() {
   // ADMIN-role users bypass the password form entirely
   useEffect(() => {
     if (user && hasAdminAccess(user.role)) {
-      navigate('/admin/users', { replace: true });
+      navigate('/', { replace: true });
     }
   }, [user, navigate]);
 
@@ -31,7 +31,7 @@ export default function AdminLogin() {
       });
 
       if (res.ok) {
-        navigate('/admin/users');
+        navigate('/');
       } else {
         const data = await res.json();
         setError(data.error || 'Invalid password');

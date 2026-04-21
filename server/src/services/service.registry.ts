@@ -182,6 +182,8 @@ export class ServiceRegistry {
       UserRepository,
       ExternalAccountRepository,
       CohortRepository,
+      this.workspaceProvisioning,
+      this.claudeProvisioning,
     );
 
     // AnthropicSyncService — Sprint 010 T011.

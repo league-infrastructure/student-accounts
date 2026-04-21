@@ -9,6 +9,14 @@ import { prettifyName } from './utils/prettifyName';
 
 interface UserProvider {
   provider: string;
+  email?: string | null;
+  username?: string | null;
+}
+
+interface UserExternalAccount {
+  type: string;
+  externalId: string | null;
+  status: string;
 }
 
 interface AdminUser {
@@ -20,6 +28,7 @@ interface AdminUser {
   providers: UserProvider[];
   cohort: { id: number; name: string } | null;
   externalAccountTypes: string[];
+  externalAccounts?: UserExternalAccount[];
   createdAt: string;
 }
 
@@ -46,7 +55,54 @@ type FilterOption =
 // Sort types
 // ---------------------------------------------------------------------------
 
-type SortCol = 'name' | 'email' | 'cohort' | 'admin' | 'joined';
+type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'admin' | 'joined';
+
+// Account chip identifiers rendered in the Accounts column, ordered so
+// they sort in a stable, meaningful way.
+type AccountKind = 'google' | 'league' | 'pike13' | 'claude';
+const ACCOUNT_ORDER: AccountKind[] = ['league', 'google', 'claude', 'pike13'];
+
+function userAccounts(u: AdminUser): AccountKind[] {
+  const out = new Set<AccountKind>();
+  // Google Login (external OAuth sign-in)
+  if (u.providers?.some((p) => p.provider === 'google')) out.add('google');
+  // League workspace account
+  const eats = u.externalAccountTypes ?? [];
+  if (eats.includes('workspace')) out.add('league');
+  if (eats.includes('claude')) out.add('claude');
+  if (eats.includes('pike13')) out.add('pike13');
+  return ACCOUNT_ORDER.filter((k) => out.has(k));
+}
+
+function accountsSortKey(u: AdminUser): string {
+  // Sort alphabetically by the concatenated kinds (so users with the same
+  // account set cluster together), with count desc as a tiebreaker.
+  const accts = userAccounts(u);
+  return `${String(9 - accts.length).padStart(2, '0')}-${accts.join(',')}`;
+}
+
+function userEmails(u: AdminUser): string[] {
+  // Primary email first, then unique provider_email values from Logins
+  // that are not the same as the primary. Typically: primary + workspace
+  // email (e.g., student@students.jointheleague.org) for students who
+  // have a League workspace account.
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (e?: string | null) => {
+    if (!e) return;
+    const norm = e.toLowerCase();
+    if (seen.has(norm)) return;
+    seen.add(norm);
+    out.push(e);
+  };
+  add(u.email);
+  for (const p of u.providers ?? []) add(p.email ?? null);
+  // Workspace external_id is the League email
+  for (const a of u.externalAccounts ?? []) {
+    if (a.type === 'workspace' && a.externalId) add(a.externalId);
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,6 +170,9 @@ function sortUsers(users: AdminUser[], col: SortCol, dir: 'asc' | 'desc'): Admin
       case 'cohort':
         cmp = cohortLabel(a).localeCompare(cohortLabel(b));
         break;
+      case 'accounts':
+        cmp = accountsSortKey(a).localeCompare(accountsSortKey(b));
+        break;
       case 'admin': {
         const aAdmin = normalizeRole(a.role) === 'admin' ? 0 : 1;
         const bAdmin = normalizeRole(b.role) === 'admin' ? 0 : 1;
@@ -159,6 +218,65 @@ const PROVIDER_LOGOS: Record<string, { src: string; alt: string }> = {
   google: { src: 'https://www.google.com/favicon.ico', alt: 'Google' },
   pike13: { src: 'https://www.pike13.com/favicon.ico', alt: 'Pike 13' },
 };
+
+function AccountIcon({ kind }: { kind: AccountKind }) {
+  const common = { width: 20, height: 20, verticalAlign: 'middle' as const };
+  if (kind === 'google') {
+    return (
+      <img
+        src="https://www.google.com/favicon.ico"
+        alt="Google"
+        title="External Google account"
+        style={common}
+      />
+    );
+  }
+  if (kind === 'league') {
+    return (
+      <img
+        src="https://www.jointheleague.org/favicon.ico"
+        alt="League"
+        title="League Workspace account (@jointheleague.org)"
+        style={common}
+        onError={(e) => {
+          // Fallback to a flag emoji when the League favicon 404s.
+          const el = e.currentTarget;
+          const span = document.createElement('span');
+          span.title = 'League Workspace account';
+          span.style.fontSize = '16px';
+          span.textContent = '🏴';
+          el.replaceWith(span);
+        }}
+      />
+    );
+  }
+  if (kind === 'claude') {
+    return (
+      <img
+        src="https://www.anthropic.com/favicon.ico"
+        alt="Claude"
+        title="Claude (Anthropic) account"
+        style={common}
+      />
+    );
+  }
+  // Pike13 — just text per spec
+  return (
+    <span
+      title="Pike13 account"
+      style={{
+        fontSize: 11,
+        padding: '2px 6px',
+        background: '#fef3c7',
+        borderRadius: 4,
+        color: '#92400e',
+        fontWeight: 600,
+      }}
+    >
+      Pike13
+    </span>
+  );
+}
 
 function ProviderBadge({ provider }: { provider: string }) {
   const logo = PROVIDER_LOGOS[provider];
@@ -464,7 +582,7 @@ export default function UsersPanel() {
     const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
     setUpdating(user.id);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
+      const res = await fetch(`/api/users/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
@@ -484,7 +602,7 @@ export default function UsersPanel() {
   async function handleImpersonate(user: AdminUser) {
     setImpersonating(user.id);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/impersonate`, {
+      const res = await fetch(`/api/users/${user.id}/impersonate`, {
         method: 'POST',
       });
       if (!res.ok) {
@@ -501,7 +619,7 @@ export default function UsersPanel() {
   async function handleRowDelete(user: AdminUser) {
     if (!window.confirm(`Delete user "${prettifyName(user)}"?`)) return;
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
@@ -535,16 +653,6 @@ export default function UsersPanel() {
     setBulkDeleting(false);
   }
 
-  function getProviders(user: AdminUser): string[] {
-    const set = new Set<string>();
-    if (user.providers) {
-      for (const p of user.providers) set.add(p.provider);
-    }
-    if (user.provider && !set.has(user.provider)) {
-      set.add(user.provider);
-    }
-    return Array.from(set);
-  }
 
   function handleSort(col: SortCol) {
     if (col === sortCol) {
@@ -689,7 +797,9 @@ export default function UsersPanel() {
             <SortableTh col="cohort" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Cohort
             </SortableTh>
-            <th style={thStyle}>Providers</th>
+            <SortableTh col="accounts" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+              Accounts
+            </SortableTh>
             <SortableTh col="admin" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Admin
             </SortableTh>
@@ -701,7 +811,6 @@ export default function UsersPanel() {
         </thead>
         <tbody>
           {visible.map((user) => {
-            const providers = getProviders(user);
             const isOwnRow = currentUser?.id === user.id;
             const isChecked = selected.has(user.id);
             return (
@@ -719,14 +828,24 @@ export default function UsersPanel() {
                   )}
                 </td>
                 <td style={tdStyle}>
-                  <Link to={`/admin/users/${user.id}`} style={nameLinkStyle}>
+                  <Link to={`/users/${user.id}`} style={nameLinkStyle}>
                     {prettifyName(user)}
                   </Link>
                 </td>
                 <td style={tdStyle}>
-                  <Link to={`/admin/users/${user.id}`} style={emailLinkStyle}>
-                    {user.email}
-                  </Link>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Link to={`/users/${user.id}`} style={emailLinkStyle}>
+                      {user.email}
+                    </Link>
+                    {userEmails(user).slice(1).map((e) => (
+                      <span
+                        key={e}
+                        style={{ color: '#64748b', fontSize: 11, marginLeft: 0 }}
+                      >
+                        {e}
+                      </span>
+                    ))}
+                  </div>
                 </td>
                 <td style={tdStyle}>
                   <span style={cohortChipStyle(normalizeRole(user.role))}>
@@ -735,11 +854,11 @@ export default function UsersPanel() {
                 </td>
                 <td style={tdStyle}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {providers.length === 0 && (
+                    {userAccounts(user).length === 0 && (
                       <span style={{ color: '#94a3b8', fontSize: 13 }}>none</span>
                     )}
-                    {providers.map((p) => (
-                      <ProviderBadge key={p} provider={p} />
+                    {userAccounts(user).map((kind) => (
+                      <AccountIcon key={kind} kind={kind} />
                     ))}
                   </div>
                 </td>
@@ -764,7 +883,7 @@ export default function UsersPanel() {
                       setOpenMenuId((prev) => (prev === user.id ? null : user.id))
                     }
                     onClose={() => setOpenMenuId(null)}
-                    onEdit={() => navigate(`/admin/users/${user.id}`)}
+                    onEdit={() => navigate(`/users/${user.id}`)}
                     onDelete={() => void handleRowDelete(user)}
                     onImpersonate={() => void handleImpersonate(user)}
                   />

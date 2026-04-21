@@ -439,7 +439,7 @@ export default function Account() {
   // Admin redirect — to the provisioning-requests page (has actual admin UI).
   // Staff falls through and renders the account page (empty but won't 404).
   if (role === 'admin') {
-    return <Navigate to="/admin/provisioning-requests" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (isLoading) {

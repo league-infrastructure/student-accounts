@@ -379,7 +379,7 @@ export default function UserDetailPanel() {
   return (
     <div>
       {/* Back link */}
-      <button style={backButtonStyle} onClick={() => navigate('/admin/users')}>
+      <button style={backButtonStyle} onClick={() => navigate('/users')}>
         ← Back to Users
       </button>
 
