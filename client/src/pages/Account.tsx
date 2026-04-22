@@ -117,6 +117,11 @@ function hasWorkspaceBaseline(data: AccountData): boolean {
   return pendingWorkspaceRequest;
 }
 
+/** League emails are @jointheleague.org or any subdomain (e.g. students). */
+function isLeagueEmail(email: string): boolean {
+  return /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(email);
+}
+
 // ---------------------------------------------------------------------------
 // ProfileSection
 // ---------------------------------------------------------------------------
@@ -271,12 +276,19 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
   const hasActiveOrPendingClaude =
     claudeAccount != null || pendingClaudeRequest != null;
 
-  // Claude seats must land on a League email address, so a student without
-  // a League Email baseline can't request Claude yet — the row shows a hint
-  // instead of a button.
+  // Claude seats are invited to the student's League email, so:
+  //   - The student must already have a workspace baseline (so a League
+  //     email exists for them).
+  //   - The student must be signed in under that League email (primaryEmail
+  //     is @*.jointheleague.org). Requesting from an external Google/GitHub
+  //     session points the invite at the wrong identity.
+  const signedInAsLeague = isLeagueEmail(data.profile.primaryEmail);
   const showWorkspaceButton = !hasActiveOrPendingWorkspace;
-  const showClaudeButton = !hasActiveOrPendingClaude && workspaceBaseline;
+  const showClaudeButton =
+    !hasActiveOrPendingClaude && workspaceBaseline && signedInAsLeague;
   const claudeBlockedOnWorkspace = !hasActiveOrPendingClaude && !workspaceBaseline;
+  const claudeBlockedOnLogin =
+    !hasActiveOrPendingClaude && workspaceBaseline && !signedInAsLeague;
 
   return (
     <div style={styles.card}>
@@ -342,6 +354,14 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
                   aria-label="Claude Seat requires a League Email account first"
                 >
                   Requires League Email
+                </span>
+              ) : claudeBlockedOnLogin ? (
+                <span
+                  style={styles.disabledHint}
+                  title="Sign in with your League email to request a Claude seat"
+                  aria-label="Sign in with your League email to request a Claude seat"
+                >
+                  Sign in with your League email
                 </span>
               ) : null}
             </td>

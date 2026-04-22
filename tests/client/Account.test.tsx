@@ -86,7 +86,7 @@ function makeAccountData(overrides: Partial<AccountData> = {}): AccountData {
     profile: {
       id: 1,
       displayName: 'Alice',
-      primaryEmail: 'alice@example.com',
+      primaryEmail: 'alice@students.jointheleague.org',
       cohort: { id: 2, name: 'Spring 2025' },
       role: 'student',
       createdAt: '2024-01-01T00:00:00.000Z',
@@ -192,7 +192,7 @@ describe('AccountPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Alice')).toBeInTheDocument();
-      expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+      expect(screen.getByText('alice@students.jointheleague.org')).toBeInTheDocument();
     });
   });
 

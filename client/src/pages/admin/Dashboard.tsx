@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { prettifyName } from './utils/prettifyName';
+import { useToast } from '../../context/ToastContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -126,6 +127,7 @@ const DISPLAY_LIMIT = 5;
 
 function PendingRequestsWidget() {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [cohortPickerFor, setCohortPickerFor] = useState<Record<number, number>>({});
 
@@ -142,6 +144,10 @@ function PendingRequestsWidget() {
   const approveMutation = useMutation<void, Error, ApprovePayload>({
     mutationFn: approveRequest,
     onSuccess: (_data, { id }) => {
+      const req = requests?.find((r) => r.id === id);
+      const who = req ? prettifyName({ email: req.userEmail, displayName: req.userName }) : `#${id}`;
+      const what = req?.requestedType ?? 'request';
+      showToast(`Approved ${what} for ${who}`, 'success');
       setRowErrors((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -156,12 +162,16 @@ function PendingRequestsWidget() {
     },
     onError: (err, { id }) => {
       setRowErrors((prev) => ({ ...prev, [id]: err.message }));
+      showToast(`Approve failed: ${err.message}`, 'error');
     },
   });
 
   const denyMutation = useMutation<void, Error, number>({
     mutationFn: denyRequest,
     onSuccess: (_data, id) => {
+      const req = requests?.find((r) => r.id === id);
+      const who = req ? prettifyName({ email: req.userEmail, displayName: req.userName }) : `#${id}`;
+      showToast(`Denied request for ${who}`, 'info');
       setRowErrors((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -171,6 +181,7 @@ function PendingRequestsWidget() {
     },
     onError: (err, id) => {
       setRowErrors((prev) => ({ ...prev, [id]: err.message }));
+      showToast(`Deny failed: ${err.message}`, 'error');
     },
   });
 

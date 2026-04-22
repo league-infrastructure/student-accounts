@@ -17,6 +17,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Dashboard from '../../../../client/src/pages/admin/Dashboard';
+import { ToastProvider } from '../../../../client/src/context/ToastContext';
 
 // ---------------------------------------------------------------------------
 // Sample data
@@ -67,7 +68,9 @@ function renderDashboard(fetchImpl: (...args: unknown[]) => unknown) {
   return render(
     <MemoryRouter>
       <QueryClientProvider client={client}>
-        <Dashboard />
+        <ToastProvider>
+          <Dashboard />
+        </ToastProvider>
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -178,7 +181,9 @@ describe('Dashboard page', () => {
       render(
         <MemoryRouter>
           <QueryClientProvider client={client}>
-            <Dashboard />
+            <ToastProvider>
+              <Dashboard />
+            </ToastProvider>
           </QueryClientProvider>
         </MemoryRouter>,
       );
@@ -228,7 +233,9 @@ describe('Dashboard page', () => {
       render(
         <MemoryRouter>
           <QueryClientProvider client={client}>
-            <Dashboard />
+            <ToastProvider>
+              <Dashboard />
+            </ToastProvider>
           </QueryClientProvider>
         </MemoryRouter>,
       );
@@ -285,7 +292,9 @@ describe('Dashboard page', () => {
       render(
         <MemoryRouter>
           <QueryClientProvider client={client}>
-            <Dashboard />
+            <ToastProvider>
+              <Dashboard />
+            </ToastProvider>
           </QueryClientProvider>
         </MemoryRouter>,
       );
@@ -368,7 +377,9 @@ describe('Dashboard page', () => {
       render(
         <MemoryRouter>
           <QueryClientProvider client={client}>
-            <Dashboard />
+            <ToastProvider>
+              <Dashboard />
+            </ToastProvider>
           </QueryClientProvider>
         </MemoryRouter>,
       );
@@ -427,7 +438,9 @@ describe('Dashboard page', () => {
       render(
         <MemoryRouter>
           <QueryClientProvider client={client}>
-            <Dashboard />
+            <ToastProvider>
+              <Dashboard />
+            </ToastProvider>
           </QueryClientProvider>
         </MemoryRouter>,
       );
