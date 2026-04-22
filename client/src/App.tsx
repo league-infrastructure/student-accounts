@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import AppLayout from './components/AppLayout';
 import AdminOnlyRoute from './components/AdminOnlyRoute';
 import Login from './pages/Login';
@@ -39,6 +40,7 @@ function App() {
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <ToastProvider>
           <Routes>
             {/* Standalone pages (no AppLayout) */}
             <Route path="/login" element={<Login />} />
@@ -85,6 +87,7 @@ function App() {
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
+          </ToastProvider>
         </AuthProvider>
       </QueryClientProvider>
     </BrowserRouter>

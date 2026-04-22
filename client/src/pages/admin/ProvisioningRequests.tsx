@@ -11,6 +11,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '../../context/ToastContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,6 +92,7 @@ function isMissingCohortError(msg: string): boolean {
 
 export default function ProvisioningRequests() {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   // When a row's approval failed because the user has no cohort, we remember
   // the id → selected cohort id (0 = none picked yet).
@@ -111,6 +113,10 @@ export default function ProvisioningRequests() {
   const approveMutation = useMutation<void, Error, ApprovePayload>({
     mutationFn: approveRequest,
     onSuccess: (_data, { id }) => {
+      const req = requests?.find((r) => r.id === id);
+      const who = req?.userName ?? req?.userEmail ?? `#${id}`;
+      const what = req?.requestedType ?? 'request';
+      showToast(`Approved ${what} for ${who}`, 'success');
       setRowErrors((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -128,12 +134,16 @@ export default function ProvisioningRequests() {
       if (isMissingCohortError(err.message)) {
         setCohortPickerFor((prev) => (prev[id] != null ? prev : { ...prev, [id]: 0 }));
       }
+      showToast(`Approve failed: ${err.message}`, 'error');
     },
   });
 
   const rejectMutation = useMutation<void, Error, number>({
     mutationFn: rejectRequest,
     onSuccess: (_data, id) => {
+      const req = requests?.find((r) => r.id === id);
+      const who = req?.userName ?? req?.userEmail ?? `#${id}`;
+      showToast(`Rejected request for ${who}`, 'info');
       setRowErrors((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -143,6 +153,7 @@ export default function ProvisioningRequests() {
     },
     onError: (err, id) => {
       setRowErrors((prev) => ({ ...prev, [id]: err.message }));
+      showToast(`Reject failed: ${err.message}`, 'error');
     },
   });
 
