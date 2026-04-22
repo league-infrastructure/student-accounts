@@ -235,6 +235,8 @@ export interface WorkspaceUser {
   id: string;
   primaryEmail: string;
   orgUnitPath: string;
+  suspended?: boolean;
+  fullName?: string | null;
 }
 
 export interface WorkspaceOU {
@@ -796,6 +798,8 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
               id: u.id,
               primaryEmail: u.primaryEmail,
               orgUnitPath: u.orgUnitPath,
+              suspended: u.suspended ?? false,
+              fullName: u.name?.fullName ?? null,
             });
           }
         }
