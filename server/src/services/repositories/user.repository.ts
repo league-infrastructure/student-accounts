@@ -15,6 +15,7 @@ export type CreateUserInput = {
   role?: 'student' | 'staff' | 'admin';
   created_via: 'social_login' | 'pike13_sync' | 'admin_created' | 'workspace_sync';
   cohort_id?: number | null;
+  approval_status?: 'approved' | 'pending';
 };
 
 export type UpdateUserInput = Partial<{
@@ -23,6 +24,7 @@ export type UpdateUserInput = Partial<{
   role: 'student' | 'staff' | 'admin';
   cohort_id: number | null;
   is_active: boolean;
+  approval_status: 'approved' | 'pending';
 }>;
 
 export type FindAllUsersFilter = {

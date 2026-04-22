@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import AppLayout from './components/AppLayout';
 import AdminOnlyRoute from './components/AdminOnlyRoute';
@@ -10,6 +10,7 @@ import About from './pages/About';
 import McpSetup from './pages/McpSetup';
 import NotFound from './pages/NotFound';
 import Account from './pages/Account';
+import PendingApproval from './pages/PendingApproval';
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
@@ -35,12 +36,23 @@ import StaffDirectory from './pages/staff/StaffDirectory';
 
 const queryClient = new QueryClient();
 
+function PendingGate({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  // Signed-in user whose approval is pending: show only the lockdown page.
+  // Loading / signed-out / approved: normal routing.
+  if (!loading && user && user.approvalStatus === 'pending') {
+    return <PendingApproval />;
+  }
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ToastProvider>
+          <PendingGate>
           <Routes>
             {/* Standalone pages (no AppLayout) */}
             <Route path="/login" element={<Login />} />
@@ -87,6 +99,7 @@ function App() {
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
+          </PendingGate>
           </ToastProvider>
         </AuthProvider>
       </QueryClientProvider>
