@@ -7,6 +7,7 @@
  * Staff and admin users are redirected to /staff immediately without fetching.
  */
 
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -78,6 +79,18 @@ async function deleteLogin(id: number): Promise<void> {
   }
 }
 
+async function patchDisplayName(displayName: string): Promise<void> {
+  const res = await fetch('/api/account/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+}
+
 async function postProvisioningRequest(requestType: string): Promise<AccountProvisioningRequest[]> {
   const res = await fetch('/api/account/provisioning-requests', {
     method: 'POST',
@@ -127,15 +140,82 @@ function isLeagueEmail(email: string): boolean {
 // ProfileSection
 // ---------------------------------------------------------------------------
 
-function ProfileSection({ profile }: { profile: AccountProfile }) {
+function ProfileSection({
+  profile,
+  onRename,
+}: {
+  profile: AccountProfile;
+  onRename: (newName: string) => Promise<void>;
+}) {
   const roleLabel =
     profile.role === 'admin' ? 'Admin' : profile.role === 'staff' ? 'Staff' : 'Student';
   const subtitle = profile.cohort
     ? `${roleLabel} · ${profile.cohort.name}`
     : roleLabel;
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const displayed = profile.displayName ?? profile.primaryEmail;
+
+  function startEdit() {
+    setDraft(profile.displayName ?? '');
+    setError(null);
+    setEditing(true);
+  }
+
+  async function commit() {
+    const trimmed = draft.trim();
+    if (trimmed.length === 0) {
+      setError('Name cannot be empty.');
+      return;
+    }
+    if (trimmed === profile.displayName) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onRename(trimmed);
+      setEditing(false);
+    } catch (err: any) {
+      setError(err.message ?? 'Could not save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <header style={styles.profileHeader}>
-      <div style={styles.profileName}>{profile.displayName ?? profile.primaryEmail}</div>
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void commit();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          disabled={saving}
+          style={styles.profileNameInput}
+          aria-label="Edit display name"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={startEdit}
+          style={styles.profileNameButton}
+          title="Click to edit your name"
+          aria-label={`Edit name (currently ${displayed})`}
+        >
+          {displayed}
+        </button>
+      )}
+      {error && <div style={styles.profileNameError} role="alert">{error}</div>}
       <div style={styles.profileMeta}>{profile.primaryEmail}</div>
       <div style={styles.profileMeta}>{subtitle}</div>
     </header>
@@ -626,7 +706,13 @@ export default function Account() {
     <div style={styles.container}>
       <h1 style={styles.pageTitle}>My Account</h1>
 
-      <ProfileSection profile={data.profile} />
+      <ProfileSection
+        profile={data.profile}
+        onRename={async (newName) => {
+          await patchDisplayName(newName);
+          await queryClient.invalidateQueries({ queryKey: ['account'] });
+        }}
+      />
 
       <div style={styles.spacer} />
 
@@ -749,6 +835,36 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '1.25rem',
     fontWeight: 600,
     color: '#1e293b',
+    marginBottom: 4,
+  },
+  profileNameButton: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    color: '#1e293b',
+    marginBottom: 4,
+    background: 'transparent',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    textAlign: 'left',
+    font: 'inherit',
+  },
+  profileNameInput: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    color: '#1e293b',
+    marginBottom: 4,
+    padding: '2px 6px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 4,
+    background: '#fff',
+    width: '100%',
+    maxWidth: 420,
+    boxSizing: 'border-box',
+  },
+  profileNameError: {
+    color: '#dc2626',
+    fontSize: '0.8rem',
     marginBottom: 4,
   },
   profileMeta: {

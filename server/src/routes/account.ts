@@ -232,6 +232,37 @@ accountRouter.post(
  * 403 — role is not 'student'.
  */
 // ---------------------------------------------------------------------------
+// PATCH /api/account/profile — self-service profile edit
+// ---------------------------------------------------------------------------
+//
+// Accepts { displayName } and writes it to the signed-in user's row. The
+// only editable field for now. No role gate — every authenticated user
+// can rename themselves.
+accountRouter.patch(
+  '/account/profile',
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId: number = (req.session as any).userId;
+      const raw = (req.body as { displayName?: unknown } | undefined)?.displayName;
+      const displayName = typeof raw === 'string' ? raw.trim() : '';
+      if (displayName.length === 0 || displayName.length > 120) {
+        return res
+          .status(400)
+          .json({ error: 'displayName must be a non-empty string under 120 characters' });
+      }
+      await prisma.user.update({
+        where: { id: userId },
+        data: { display_name: displayName },
+      });
+      res.json({ ok: true, displayName });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // POST /api/account/complete-onboarding — one-time setup step for new users
 // ---------------------------------------------------------------------------
 //
