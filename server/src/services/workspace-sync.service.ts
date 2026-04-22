@@ -492,13 +492,17 @@ export class WorkspaceSyncService {
   }
 
   /**
-   * For every workspace ExternalAccount whose user's primary_email is NOT in
-   * seenEmails, set status=removed, record a workspace_sync_flagged audit
-   * event, AND soft-delete the User (User.is_active=false) so the suspended
-   * account drops out of the Users panel and all downstream queries. Admins
-   * can always flip is_active back on manually if they want the user back.
+   * For every active/pending workspace ExternalAccount whose League email
+   * (stored in `external_id`) is NOT present in `seenEmails`, flag the
+   * ExternalAccount as removed and record a workspace_sync_flagged audit
+   * event.
    *
-   * Returns the list of flagged emails.
+   * Does NOT deactivate the User row. Losing a League seat doesn't revoke
+   * the person's ability to sign in with their external identity — the
+   * User record is a login identity, while the ExternalAccount is the
+   * per-service seat that can come and go.
+   *
+   * Returns the list of flagged League emails.
    */
   private async _flagRemovedWorkspaceAccounts(
     db: any,
@@ -511,16 +515,19 @@ export class WorkspaceSyncService {
         type: 'workspace',
         status: { in: ['pending', 'active'] },
       },
-      include: { user: { select: { id: true, primary_email: true, is_active: true } } },
+      include: { user: { select: { id: true, primary_email: true } } },
     });
 
     const flagged: string[] = [];
 
     for (const account of activeAccounts) {
-      const email: string = account.user.primary_email;
-      if (seenEmails.has(email)) continue;
+      // `external_id` on workspace rows is the League email (the field
+      // that actually shows up in Google's directory), so that's what we
+      // compare against `seenEmails`. The user's primary_email may be an
+      // external gmail and is never the right key here.
+      const leagueEmail: string | null = account.external_id ?? null;
+      if (!leagueEmail || seenEmails.has(leagueEmail)) continue;
 
-      // Flag the external account.
       await this.externalAccountRepo.updateStatus(db, account.id, 'removed');
       await this.audit.record(db, {
         actor_user_id: actorId,
@@ -528,28 +535,10 @@ export class WorkspaceSyncService {
         target_user_id: account.user_id,
         target_entity_type: 'ExternalAccount',
         target_entity_id: String(account.id),
-        details: { primary_email: email },
+        details: { league_email: leagueEmail, primary_email: account.user.primary_email },
       });
 
-      // Soft-delete the User row if they're still active. The Google
-      // account is suspended / moved to /graveyard / deleted — there's no
-      // reason to keep surfacing them in the app.
-      if (account.user.is_active) {
-        await (db as any).user.update({
-          where: { id: account.user_id },
-          data: { is_active: false },
-        });
-        await this.audit.record(db, {
-          actor_user_id: actorId,
-          action: 'user_deactivated_by_sync',
-          target_user_id: account.user_id,
-          target_entity_type: 'User',
-          target_entity_id: String(account.user_id),
-          details: { primary_email: email, reason: 'workspace_account_gone' },
-        });
-      }
-
-      flagged.push(email);
+      flagged.push(leagueEmail);
     }
 
     return flagged;
