@@ -73,7 +73,17 @@ adminProvisioningRequestsRouter.post('/provisioning-requests/:id/approve', async
     }
     const deciderId = (req.session as any).userId as number;
 
-    const updated = await req.services.provisioningRequests.approve(id, deciderId);
+    const rawCohortId = (req.body as { cohortId?: unknown } | undefined)?.cohortId;
+    let cohortId: number | undefined;
+    if (rawCohortId != null) {
+      const n = typeof rawCohortId === 'number' ? rawCohortId : parseInt(String(rawCohortId), 10);
+      if (!Number.isInteger(n) || n <= 0) {
+        return res.status(400).json({ error: 'Invalid cohortId' });
+      }
+      cohortId = n;
+    }
+
+    const updated = await req.services.provisioningRequests.approve(id, deciderId, { cohortId });
 
     res.json({
       id: updated.id,
