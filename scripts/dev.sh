@@ -14,7 +14,7 @@ set -e
 
 # Prisma bootstrap: SQLite dev uses `db push` (no migration history), Postgres
 # uses `migrate deploy` (migration history is canonical).
-DB_CMD="npx prisma db push --skip-generate --accept-data-loss"
+DB_CMD="npx prisma db push --accept-data-loss"
 case "${DATABASE_URL:-}" in
   postgres://*|postgresql://*) DB_CMD="npx prisma migrate deploy" ;;
 esac
