@@ -367,7 +367,12 @@ export default function UserDetailPanel() {
   }
 
   function hasClaudeAccount(): boolean {
-    return (user?.externalAccounts ?? []).some((a) => a.type === 'claude');
+    // Only active or pending Claude accounts block re-provisioning.
+    // A removed/suspended row is history — the button should re-enable so
+    // the admin can re-invite the student without hand-editing the DB.
+    return (user?.externalAccounts ?? []).some(
+      (a) => a.type === 'claude' && (a.status === 'active' || a.status === 'pending'),
+    );
   }
 
   function provisionClaudeDisabledReason(): string | null {
