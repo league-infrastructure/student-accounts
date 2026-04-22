@@ -12,7 +12,13 @@ set -a
 set +a
 set -e
 
-# SQLite mode — no Docker needed
+# Prisma bootstrap: SQLite dev uses `db push` (no migration history), Postgres
+# uses `migrate deploy` (migration history is canonical).
+DB_CMD="npx prisma db push --skip-generate --accept-data-loss"
+case "${DATABASE_URL:-}" in
+  postgres://*|postgresql://*) DB_CMD="npx prisma migrate deploy" ;;
+esac
+
 exec npx concurrently -n server,client -c green,magenta \
-  "cd server && npx prisma generate && npx prisma migrate deploy && npm run dev" \
+  "cd server && npx prisma generate && $DB_CMD && npm run dev" \
   "cd client && npx wait-on http://localhost:3000/api/health && npx vite --host"
