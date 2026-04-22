@@ -173,6 +173,7 @@ function PendingUsersWidget() {
   const { data: users, isLoading, error } = useQuery<PendingUser[], Error>({
     queryKey: ['admin', 'dashboard', 'pending-users'],
     queryFn: fetchPendingUsers,
+    refetchInterval: 2000,
   });
 
   const approve = useMutation<void, Error, number>({
@@ -290,6 +291,7 @@ function PendingRequestsWidget() {
   const { data: requests, isLoading, error } = useQuery<ProvisioningRequest[], Error>({
     queryKey: ['admin', 'dashboard', 'pending-requests'],
     queryFn: fetchPendingRequests,
+    refetchInterval: 2000,
   });
 
   const { data: cohorts } = useQuery<Cohort[], Error>({
@@ -586,6 +588,7 @@ function UserCountsWidget() {
   const { data: stats, isLoading, error } = useQuery<AdminStats, Error>({
     queryKey: ['admin', 'dashboard', 'stats'],
     queryFn: fetchStats,
+    refetchInterval: 10_000,
   });
 
   return (
