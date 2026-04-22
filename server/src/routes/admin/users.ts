@@ -245,6 +245,18 @@ adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
     if (err instanceof AppError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
+    // Recognize Anthropic/Claude client errors without importing the class
+    // (avoids a dependency cycle between routes/ and services/anthropic/).
+    const name = err?.constructor?.name ?? err?.name ?? '';
+    if (name === 'AnthropicAdminWriteDisabledError' || name === 'ClaudeTeamWriteDisabledError') {
+      return res.status(422).json({
+        error:
+          'Anthropic write operations are disabled. Set CLAUDE_TEAM_WRITE_ENABLED=1 in the server environment and restart.',
+      });
+    }
+    if (name === 'AnthropicAdminApiError' || name === 'ClaudeTeamApiError') {
+      return res.status(502).json({ error: `Anthropic API error: ${err.message}` });
+    }
     next(err);
   }
 });
