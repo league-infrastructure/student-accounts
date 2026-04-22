@@ -21,6 +21,7 @@ interface ProvisioningRequest {
   userId: number;
   userName: string | null;
   userEmail: string;
+  userCohort: { id: number; name: string } | null;
   requestedType: 'workspace' | 'claude';
   createdAt: string;
 }
@@ -179,8 +180,16 @@ export default function ProvisioningRequests() {
               const isPending =
                 approveMutation.isPending || rejectMutation.isPending;
               const rowError = rowErrors[req.id];
-              const pickerCohortId = cohortPickerFor[req.id];
-              const showPicker = pickerCohortId != null;
+              // Workspace provisioning requires a cohort. Surface the picker
+              // immediately for users with no cohort (skips the pointless
+              // click-Approve-see-error round trip) — or on demand after an
+              // error for other cases.
+              const needsCohort =
+                req.requestedType === 'workspace' && req.userCohort == null;
+              const manualPickerCohortId = cohortPickerFor[req.id];
+              const showPicker = needsCohort || manualPickerCohortId != null;
+              const pickerCohortId = manualPickerCohortId ?? 0;
+              const pickerCancellable = !needsCohort;
 
               return (
                 <tr key={req.id}>
@@ -227,20 +236,32 @@ export default function ProvisioningRequests() {
                           >
                             Approve with cohort
                           </button>
-                          <button
-                            style={cancelButtonStyle}
-                            disabled={isPending}
-                            onClick={() =>
-                              setCohortPickerFor((prev) => {
-                                const next = { ...prev };
-                                delete next[req.id];
-                                return next;
-                              })
-                            }
-                            aria-label={`Cancel cohort picker for request ${req.id}`}
-                          >
-                            Cancel
-                          </button>
+                          {pickerCancellable && (
+                            <button
+                              style={cancelButtonStyle}
+                              disabled={isPending}
+                              onClick={() =>
+                                setCohortPickerFor((prev) => {
+                                  const next = { ...prev };
+                                  delete next[req.id];
+                                  return next;
+                                })
+                              }
+                              aria-label={`Cancel cohort picker for request ${req.id}`}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                          {needsCohort && (
+                            <button
+                              style={rejectButtonStyle}
+                              disabled={isPending}
+                              onClick={() => rejectMutation.mutate(req.id)}
+                              aria-label={`Reject request ${req.id}`}
+                            >
+                              Reject
+                            </button>
+                          )}
                         </>
                       ) : (
                         <>
