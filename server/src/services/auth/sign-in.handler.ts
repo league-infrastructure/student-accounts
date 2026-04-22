@@ -218,6 +218,11 @@ export async function signInHandler(
           role: 'student',
           created_via: 'social_login',
           approval_status: isLeagueIdentity ? 'approved' : 'pending',
+          // League identities (whose presence in Workspace is the
+          // approval) skip onboarding. External sign-ins have to confirm
+          // their display name in the Onboarding page before entering
+          // the app.
+          onboarding_completed: isLeagueIdentity,
         },
         null, // system action; no acting user
       );

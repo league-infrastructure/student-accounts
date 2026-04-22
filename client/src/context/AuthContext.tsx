@@ -12,8 +12,12 @@ export interface AuthUser {
   email: string;
   displayName: string | null;
   role: string;
-  /** 'approved' or 'pending'. Pending users see only the "account pending" page. */
+  /** 'approved' or 'pending'. Pending users see an awaiting-approval banner
+   *  on the Services section but otherwise use the app normally. */
   approvalStatus?: 'approved' | 'pending';
+  /** False until the user has confirmed their display name during first
+   *  sign-in. Drives the one-time Onboarding page. */
+  onboardingCompleted?: boolean;
   avatarUrl: string | null;
   provider: string | null;
   providerId: string | null;

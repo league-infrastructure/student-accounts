@@ -10,7 +10,7 @@ import About from './pages/About';
 import McpSetup from './pages/McpSetup';
 import NotFound from './pages/NotFound';
 import Account from './pages/Account';
-import PendingApproval from './pages/PendingApproval';
+import Onboarding from './pages/Onboarding';
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
@@ -36,12 +36,13 @@ import StaffDirectory from './pages/staff/StaffDirectory';
 
 const queryClient = new QueryClient();
 
-function PendingGate({ children }: { children: React.ReactNode }) {
+function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  // Signed-in user whose approval is pending: show only the lockdown page.
-  // Loading / signed-out / approved: normal routing.
-  if (!loading && user && user.approvalStatus === 'pending') {
-    return <PendingApproval />;
+  // Signed-in user who hasn't completed the one-time name-setup step: show
+  // only the Onboarding page. Everyone else (signed-out, loading, or
+  // onboarded) sees the normal routes.
+  if (!loading && user && user.onboardingCompleted === false) {
+    return <Onboarding />;
   }
   return <>{children}</>;
 }
@@ -52,7 +53,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ToastProvider>
-          <PendingGate>
+          <OnboardingGate>
           <Routes>
             {/* Standalone pages (no AppLayout) */}
             <Route path="/login" element={<Login />} />
@@ -99,7 +100,7 @@ function App() {
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
-          </PendingGate>
+          </OnboardingGate>
           </ToastProvider>
         </AuthProvider>
       </QueryClientProvider>

@@ -137,6 +137,7 @@ authRouter.get('/auth/me', async (req: Request, res: Response) => {
     displayName: effectiveUser.display_name,
     role: effectiveUser.role === 'admin' ? 'ADMIN' : effectiveUser.role === 'staff' ? 'STAFF' : 'USER',
     approvalStatus: effectiveUser.approval_status ?? 'approved',
+    onboardingCompleted: effectiveUser.onboarding_completed ?? true,
     avatarUrl: null,
     provider: null,
     providerId: null,
