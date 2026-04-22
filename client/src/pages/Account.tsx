@@ -261,18 +261,23 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
 
   const workspaceBaseline = hasWorkspaceBaseline(data);
 
-  // "Live" ExternalAccounts — status active/pending. Removed/suspended rows
-  // shouldn't block re-requesting.
   const liveStatuses = (s: string) => s === 'active' || s === 'pending';
+  const deadStatuses = (s: string) => s === 'suspended' || s === 'removed';
 
-  // Derive workspace state.
-  const workspaceAccount = data.externalAccounts.find(
-    (a) => a.type === 'workspace' && liveStatuses(a.status),
-  );
-  // Only *pending* requests block re-requesting. Rejected requests still show
-  // up in the status column so the student knows what happened, but they
-  // don't lock the button forever. A *rejected_permanent* request blocks
-  // forever (admin decision).
+  // Derive workspace state. We distinguish three cases per account type:
+  //   1. "live"  — active/pending: already provisioned, nothing to request.
+  //   2. "dead"  — suspended/removed: existed, admin turned it off, the
+  //                student can ask for it back.
+  //   3. "none"  — never provisioned: student can request.
+  const anyWorkspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
+  const liveWorkspaceAccount =
+    anyWorkspaceAccount && liveStatuses(anyWorkspaceAccount.status) ? anyWorkspaceAccount : null;
+  const deadWorkspaceAccount =
+    anyWorkspaceAccount && deadStatuses(anyWorkspaceAccount.status) ? anyWorkspaceAccount : null;
+  // Only *pending* requests block re-requesting. Rejected requests still
+  // show up in the status column so the student knows what happened, but
+  // they don't lock the button forever. A *rejected_permanent* request
+  // blocks forever (admin decision).
   const pendingWorkspaceRequest = data.provisioningRequests.find(
     (r) =>
       (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
@@ -288,9 +293,11 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
   );
 
   // Derive claude state.
-  const claudeAccount = data.externalAccounts.find(
-    (a) => a.type === 'claude' && liveStatuses(a.status),
-  );
+  const anyClaudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
+  const liveClaudeAccount =
+    anyClaudeAccount && liveStatuses(anyClaudeAccount.status) ? anyClaudeAccount : null;
+  const deadClaudeAccount =
+    anyClaudeAccount && deadStatuses(anyClaudeAccount.status) ? anyClaudeAccount : null;
   const pendingClaudeRequest = data.provisioningRequests.find(
     (r) =>
       (r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude') &&
@@ -308,25 +315,29 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
   // Derive pike13 state.
   const pike13Account = data.externalAccounts.find((a) => a.type === 'pike13');
 
-  const hasActiveOrPendingWorkspace =
-    workspaceAccount != null || pendingWorkspaceRequest != null;
-  const hasActiveOrPendingClaude =
-    claudeAccount != null || pendingClaudeRequest != null;
+  // Request-button visibility. "Request League Email" is shown when the
+  // account is absent, and "Request re-activation" is shown when it's
+  // suspended/removed — in either case blocked by a pending request or
+  // a permanent reject.
+  const showWorkspaceButton =
+    !liveWorkspaceAccount && !pendingWorkspaceRequest && !permaRejectedWorkspace;
+  const workspaceReactivation = !!deadWorkspaceAccount;
 
-  // Claude seats are invited to the student's League email — the server
-  // resolves it from the workspace account — so the student just needs a
-  // League email to exist, not to be signed in under one.
-  const showWorkspaceButton = !hasActiveOrPendingWorkspace && !permaRejectedWorkspace;
   const showClaudeButton =
-    !hasActiveOrPendingClaude && !permaRejectedClaude && workspaceBaseline;
+    !liveClaudeAccount && !pendingClaudeRequest && !permaRejectedClaude && workspaceBaseline;
+  const claudeReactivation = !!deadClaudeAccount;
   const claudeBlockedOnWorkspace =
-    !hasActiveOrPendingClaude && !permaRejectedClaude && !workspaceBaseline;
+    !liveClaudeAccount &&
+    !deadClaudeAccount &&
+    !pendingClaudeRequest &&
+    !permaRejectedClaude &&
+    !workspaceBaseline;
 
   // Display the League email next to the League Email row. Prefer the
   // workspace ExternalAccount's external_id (set by workspace provisioning);
   // fall back to primaryEmail when it's already a League address.
   const leagueEmailDisplay: string | null =
-    workspaceAccount?.externalId ??
+    anyWorkspaceAccount?.externalId ??
     (isLeagueEmail(data.profile.primaryEmail) ? data.profile.primaryEmail : null);
 
   return (
@@ -346,11 +357,13 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
           <tr style={styles.tr}>
             <td style={styles.td}>League Email</td>
             <td style={styles.td}>
-              {workspaceAccount
-                ? workspaceAccount.status
-                : latestWorkspaceRequest
-                  ? `Request ${latestWorkspaceRequest.status}`
-                  : 'None'}
+              {pendingWorkspaceRequest
+                ? 'Request pending'
+                : anyWorkspaceAccount
+                  ? anyWorkspaceAccount.status
+                  : latestWorkspaceRequest
+                    ? `Request ${latestWorkspaceRequest.status}`
+                    : 'None'}
             </td>
             <td style={styles.td}>
               {showWorkspaceButton ? (
@@ -358,11 +371,11 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
                   onClick={() => onRequest('workspace')}
                   disabled={requesting}
                   style={styles.requestButton}
-                  aria-label="Request League Email"
+                  aria-label={workspaceReactivation ? 'Request re-activation' : 'Request League Email'}
                 >
-                  Request League Email
+                  {workspaceReactivation ? 'Request re-activation' : 'Request League Email'}
                 </button>
-              ) : leagueEmailDisplay ? (
+              ) : liveWorkspaceAccount && leagueEmailDisplay ? (
                 <span style={styles.emailValue}>{leagueEmailDisplay}</span>
               ) : null}
             </td>
@@ -372,11 +385,13 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
           <tr style={styles.tr}>
             <td style={styles.td}>Claude Seat</td>
             <td style={styles.td}>
-              {claudeAccount
-                ? claudeAccount.status
-                : latestClaudeRequest
-                  ? `Request ${latestClaudeRequest.status}`
-                  : 'None'}
+              {pendingClaudeRequest
+                ? 'Request pending'
+                : anyClaudeAccount
+                  ? anyClaudeAccount.status
+                  : latestClaudeRequest
+                    ? `Request ${latestClaudeRequest.status}`
+                    : 'None'}
             </td>
             <td style={styles.td}>
               {showClaudeButton ? (
@@ -384,9 +399,9 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
                   onClick={() => onRequest('claude')}
                   disabled={requesting}
                   style={styles.requestButton}
-                  aria-label="Request Claude Seat"
+                  aria-label={claudeReactivation ? 'Request Claude re-activation' : 'Request Claude Seat'}
                 >
-                  Request Claude Seat
+                  {claudeReactivation ? 'Request re-activation' : 'Request Claude Seat'}
                 </button>
               ) : claudeBlockedOnWorkspace ? (
                 <span
