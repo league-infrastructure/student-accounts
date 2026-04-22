@@ -54,6 +54,16 @@ accountRouter.get(
       cohort = { id: cohortRecord.id, name: cohortRecord.name };
     }
 
+    // Temp password for the welcome flow. Only surfaced to the student
+    // when they have a live workspace ExternalAccount — no reason for
+    // someone without one to see a value they can't use.
+    const hasLiveWorkspace = userAccounts.some(
+      (a) => a.type === 'workspace' && (a.status === 'active' || a.status === 'pending'),
+    );
+    const workspaceTempPassword = hasLiveWorkspace
+      ? (process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD ?? null)
+      : null;
+
     const body = {
       profile: {
         id: user.id,
@@ -63,6 +73,7 @@ accountRouter.get(
         role: user.role,
         approvalStatus: (user as any).approval_status ?? 'approved',
         createdAt: user.created_at,
+        workspaceTempPassword,
       },
       logins: userLogins.map((l) => ({
         id: l.id,

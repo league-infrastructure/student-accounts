@@ -645,11 +645,16 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
     try {
       const adminSdk = google.admin({ version: 'directory_v1', auth });
+      // Shared one-shot temp password. The student sees it on their
+      // Account page; changePasswordAtNextLogin forces a rotation on
+      // first login so the shared value never becomes a real secret.
+      const tempPassword =
+        process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD ?? 'ChangeMeNow!';
       const requestBody: Record<string, unknown> = {
         primaryEmail,
         orgUnitPath,
         name: { givenName, familyName },
-        password: crypto.randomUUID(), // temporary password; user resets via welcome email
+        password: tempPassword,
         changePasswordAtNextLogin: true,
       };
       if (recoveryEmail && recoveryEmail.trim() !== '') {
