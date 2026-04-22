@@ -93,6 +93,11 @@ enum ProvisioningStatus {
   rejected_permanent
 }
 
+enum UserApprovalStatus {
+  approved
+  pending
+}
+
 enum MergeStatus {
   pending
   approved
@@ -121,6 +126,7 @@ model User {
   created_via   CreatedVia
   cohort_id     Int?
   is_active     Boolean    @default(true)
+  approval_status UserApprovalStatus @default(approved)
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
 

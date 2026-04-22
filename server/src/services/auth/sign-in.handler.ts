@@ -204,12 +204,20 @@ export async function signInHandler(
     if (existingUser) {
       user = existingUser;
     } else {
+      // Sign-ins from non-League identities are created as pending — they
+      // see a "Your account is pending" screen until an admin approves.
+      // @*.jointheleague.org users are auto-approved because their presence
+      // in Google Workspace already proves membership.
+      const isLeagueIdentity = /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(
+        resolvedEmail,
+      );
       user = await userService.createWithAudit(
         {
           display_name: displayName || providerEmail || providerUserId,
           primary_email: resolvedEmail,
           role: 'student',
           created_via: 'social_login',
+          approval_status: isLeagueIdentity ? 'approved' : 'pending',
         },
         null, // system action; no acting user
       );

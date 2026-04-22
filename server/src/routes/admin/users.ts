@@ -213,6 +213,106 @@ adminUsersRouter.post('/stop-impersonating', requireAuth, async (req, res, next)
 });
 
 // ---------------------------------------------------------------------------
+// GET /admin/pending-users — list users with approval_status='pending'
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.get('/pending-users', async (_req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { is_active: true, approval_status: 'pending' },
+      orderBy: { created_at: 'asc' },
+      include: {
+        logins: { select: { provider: true, provider_email: true, provider_username: true } },
+      },
+    });
+    res.json(
+      users.map((u) => ({
+        id: u.id,
+        email: u.primary_email,
+        displayName: u.display_name,
+        createdAt: u.created_at,
+        logins: u.logins.map((l) => ({
+          provider: l.provider,
+          email: l.provider_email,
+          username: l.provider_username,
+        })),
+      })),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/users/:id/approve — flip approval_status to 'approved'
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+    const actorId = (req.session as any).userId as number;
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.approval_status === 'approved') {
+      return res.status(409).json({ error: 'User is already approved' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { approval_status: 'approved' } });
+      await tx.auditEvent.create({
+        data: {
+          action: 'approve_user',
+          actor_user_id: actorId,
+          target_user_id: id,
+          target_entity_type: 'User',
+          target_entity_id: String(id),
+        },
+      });
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/users/:id/deny-approval — soft-delete a pending user. No
+// "permanently rejected" state needed: deactivation is terminal unless an
+// admin manually flips is_active back.
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+    const actorId = (req.session as any).userId as number;
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { is_active: false } });
+      await tx.auditEvent.create({
+        data: {
+          action: 'deny_user_approval',
+          actor_user_id: actorId,
+          target_user_id: id,
+          target_entity_type: 'User',
+          target_entity_id: String(id),
+        },
+      });
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /admin/users/:id/provision-claude
 // Calls ClaudeProvisioningService.provision(userId, actorId, tx) inside a
 // prisma.$transaction. Returns 201 with the new ExternalAccount on success.

@@ -12,6 +12,8 @@ export interface AuthUser {
   email: string;
   displayName: string | null;
   role: string;
+  /** 'approved' or 'pending'. Pending users see only the "account pending" page. */
+  approvalStatus?: 'approved' | 'pending';
   avatarUrl: string | null;
   provider: string | null;
   providerId: string | null;

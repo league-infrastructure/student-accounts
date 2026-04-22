@@ -120,10 +120,158 @@ export default function Dashboard() {
   return (
     <div>
       <h2 style={pageHeadingStyle}>Dashboard</h2>
+      <PendingUsersWidget />
       <PendingRequestsWidget />
       <CohortsWidget />
       <UserCountsWidget />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PendingUsersWidget — accounts awaiting first-sign-in approval
+// ---------------------------------------------------------------------------
+
+interface PendingUser {
+  id: number;
+  email: string;
+  displayName: string | null;
+  createdAt: string;
+  logins: { provider: string; email: string | null; username: string | null }[];
+}
+
+async function fetchPendingUsers(): Promise<PendingUser[]> {
+  const res = await fetch('/api/admin/pending-users');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function approvePendingUser(id: number): Promise<void> {
+  const res = await fetch(`/api/admin/users/${id}/approve`, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+}
+
+async function denyPendingUser(id: number): Promise<void> {
+  const res = await fetch(`/api/admin/users/${id}/deny-approval`, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+}
+
+function PendingUsersWidget() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
+
+  const { data: users, isLoading, error } = useQuery<PendingUser[], Error>({
+    queryKey: ['admin', 'dashboard', 'pending-users'],
+    queryFn: fetchPendingUsers,
+  });
+
+  const approve = useMutation<void, Error, number>({
+    mutationFn: approvePendingUser,
+    onSuccess: (_d, id) => {
+      const u = users?.find((x) => x.id === id);
+      showToast(`Approved ${u?.displayName ?? u?.email ?? `#${id}`}`, 'success');
+      setRowErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-users'] });
+    },
+    onError: (err, id) => {
+      setRowErrors((prev) => ({ ...prev, [id]: err.message }));
+      showToast(`Approve failed: ${err.message}`, 'error');
+    },
+  });
+
+  const deny = useMutation<void, Error, number>({
+    mutationFn: denyPendingUser,
+    onSuccess: (_d, id) => {
+      const u = users?.find((x) => x.id === id);
+      showToast(`Denied ${u?.displayName ?? u?.email ?? `#${id}`}`, 'info');
+      setRowErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-users'] });
+    },
+    onError: (err, id) => {
+      setRowErrors((prev) => ({ ...prev, [id]: err.message }));
+      showToast(`Deny failed: ${err.message}`, 'error');
+    },
+  });
+
+  const anyPending = approve.isPending || deny.isPending;
+
+  return (
+    <section style={widgetStyle} aria-labelledby="pending-users-heading">
+      <h3 id="pending-users-heading" style={widgetHeadingStyle}>
+        Pending Accounts
+      </h3>
+      {isLoading && <p style={loadingStyle}>Loading pending accounts...</p>}
+      {error && (
+        <p style={errorStyle} role="alert">
+          Failed to load pending accounts: {error.message}
+        </p>
+      )}
+      {!isLoading && !error && (!users || users.length === 0) && (
+        <p style={emptyStyle}>No pending accounts.</p>
+      )}
+      {!isLoading && !error && users && users.length > 0 && (
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Name</th>
+              <th style={thStyle}>Email</th>
+              <th style={thStyle}>Signed in via</th>
+              <th style={thStyle}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <tr key={u.id}>
+                <td style={tdStyle}>{u.displayName ?? '-'}</td>
+                <td style={tdStyle}>{u.email}</td>
+                <td style={tdStyle}>
+                  {u.logins.map((l) => l.provider).join(', ') || '-'}
+                </td>
+                <td style={tdStyle}>
+                  <div style={actionsCellStyle}>
+                    <button
+                      style={approveButtonStyle}
+                      disabled={anyPending}
+                      onClick={() => approve.mutate(u.id)}
+                      aria-label={`Approve account ${u.id}`}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      style={denyButtonStyle}
+                      disabled={anyPending}
+                      onClick={() => {
+                        if (window.confirm(`Deny account for ${u.email}? They will be deactivated.`)) {
+                          deny.mutate(u.id);
+                        }
+                      }}
+                      aria-label={`Deny account ${u.id}`}
+                    >
+                      Deny
+                    </button>
+                    {rowErrors[u.id] && (
+                      <span style={inlineErrorStyle} role="alert">
+                        {rowErrors[u.id]}
+                      </span>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 
