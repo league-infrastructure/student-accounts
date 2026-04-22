@@ -313,26 +313,21 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
   const hasActiveOrPendingClaude =
     claudeAccount != null || pendingClaudeRequest != null;
 
-  // Claude seats are invited to the student's League email, so:
-  //   - The student must already have a workspace baseline (so a League
-  //     email exists for them).
-  //   - The student must be signed in under that League email (primaryEmail
-  //     is @*.jointheleague.org). Requesting from an external Google/GitHub
-  //     session points the invite at the wrong identity.
-  const signedInAsLeague = isLeagueEmail(data.profile.primaryEmail);
+  // Claude seats are invited to the student's League email — the server
+  // resolves it from the workspace account — so the student just needs a
+  // League email to exist, not to be signed in under one.
   const showWorkspaceButton = !hasActiveOrPendingWorkspace && !permaRejectedWorkspace;
   const showClaudeButton =
-    !hasActiveOrPendingClaude &&
-    !permaRejectedClaude &&
-    workspaceBaseline &&
-    signedInAsLeague;
+    !hasActiveOrPendingClaude && !permaRejectedClaude && workspaceBaseline;
   const claudeBlockedOnWorkspace =
     !hasActiveOrPendingClaude && !permaRejectedClaude && !workspaceBaseline;
-  const claudeBlockedOnLogin =
-    !hasActiveOrPendingClaude &&
-    !permaRejectedClaude &&
-    workspaceBaseline &&
-    !signedInAsLeague;
+
+  // Display the League email next to the League Email row. Prefer the
+  // workspace ExternalAccount's external_id (set by workspace provisioning);
+  // fall back to primaryEmail when it's already a League address.
+  const leagueEmailDisplay: string | null =
+    workspaceAccount?.externalId ??
+    (isLeagueEmail(data.profile.primaryEmail) ? data.profile.primaryEmail : null);
 
   return (
     <div style={styles.card}>
@@ -367,6 +362,8 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
                 >
                   Request League Email
                 </button>
+              ) : leagueEmailDisplay ? (
+                <span style={styles.emailValue}>{leagueEmailDisplay}</span>
               ) : null}
             </td>
           </tr>
@@ -398,14 +395,6 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
                   aria-label="Claude Seat requires a League Email account first"
                 >
                   Requires League Email
-                </span>
-              ) : claudeBlockedOnLogin ? (
-                <span
-                  style={styles.disabledHint}
-                  title="Sign in with your League email to request a Claude seat"
-                  aria-label="Sign in with your League email to request a Claude seat"
-                >
-                  Sign in with your League email
                 </span>
               ) : null}
             </td>
@@ -848,6 +837,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.82rem',
     color: '#94a3b8',
     fontStyle: 'italic' as const,
+  },
+  emailValue: {
+    fontSize: '0.85rem',
+    color: '#1e293b',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   },
   readOnlyHint: {
     fontSize: '0.82rem',
