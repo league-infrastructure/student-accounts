@@ -350,9 +350,20 @@ export default function UserDetailPanel() {
   // -------------------------------------------------------------------------
 
   function hasActiveWorkspace(): boolean {
-    return (user?.externalAccounts ?? []).some(
-      (a) => a.type === 'workspace' && a.status === 'active',
-    );
+    // A user has an active League (Google Workspace) account if either:
+    //  1. they have a workspace ExternalAccount row with status=active, OR
+    //  2. their primary email is on a jointheleague.org domain — the User
+    //     row itself proves a matching Google account exists (workspace
+    //     sync creates User rows without ExternalAccount rows by design).
+    if (
+      (user?.externalAccounts ?? []).some(
+        (a) => a.type === 'workspace' && a.status === 'active',
+      )
+    ) {
+      return true;
+    }
+    const email = user?.email?.toLowerCase() ?? '';
+    return /@([a-z0-9-]+\.)?jointheleague\.org$/.test(email);
   }
 
   function hasClaudeAccount(): boolean {
