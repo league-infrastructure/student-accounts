@@ -90,6 +90,7 @@ enum ProvisioningStatus {
   pending
   approved
   rejected
+  rejected_permanent
 }
 
 enum MergeStatus {

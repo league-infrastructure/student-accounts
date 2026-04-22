@@ -123,7 +123,12 @@ adminProvisioningRequestsRouter.post('/provisioning-requests/:id/reject', async 
     }
     const deciderId = (req.session as any).userId as number;
 
-    const updated = await req.services.provisioningRequests.reject(id, deciderId);
+    const permanent = Boolean(
+      (req.body as { permanent?: unknown } | undefined)?.permanent,
+    );
+    const updated = permanent
+      ? await req.services.provisioningRequests.rejectPermanent(id, deciderId)
+      : await req.services.provisioningRequests.reject(id, deciderId);
 
     res.json({
       id: updated.id,

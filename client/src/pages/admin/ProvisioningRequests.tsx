@@ -72,9 +72,17 @@ async function approveRequest({ id, cohortId }: ApprovePayload): Promise<void> {
   }
 }
 
-async function rejectRequest(id: number): Promise<void> {
+async function rejectRequest({
+  id,
+  permanent,
+}: {
+  id: number;
+  permanent?: boolean;
+}): Promise<void> {
   const res = await fetch(`/api/admin/provisioning-requests/${id}/reject`, {
     method: 'POST',
+    headers: permanent ? { 'Content-Type': 'application/json' } : undefined,
+    body: permanent ? JSON.stringify({ permanent: true }) : undefined,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -138,12 +146,15 @@ export default function ProvisioningRequests() {
     },
   });
 
-  const rejectMutation = useMutation<void, Error, number>({
+  const rejectMutation = useMutation<void, Error, { id: number; permanent?: boolean }>({
     mutationFn: rejectRequest,
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, { id, permanent }) => {
       const req = requests?.find((r) => r.id === id);
       const who = req?.userName ?? req?.userEmail ?? `#${id}`;
-      showToast(`Rejected request for ${who}`, 'info');
+      showToast(
+        permanent ? `Permanently rejected request for ${who}` : `Rejected request for ${who}`,
+        'info',
+      );
       setRowErrors((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -151,7 +162,7 @@ export default function ProvisioningRequests() {
       });
       queryClient.invalidateQueries({ queryKey: ['admin', 'provisioning-requests'] });
     },
-    onError: (err, id) => {
+    onError: (err, { id }) => {
       setRowErrors((prev) => ({ ...prev, [id]: err.message }));
       showToast(`Reject failed: ${err.message}`, 'error');
     },
@@ -264,14 +275,32 @@ export default function ProvisioningRequests() {
                             </button>
                           )}
                           {needsCohort && (
-                            <button
-                              style={rejectButtonStyle}
-                              disabled={isPending}
-                              onClick={() => rejectMutation.mutate(req.id)}
-                              aria-label={`Reject request ${req.id}`}
-                            >
-                              Reject
-                            </button>
+                            <>
+                              <button
+                                style={rejectButtonStyle}
+                                disabled={isPending}
+                                onClick={() => rejectMutation.mutate({ id: req.id })}
+                                aria-label={`Reject request ${req.id}`}
+                              >
+                                Reject
+                              </button>
+                              <button
+                                style={permaRejectButtonStyle}
+                                disabled={isPending}
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Permanently reject this ${req.requestedType} request? The user will not be able to request again.`,
+                                    )
+                                  ) {
+                                    rejectMutation.mutate({ id: req.id, permanent: true });
+                                  }
+                                }}
+                                aria-label={`Permanently reject request ${req.id}`}
+                              >
+                                Reject permanently
+                              </button>
+                            </>
                           )}
                         </>
                       ) : (
@@ -287,10 +316,26 @@ export default function ProvisioningRequests() {
                           <button
                             style={rejectButtonStyle}
                             disabled={isPending}
-                            onClick={() => rejectMutation.mutate(req.id)}
+                            onClick={() => rejectMutation.mutate({ id: req.id })}
                             aria-label={`Reject request ${req.id}`}
                           >
                             Reject
+                          </button>
+                          <button
+                            style={permaRejectButtonStyle}
+                            disabled={isPending}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Permanently reject this ${req.requestedType} request? The user will not be able to request again.`,
+                                )
+                              ) {
+                                rejectMutation.mutate({ id: req.id, permanent: true });
+                              }
+                            }}
+                            aria-label={`Permanently reject request ${req.id}`}
+                          >
+                            Reject permanently
                           </button>
                         </>
                       )}
@@ -377,6 +422,17 @@ const rejectButtonStyle: React.CSSProperties = {
   padding: '4px 10px',
   fontSize: 12,
   background: '#dc2626',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontWeight: 600,
+};
+
+const permaRejectButtonStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 12,
+  background: '#7f1d1d',
   color: '#fff',
   border: 'none',
   borderRadius: 4,

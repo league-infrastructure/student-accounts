@@ -244,7 +244,7 @@ describe('Dashboard page', () => {
         expect(screen.getByText('Student 1')).toBeInTheDocument();
       });
 
-      const denyBtn = screen.getByRole('button', { name: /deny request 1/i });
+      const denyBtn = screen.getByRole('button', { name: /^Deny request 1$/i });
       fireEvent.click(denyBtn);
 
       await waitFor(() => {
