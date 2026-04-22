@@ -218,6 +218,13 @@ export interface CreateUserParams {
   givenName: string;
   familyName: string;
   sendNotificationEmail: boolean;
+  /**
+   * Recovery/secondary email used for Google's welcome-email flow. When
+   * set, Google sends the welcome message (with the temp password, if
+   * welcome email is enabled at the org level) here rather than to the
+   * brand-new League inbox that the student can't yet log into.
+   */
+  recoveryEmail?: string | null;
 }
 
 export interface CreatedUser {
@@ -625,23 +632,29 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
   async createUser(params: CreateUserParams): Promise<CreatedUser> {
     this.assertWriteEnabled('createUser');
-    const { primaryEmail, orgUnitPath, givenName, familyName } = params;
+    const { primaryEmail, orgUnitPath, givenName, familyName, recoveryEmail } = params;
     this.assertStudentDomainAndOU(primaryEmail, orgUnitPath);
     // Note: sendNotificationEmail from params is recorded for callers' use but the
     // Admin SDK users.insert does not expose this as a direct parameter. Welcome
-    // email delivery is governed by domain-level Google Workspace settings.
+    // email delivery is governed by domain-level Google Workspace settings and is
+    // routed to `recoveryEmail` when set — which the caller should populate with
+    // the student's external primary email so the password lands somewhere they
+    // can actually read.
     const auth = this.buildAuthClient(primaryEmail);
 
     try {
       const adminSdk = google.admin({ version: 'directory_v1', auth });
-      const response = await adminSdk.users.insert({
-        requestBody: {
-          primaryEmail,
-          orgUnitPath,
-          name: { givenName, familyName },
-          password: crypto.randomUUID(), // temporary password; user sets own via welcome email
-        },
-      });
+      const requestBody: Record<string, unknown> = {
+        primaryEmail,
+        orgUnitPath,
+        name: { givenName, familyName },
+        password: crypto.randomUUID(), // temporary password; user resets via welcome email
+        changePasswordAtNextLogin: true,
+      };
+      if (recoveryEmail && recoveryEmail.trim() !== '') {
+        requestBody.recoveryEmail = recoveryEmail.trim();
+      }
+      const response = await adminSdk.users.insert({ requestBody });
 
       const data = response.data;
       if (!data.id || !data.primaryEmail) {
