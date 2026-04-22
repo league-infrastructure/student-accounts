@@ -27,6 +27,7 @@ import type { User } from '../../generated/prisma/client.js';
 import type { UserService } from '../user.service.js';
 import type { LoginService } from '../login.service.js';
 import { AuditService } from '../audit.service.js';
+import { adminBus } from '../change-bus.js';
 import { mergeScan } from './merge-scan.stub.js';
 import {
   type GoogleWorkspaceAdminClient,
@@ -226,6 +227,12 @@ export async function signInHandler(
         },
         null, // system action; no acting user
       );
+
+      // Notify admin dashboards: a new pending-approval row may have
+      // just appeared.
+      if (!isLeagueIdentity) {
+        adminBus.notify('pending-users');
+      }
     }
 
     // 3b. Create Login with audit event (pass provider_username for GitHub)

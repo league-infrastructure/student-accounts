@@ -10,7 +10,7 @@
  * does not affect the others.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { prettifyName } from './utils/prettifyName';
@@ -117,6 +117,7 @@ async function fetchStats(): Promise<AdminStats> {
 // ---------------------------------------------------------------------------
 
 export default function Dashboard() {
+  useAdminEventStream();
   return (
     <div>
       <h2 style={pageHeadingStyle}>Dashboard</h2>
@@ -126,6 +127,43 @@ export default function Dashboard() {
       <UserCountsWidget />
     </div>
   );
+}
+
+/**
+ * Opens a single EventSource to /api/admin/events for the lifetime of the
+ * Dashboard page. Server pushes `pending-users` / `pending-requests`
+ * events as the change bus fires; we invalidate the matching react-query
+ * key so the widget refetches on demand instead of polling on a timer.
+ *
+ * If the stream fails to open (network blip, stale session) we fall back
+ * to a 30s background refetch via the query itself — see below.
+ */
+function useAdminEventStream() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    // jsdom doesn't implement EventSource — real browsers do. When
+    // unavailable we silently fall back to the background refetchInterval
+    // on each widget.
+    if (typeof EventSource === 'undefined') return;
+
+    const source = new EventSource('/api/admin/events');
+
+    const invalidate = (keyTail: string) => () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', keyTail] });
+    };
+
+    source.addEventListener('pending-users', invalidate('pending-users'));
+    source.addEventListener('pending-requests', invalidate('pending-requests'));
+    // stats is cheap to refresh when anything changes — counts move with
+    // both flows.
+    source.addEventListener('pending-users', invalidate('stats'));
+    source.addEventListener('pending-requests', invalidate('stats'));
+
+    return () => {
+      source.close();
+    };
+  }, [queryClient]);
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +211,9 @@ function PendingUsersWidget() {
   const { data: users, isLoading, error } = useQuery<PendingUser[], Error>({
     queryKey: ['admin', 'dashboard', 'pending-users'],
     queryFn: fetchPendingUsers,
-    refetchInterval: 2000,
+    // SSE (see useAdminEventStream) drives near-realtime updates. This
+    // background interval is a safety net if the stream is dropped.
+    refetchInterval: 60_000,
   });
 
   const approve = useMutation<void, Error, number>({
@@ -291,7 +331,7 @@ function PendingRequestsWidget() {
   const { data: requests, isLoading, error } = useQuery<ProvisioningRequest[], Error>({
     queryKey: ['admin', 'dashboard', 'pending-requests'],
     queryFn: fetchPendingRequests,
-    refetchInterval: 2000,
+    refetchInterval: 60_000,
   });
 
   const { data: cohorts } = useQuery<Cohort[], Error>({
@@ -588,7 +628,7 @@ function UserCountsWidget() {
   const { data: stats, isLoading, error } = useQuery<AdminStats, Error>({
     queryKey: ['admin', 'dashboard', 'stats'],
     queryFn: fetchStats,
-    refetchInterval: 10_000,
+    refetchInterval: 60_000,
   });
 
   return (

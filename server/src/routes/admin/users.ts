@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../services/prisma.js';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { AppError } from '../../errors.js';
+import { adminBus } from '../../services/change-bus.js';
 
 export const adminUsersRouter = Router();
 
@@ -272,6 +273,8 @@ adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
       });
     });
 
+    adminBus.notify('pending-users');
+
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -305,6 +308,8 @@ adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
         },
       });
     });
+
+    adminBus.notify('pending-users');
 
     res.json({ ok: true });
   } catch (err) {

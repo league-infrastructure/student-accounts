@@ -17,6 +17,7 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { ConflictError, NotFoundError, UnprocessableError, ValidationError } from '../errors.js';
 import type { CreateRequestType } from '../services/provisioning-request.service.js';
+import { adminBus } from '../services/change-bus.js';
 
 export const accountRouter = Router();
 
@@ -216,6 +217,8 @@ accountRouter.post(
         createdAt: r.created_at,
         decidedAt: r.decided_at ?? null,
       }));
+
+      adminBus.notify('pending-requests');
 
       res.status(201).json(body);
     } catch (err) {
