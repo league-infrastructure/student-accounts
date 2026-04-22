@@ -151,11 +151,15 @@ export class WorkspaceProvisioningService {
     );
 
     // --- 7. Persist ExternalAccount inside the caller's transaction ---
+    //
+    // By convention, `external_id` on workspace rows is the user's League
+    // email — not the Google numeric user ID. The delete job, lifecycle
+    // service, and claude-provisioning all read it as an email.
     const newAccount = await this.externalAccountRepo.create(tx, {
       user_id: userId,
       type: 'workspace',
       status: 'active',
-      external_id: createdUser.id,
+      external_id: createdUser.primaryEmail,
       status_changed_at: new Date(),
     });
 

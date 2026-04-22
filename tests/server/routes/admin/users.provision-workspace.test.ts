@@ -148,8 +148,9 @@ describe('POST /api/admin/users/:id/provision-workspace — 201 success', () => 
         userId: student.id,
         type: 'workspace',
         status: 'active',
-        externalId: 'fake-gws-user-id',
       });
+      // external_id is the League email, not the Google user id.
+      expect(res.body.externalId).toMatch(/@students\.jointheleague\.org$/);
       expect(res.body.id).toBeGreaterThan(0);
       expect(res.body.statusChangedAt).not.toBeNull();
 
@@ -159,7 +160,7 @@ describe('POST /api/admin/users/:id/provision-workspace — 201 success', () => 
       });
       expect(dbRow).not.toBeNull();
       expect(dbRow.status).toBe('active');
-      expect(dbRow.external_id).toBe('fake-gws-user-id');
+      expect(dbRow.external_id).toMatch(/@students\.jointheleague\.org$/);
     } finally {
       restore();
     }

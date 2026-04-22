@@ -367,7 +367,8 @@ describe('ProvisioningRequestService.approve — workspace request', () => {
     });
     expect(accounts).toHaveLength(1);
     expect(accounts[0].status).toBe('active');
-    expect(accounts[0].external_id).toBe('fake-gws-user-id');
+    // external_id on workspace rows is the League email, not the Google user id.
+    expect(accounts[0].external_id).toMatch(/@students\.jointheleague\.org$/);
   });
 
   it('records an approve_provisioning_request audit event', async () => {
