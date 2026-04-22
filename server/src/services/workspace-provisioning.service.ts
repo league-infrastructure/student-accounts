@@ -118,6 +118,47 @@ export class WorkspaceProvisioningService {
       );
     }
 
+    // --- 4b. If the user previously had a League account that was later
+    //         suspended/removed, reactivate it instead of trying to create
+    //         a fresh Google user with the same primary email.
+    const prior = await (tx as any).externalAccount.findFirst({
+      where: {
+        user_id: userId,
+        type: 'workspace',
+        status: { in: ['suspended', 'removed'] },
+      },
+      orderBy: { status_changed_at: 'desc' },
+    });
+    if (prior?.external_id) {
+      const priorEmail: string = prior.external_id;
+      logger.info(
+        { userId, actorId, workspaceEmail: priorEmail, externalAccountId: prior.id },
+        '[workspace-provisioning] Prior suspended/removed workspace found — reactivating.',
+      );
+
+      await this.googleClient.unsuspendUser(priorEmail);
+
+      const reactivated = await this.externalAccountRepo.updateStatus(
+        tx,
+        prior.id,
+        'active',
+      );
+
+      await this.auditService.record(tx, {
+        actor_user_id: actorId,
+        action: 'reactivate_workspace',
+        target_user_id: userId,
+        target_entity_type: 'ExternalAccount',
+        target_entity_id: String(prior.id),
+        details: {
+          email: priorEmail,
+          previous_status: prior.status,
+        },
+      });
+
+      return reactivated;
+    }
+
     // --- 5. Derive workspace email ---
     const studentDomain = process.env.GOOGLE_STUDENT_DOMAIN;
     if (!studentDomain) {

@@ -57,6 +57,7 @@ export interface FakeCallRecords {
   createUser: CreateUserParams[];
   createOU: string[];
   suspendUser: string[];
+  unsuspendUser: string[];
   deleteUser: string[];
   listUsersInOU: string[];
 }
@@ -71,6 +72,7 @@ type MethodReturnOverrides = {
   createUser?: CreatedUser;
   createOU?: CreatedOU;
   suspendUser?: void;
+  unsuspendUser?: void;
   deleteUser?: void;
   listUsersInOU?: WorkspaceUser[];
 };
@@ -109,6 +111,7 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
     createUser: [],
     createOU: [],
     suspendUser: [],
+    unsuspendUser: [],
     deleteUser: [],
     listUsersInOU: [],
   };
@@ -163,6 +166,7 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
     this.calls.createUser = [];
     this.calls.createOU = [];
     this.calls.suspendUser = [];
+    this.calls.unsuspendUser = [];
     this.calls.deleteUser = [];
     this.calls.listUsersInOU = [];
     this.returnOverrides = {};
@@ -223,6 +227,13 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
     this.calls.suspendUser.push(email);
     if (this.errorOverrides.suspendUser) {
       throw this.errorOverrides.suspendUser;
+    }
+  }
+
+  async unsuspendUser(email: string): Promise<void> {
+    this.calls.unsuspendUser.push(email);
+    if (this.errorOverrides.unsuspendUser) {
+      throw this.errorOverrides.unsuspendUser;
     }
   }
 
