@@ -122,17 +122,17 @@ function hasWorkspaceBaseline(data: AccountData): boolean {
 // ---------------------------------------------------------------------------
 
 function ProfileSection({ profile }: { profile: AccountProfile }) {
+  const roleLabel =
+    profile.role === 'admin' ? 'Admin' : profile.role === 'staff' ? 'Staff' : 'Student';
+  const subtitle = profile.cohort
+    ? `${roleLabel} · ${profile.cohort.name}`
+    : roleLabel;
   return (
-    <div style={styles.card}>
-      <h2 style={styles.sectionTitle}>Profile</h2>
-      <div style={styles.fieldList}>
-        <FieldRow label="Name">{profile.displayName ?? 'Not set'}</FieldRow>
-        <FieldRow label="Email">{profile.primaryEmail}</FieldRow>
-        <FieldRow label="Cohort">
-          {profile.cohort ? profile.cohort.name : 'No cohort assigned'}
-        </FieldRow>
-      </div>
-    </div>
+    <header style={styles.profileHeader}>
+      <div style={styles.profileName}>{profile.displayName ?? profile.primaryEmail}</div>
+      <div style={styles.profileMeta}>{profile.primaryEmail}</div>
+      <div style={styles.profileMeta}>{subtitle}</div>
+    </header>
   );
 }
 
@@ -258,14 +258,12 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
   const hasActiveOrPendingClaude =
     claudeAccount != null || claudeRequest != null;
 
-  // Button visibility logic:
-  // - "Request League Email": shown if no active/pending workspace account or request
-  // - "Request Claude Seat": shown if no active/pending claude
-  // - "Request Email + Claude Seat": shown when neither workspace nor claude exists/pending
-  //   (replaces both individual buttons in that case)
-  const showCombinedButton = !hasActiveOrPendingWorkspace && !hasActiveOrPendingClaude;
-  const showWorkspaceButton = !hasActiveOrPendingWorkspace && !showCombinedButton;
-  const showClaudeButton = !hasActiveOrPendingClaude && !showCombinedButton;
+  // Claude seats must land on a League email address, so a student without
+  // a League Email baseline can't request Claude yet — the row shows a hint
+  // instead of a button.
+  const showWorkspaceButton = !hasActiveOrPendingWorkspace;
+  const showClaudeButton = !hasActiveOrPendingClaude && workspaceBaseline;
+  const claudeBlockedOnWorkspace = !hasActiveOrPendingClaude && !workspaceBaseline;
 
   return (
     <div style={styles.card}>
@@ -291,16 +289,7 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
                   : 'None'}
             </td>
             <td style={styles.td}>
-              {showCombinedButton ? (
-                <button
-                  onClick={() => onRequest('workspace_and_claude')}
-                  disabled={requesting}
-                  style={styles.requestButton}
-                  aria-label="Request League Email + Claude Seat"
-                >
-                  Request League Email + Claude Seat
-                </button>
-              ) : showWorkspaceButton ? (
+              {showWorkspaceButton ? (
                 <button
                   onClick={() => onRequest('workspace')}
                   disabled={requesting}
@@ -324,26 +313,16 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
                   : 'None'}
             </td>
             <td style={styles.td}>
-              {showCombinedButton ? null : showClaudeButton ? (
-                workspaceBaseline ? (
-                  <button
-                    onClick={() => onRequest('claude')}
-                    disabled={requesting}
-                    style={styles.requestButton}
-                    aria-label="Request Claude Seat"
-                  >
-                    Request Claude Seat
-                  </button>
-                ) : (
-                  <span
-                    style={styles.disabledHint}
-                    title="A League Email account is required before requesting a Claude seat"
-                    aria-label="Claude Seat requires a League Email account first"
-                  >
-                    Requires League Email
-                  </span>
-                )
-              ) : !showCombinedButton && !workspaceBaseline && claudeAccount == null ? (
+              {showClaudeButton ? (
+                <button
+                  onClick={() => onRequest('claude')}
+                  disabled={requesting}
+                  style={styles.requestButton}
+                  aria-label="Request Claude Seat"
+                >
+                  Request Claude Seat
+                </button>
+              ) : claudeBlockedOnWorkspace ? (
                 <span
                   style={styles.disabledHint}
                   title="A League Email account is required before requesting a Claude seat"
@@ -606,19 +585,6 @@ export default function Account() {
 }
 
 // ---------------------------------------------------------------------------
-// Shared sub-components
-// ---------------------------------------------------------------------------
-
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={styles.fieldRow}>
-      <span style={styles.fieldLabel}>{label}</span>
-      <span style={styles.fieldValue}>{children}</span>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
@@ -691,23 +657,19 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '1rem',
     marginTop: 0,
   },
-  fieldList: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 10,
+  profileHeader: {
+    marginBottom: '1.5rem',
   },
-  fieldRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    fontSize: '0.9rem',
-  },
-  fieldLabel: {
-    color: '#64748b',
-  },
-  fieldValue: {
+  profileName: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
     color: '#1e293b',
-    fontWeight: 500,
+    marginBottom: 4,
+  },
+  profileMeta: {
+    fontSize: '0.9rem',
+    color: '#64748b',
+    lineHeight: 1.5,
   },
   table: {
     width: '100%',

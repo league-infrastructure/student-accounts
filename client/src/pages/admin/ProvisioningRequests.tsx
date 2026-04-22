@@ -4,10 +4,9 @@
  * Fetches pending requests from GET /api/admin/provisioning-requests and
  * displays them in a table with Approve / Reject actions per row.
  *
- * Error handling:
- *  - Page-level loading/error state for the initial fetch.
- *  - Inline per-row error message on action failure (approve or reject).
- *  - On success the row is removed from the list (via query invalidation).
+ * When approving a workspace request fails because the user has no cohort
+ * assigned, the row shows an inline cohort dropdown so the admin can pick
+ * one and re-approve without leaving the page.
  */
 
 import { useState } from 'react';
@@ -26,6 +25,17 @@ interface ProvisioningRequest {
   createdAt: string;
 }
 
+interface Cohort {
+  id: number;
+  name: string;
+  google_ou_path: string | null;
+}
+
+interface ApprovePayload {
+  id: number;
+  cohortId?: number;
+}
+
 // ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
@@ -39,9 +49,20 @@ async function fetchPendingRequests(): Promise<ProvisioningRequest[]> {
   return res.json();
 }
 
-async function approveRequest(id: number): Promise<void> {
+async function fetchCohorts(): Promise<Cohort[]> {
+  const res = await fetch('/api/admin/cohorts');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function approveRequest({ id, cohortId }: ApprovePayload): Promise<void> {
   const res = await fetch(`/api/admin/provisioning-requests/${id}/approve`, {
     method: 'POST',
+    headers: cohortId != null ? { 'Content-Type': 'application/json' } : undefined,
+    body: cohortId != null ? JSON.stringify({ cohortId }) : undefined,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -59,32 +80,53 @@ async function rejectRequest(id: number): Promise<void> {
   }
 }
 
+function isMissingCohortError(msg: string): boolean {
+  return /cohort/i.test(msg) && /(assign|assigned|not have)/i.test(msg);
+}
+
 // ---------------------------------------------------------------------------
 // ProvisioningRequests component
 // ---------------------------------------------------------------------------
 
 export default function ProvisioningRequests() {
   const queryClient = useQueryClient();
-  // Per-row error messages keyed by request id
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
+  // When a row's approval failed because the user has no cohort, we remember
+  // the id → selected cohort id (0 = none picked yet).
+  const [cohortPickerFor, setCohortPickerFor] = useState<Record<number, number>>({});
 
   const { data: requests, isLoading, error } = useQuery<ProvisioningRequest[], Error>({
     queryKey: ['admin', 'provisioning-requests'],
     queryFn: fetchPendingRequests,
   });
 
-  const approveMutation = useMutation<void, Error, number>({
+  // Cohorts are only needed when a cohort picker is shown, but TanStack
+  // Query caches well — fetching eagerly keeps the approve click snappy.
+  const { data: cohorts } = useQuery<Cohort[], Error>({
+    queryKey: ['admin', 'cohorts'],
+    queryFn: fetchCohorts,
+  });
+
+  const approveMutation = useMutation<void, Error, ApprovePayload>({
     mutationFn: approveRequest,
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, { id }) => {
       setRowErrors((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setCohortPickerFor((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ['admin', 'provisioning-requests'] });
     },
-    onError: (err, id) => {
+    onError: (err, { id }) => {
       setRowErrors((prev) => ({ ...prev, [id]: err.message }));
+      if (isMissingCohortError(err.message)) {
+        setCohortPickerFor((prev) => (prev[id] != null ? prev : { ...prev, [id]: 0 }));
+      }
     },
   });
 
@@ -102,10 +144,6 @@ export default function ProvisioningRequests() {
       setRowErrors((prev) => ({ ...prev, [id]: err.message }));
     },
   });
-
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
 
   if (isLoading) {
     return <p style={loadingStyle}>Loading provisioning requests...</p>;
@@ -141,6 +179,8 @@ export default function ProvisioningRequests() {
               const isPending =
                 approveMutation.isPending || rejectMutation.isPending;
               const rowError = rowErrors[req.id];
+              const pickerCohortId = cohortPickerFor[req.id];
+              const showPicker = pickerCohortId != null;
 
               return (
                 <tr key={req.id}>
@@ -152,22 +192,76 @@ export default function ProvisioningRequests() {
                   </td>
                   <td style={tdStyle}>
                     <div style={actionsCellStyle}>
-                      <button
-                        style={approveButtonStyle}
-                        disabled={isPending}
-                        onClick={() => approveMutation.mutate(req.id)}
-                        aria-label={`Approve request ${req.id}`}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        style={rejectButtonStyle}
-                        disabled={isPending}
-                        onClick={() => rejectMutation.mutate(req.id)}
-                        aria-label={`Reject request ${req.id}`}
-                      >
-                        Reject
-                      </button>
+                      {showPicker ? (
+                        <>
+                          <select
+                            style={selectStyle}
+                            value={pickerCohortId || ''}
+                            disabled={isPending}
+                            onChange={(e) =>
+                              setCohortPickerFor((prev) => ({
+                                ...prev,
+                                [req.id]: parseInt(e.target.value, 10) || 0,
+                              }))
+                            }
+                            aria-label={`Select cohort for request ${req.id}`}
+                          >
+                            <option value="">Select a cohort…</option>
+                            {(cohorts ?? []).map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                                {c.google_ou_path ? '' : ' (no OU)'}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            style={approveButtonStyle}
+                            disabled={isPending || !pickerCohortId}
+                            onClick={() =>
+                              approveMutation.mutate({
+                                id: req.id,
+                                cohortId: pickerCohortId,
+                              })
+                            }
+                            aria-label={`Approve request ${req.id} with selected cohort`}
+                          >
+                            Approve with cohort
+                          </button>
+                          <button
+                            style={cancelButtonStyle}
+                            disabled={isPending}
+                            onClick={() =>
+                              setCohortPickerFor((prev) => {
+                                const next = { ...prev };
+                                delete next[req.id];
+                                return next;
+                              })
+                            }
+                            aria-label={`Cancel cohort picker for request ${req.id}`}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            style={approveButtonStyle}
+                            disabled={isPending}
+                            onClick={() => approveMutation.mutate({ id: req.id })}
+                            aria-label={`Approve request ${req.id}`}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            style={rejectButtonStyle}
+                            disabled={isPending}
+                            onClick={() => rejectMutation.mutate(req.id)}
+                            aria-label={`Reject request ${req.id}`}
+                          >
+                            Reject
+                          </button>
+                        </>
+                      )}
                       {rowError && (
                         <span style={inlineErrorStyle} role="alert">
                           {rowError}
@@ -256,6 +350,25 @@ const rejectButtonStyle: React.CSSProperties = {
   borderRadius: 4,
   cursor: 'pointer',
   fontWeight: 600,
+};
+
+const cancelButtonStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 12,
+  background: '#f1f5f9',
+  color: '#1e293b',
+  border: '1px solid #cbd5e1',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontWeight: 500,
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: '4px 8px',
+  fontSize: 12,
+  borderRadius: 4,
+  border: '1px solid #cbd5e1',
+  background: '#fff',
 };
 
 const inlineErrorStyle: React.CSSProperties = {

@@ -221,7 +221,11 @@ export class ProvisioningRequestService {
    * @throws NotFoundError if the request does not exist.
    * @throws ConflictError if the request is not in 'pending' status.
    */
-  async approve(requestId: number, deciderId: number): Promise<ProvisioningRequest> {
+  async approve(
+    requestId: number,
+    deciderId: number,
+    opts?: { cohortId?: number },
+  ): Promise<ProvisioningRequest> {
     const existing = await ProvisioningRequestRepository.findById(this.prisma, requestId);
     if (!existing) throw new NotFoundError(`ProvisioningRequest ${requestId} not found`);
     if (existing.status !== 'pending') {
@@ -231,6 +235,23 @@ export class ProvisioningRequestService {
     }
 
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Optional cohort assignment — resolves the common "user has no cohort"
+      // block without forcing the admin to leave the approval UI.
+      if (opts?.cohortId != null) {
+        await (tx as any).user.update({
+          where: { id: existing.user_id },
+          data: { cohort_id: opts.cohortId },
+        });
+        await this.audit.record(tx, {
+          actor_user_id: deciderId,
+          action: 'assign_cohort',
+          target_user_id: existing.user_id,
+          target_entity_type: 'User',
+          target_entity_id: String(existing.user_id),
+          details: { cohort_id: opts.cohortId, via: 'provisioning_request_approve' },
+        });
+      }
+
       const updated = await ProvisioningRequestRepository.updateStatus(
         tx,
         requestId,
