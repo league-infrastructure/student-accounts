@@ -78,25 +78,34 @@ export class ClaudeProvisioningService {
       throw new UnprocessableError(`User ${userId} not found`);
     }
 
-    // --- 2. Verify active workspace ExternalAccount exists (hard gate) ---
+    // --- 2. Resolve the League email to invite ---
+    //
+    // Preferred source: an active workspace ExternalAccount whose external_id
+    // holds the League Workspace email. Workspace sync (Sprint 006) does NOT
+    // create ExternalAccount rows — only User rows — so for Google-imported
+    // students we fall back to User.primary_email when it's on a
+    // jointheleague.org domain (including subdomains like
+    // @students.jointheleague.org). That email is, by construction, the
+    // user's Google Workspace account.
     const workspaceAccount = await this.externalAccountRepo.findActiveByUserAndType(
       tx,
       userId,
       'workspace',
     );
-    if (!workspaceAccount) {
-      throw new UnprocessableError(
-        `User ${userId} does not have an active workspace ExternalAccount. ` +
-          `Provision a Workspace account before provisioning a Claude seat.`,
-      );
-    }
 
-    // The workspace account's external_id holds the League Workspace email.
-    const workspaceEmail = workspaceAccount.external_id;
+    const userEmail = (user.primary_email ?? '').toLowerCase();
+    const isLeagueEmail = /@([a-z0-9-]+\.)?jointheleague\.org$/.test(userEmail);
+
+    const workspaceEmail: string | null =
+      workspaceAccount?.external_id ??
+      (isLeagueEmail ? user.primary_email : null);
+
     if (!workspaceEmail) {
       throw new UnprocessableError(
-        `User ${userId} has a workspace ExternalAccount (id=${workspaceAccount.id}) ` +
-          `but its external_id (workspace email) is null. Cannot derive email for Claude invite.`,
+        `User ${userId} has no League Workspace account. Their primary email ` +
+          `(${user.primary_email ?? 'none'}) is not on jointheleague.org and ` +
+          `they have no active workspace ExternalAccount. Provision a ` +
+          `Workspace account before provisioning a Claude seat.`,
       );
     }
 
