@@ -1,26 +1,29 @@
 /**
  * UserDetailPanel — admin detail view for a single user.
  *
- * Shows:
- *   - User identity (email, display name, role, cohort)
- *   - Logins table with Remove button (disabled when last login) + Add Login form
- *   - External Accounts table with Suspend/Remove buttons + Provision Claude Seat
- *   - Deprovision Student button (red, confirm dialog)
+ * Layout (top-down):
+ *   1. Identity card — display name + all known email addresses.
+ *   2. Account blocks, one per account kind:
+ *        - External Google (read-only; only shown if present)
+ *        - League         (read-only; only shown if present)
+ *        - Student        (with Add / Delete buttons for students)
+ *        - Pike13         (read-only snippet; only shown if linked)
+ *        - Claude         (with Add / Suspend / Delete buttons)
+ *   3. Danger zone (student-only) — full deprovision.
  *
- * Route: /admin/users/:id
- *
- * All destructive actions use window.confirm before making the API call.
- * Page state refreshes after each successful action without a full reload.
+ * The old table-of-ExternalAccounts layout was misleading: it mixed types
+ * with different admin capabilities and showed Suspend/Remove on rows where
+ * those actions were no-ops. Each kind gets its own card now.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { prettifyName } from './utils/prettifyName';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Response shape from GET /api/admin/users/:id/pike13 */
 type Pike13Result =
   | { present: false }
   | { present: true; person: Pike13Person }
@@ -31,7 +34,6 @@ interface Pike13Person {
   first_name: string;
   last_name: string;
   email: string;
-  /** May include phone, status, and custom fields depending on Pike13 API shape. */
   phone?: string;
   status?: string;
   custom_fields?: Record<string, unknown>;
@@ -67,12 +69,6 @@ interface ExternalAccount {
   createdAt: string;
 }
 
-interface AddLoginForm {
-  provider: 'google' | 'github';
-  providerUserId: string;
-  providerEmail: string;
-}
-
 // ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
@@ -95,12 +91,20 @@ async function apiPost(path: string): Promise<any> {
   return body;
 }
 
-async function apiDelete(path: string): Promise<void> {
-  const res = await fetch(path, { method: 'DELETE' });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
+// ---------------------------------------------------------------------------
+// Email classification helpers
+// ---------------------------------------------------------------------------
+
+function isStudentLeagueEmail(e: string): boolean {
+  return /@students\.jointheleague\.org$/i.test(e);
+}
+
+function isStaffLeagueEmail(e: string): boolean {
+  // Any *.jointheleague.org but NOT students.
+  return (
+    /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(e) &&
+    !isStudentLeagueEmail(e)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -116,29 +120,13 @@ export default function UserDetailPanel() {
   const [pageError, setPageError] = useState('');
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  // Inline error state for the "Create League Account" button (separate from
-  // the page-level actionError so 422/409/502 show near the button).
-  const [workspaceProvisionError, setWorkspaceProvisionError] = useState('');
-
-  // Pike13 record (fetched independently so failures don't break the main view)
   const [pike13Data, setPike13Data] = useState<Pike13Result | null>(null);
-
-  // Add-login form state
-  const [showAddLogin, setShowAddLogin] = useState(false);
-  const [addLoginForm, setAddLoginForm] = useState<AddLoginForm>({
-    provider: 'google',
-    providerUserId: '',
-    providerEmail: '',
-  });
-  const [addLoginError, setAddLoginError] = useState('');
 
   const refresh = useCallback(async () => {
     if (!id) return;
     setPageError('');
     try {
-      const data = await fetchUserDetail(id);
-      setUser(data);
+      setUser(await fetchUserDetail(id));
     } catch (err: any) {
       setPageError(err.message ?? 'Failed to load user');
     } finally {
@@ -146,260 +134,144 @@ export default function UserDetailPanel() {
     }
   }, [id]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh]);
 
-  // Pike13 fetch — independent of main user detail so API failures are isolated
   useEffect(() => {
     if (!id) return;
     setPike13Data(null);
     fetch(`/api/admin/users/${id}/pike13`)
       .then((r) => r.json())
-      .then((data: Pike13Result) => setPike13Data(data))
+      .then((d: Pike13Result) => setPike13Data(d))
       .catch(() => setPike13Data({ present: true, error: 'Network error fetching Pike13 data' }));
   }, [id]);
 
   // -------------------------------------------------------------------------
-  // External account actions
+  // Actions
   // -------------------------------------------------------------------------
 
-  async function handleSuspend(account: ExternalAccount) {
-    const label = `${account.type} account (id=${account.id})`;
-    if (!window.confirm(`Suspend ${label}? This action can be reversed.`)) return;
-    setBusy(true);
-    setActionError('');
-    try {
-      await apiPost(`/api/admin/external-accounts/${account.id}/suspend`);
-      await refresh();
-    } catch (err: any) {
-      setActionError(err.message ?? 'Suspend failed');
-    } finally {
-      setBusy(false);
-    }
+  async function run<T>(fn: () => Promise<T>, confirmMsg?: string): Promise<void> {
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
+    setBusy(true); setActionError('');
+    try { await fn(); await refresh(); }
+    catch (err: any) { setActionError(err.message ?? 'Action failed'); }
+    finally { setBusy(false); }
   }
 
-  async function handleRemoveAccount(account: ExternalAccount) {
-    const label = `${account.type} account (id=${account.id})`;
-    const extraNote = account.type === 'workspace'
-      ? '\n\nNote: The Google Workspace account will be hard-deleted after 3 days.'
-      : '';
-    if (!window.confirm(`Remove ${label}?${extraNote}`)) return;
-    setBusy(true);
-    setActionError('');
-    try {
-      await apiPost(`/api/admin/external-accounts/${account.id}/remove`);
-      await refresh();
-    } catch (err: any) {
-      setActionError(err.message ?? 'Remove failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Provision Claude
-  // -------------------------------------------------------------------------
-
-  async function handleProvisionClaude() {
+  async function provisionStudent() {
     if (!user) return;
-    if (!window.confirm(`Provision a Claude Team seat for ${user.email}?`)) return;
-    setBusy(true);
-    setActionError('');
-    try {
-      await apiPost(`/api/admin/users/${user.id}/provision-claude`);
-      await refresh();
-    } catch (err: any) {
-      setActionError(err.message ?? 'Provision failed');
-    } finally {
-      setBusy(false);
-    }
+    await run(
+      () => apiPost(`/api/admin/users/${user.id}/provision-workspace`),
+      `Create a @students.jointheleague.org account for ${prettifyNameFromUser()}?\n\n` +
+        `A Google Workspace account will be provisioned in the student's cohort OU.`,
+    );
   }
 
-  // -------------------------------------------------------------------------
-  // Provision workspace (Create League Account)
-  // -------------------------------------------------------------------------
+  async function suspendExternal(account: ExternalAccount, label: string) {
+    await run(
+      () => apiPost(`/api/admin/external-accounts/${account.id}/suspend`),
+      `Suspend the ${label}? This can be reversed.`,
+    );
+  }
 
-  async function handleProvisionWorkspace() {
+  async function removeExternal(account: ExternalAccount, label: string, note = '') {
+    await run(
+      () => apiPost(`/api/admin/external-accounts/${account.id}/remove`),
+      `Delete the ${label}?${note ? `\n\n${note}` : ''}`,
+    );
+  }
+
+  async function provisionClaude() {
     if (!user) return;
-    if (
-      !window.confirm(
-        `Create a Google Workspace (League) account for ${user.email}?\n\n` +
-          'This will provision a new @jointheleague.org email address in the ' +
-          "student's cohort OU. The action cannot be undone automatically — " +
-          'use Remove to schedule the account for deletion.',
-      )
-    )
-      return;
-    setBusy(true);
-    setWorkspaceProvisionError('');
-    setActionError('');
-    try {
-      await apiPost(`/api/admin/users/${user.id}/provision-workspace`);
-      await refresh();
-    } catch (err: any) {
-      const msg: string = err.message ?? 'Provision failed';
-      // Map well-known HTTP error patterns to friendly messages.
-      if (msg.includes('422') || msg.toLowerCase().includes('missing') || msg.toLowerCase().includes('cohort')) {
-        setWorkspaceProvisionError('Cannot provision: student is missing required information (check cohort assignment).');
-      } else if (msg.includes('409') || msg.toLowerCase().includes('already')) {
-        setWorkspaceProvisionError('A workspace account already exists for this student.');
-      } else if (msg.includes('502') || msg.toLowerCase().includes('upstream') || msg.toLowerCase().includes('google')) {
-        setWorkspaceProvisionError('Google Workspace service is unavailable. Try again later.');
-      } else {
-        setWorkspaceProvisionError(msg);
-      }
-    } finally {
-      setBusy(false);
-    }
+    await run(
+      () => apiPost(`/api/admin/users/${user.id}/provision-claude`),
+      `Invite ${prettifyNameFromUser()} to Claude?`,
+    );
   }
 
-  // -------------------------------------------------------------------------
-  // Deprovision student
-  // -------------------------------------------------------------------------
-
-  async function handleDeprovision() {
+  async function deprovision() {
     if (!user) return;
     const eligible = user.externalAccounts.filter(
-      (a) =>
-        (a.type === 'workspace' || a.type === 'claude') &&
-        (a.status === 'active' || a.status === 'suspended'),
+      (a) => (a.type === 'workspace' || a.type === 'claude') &&
+             (a.status === 'active' || a.status === 'suspended'),
     );
-    const accountList = eligible.length === 0
+    const list = eligible.length === 0
       ? '  (no active workspace or claude accounts — no-op)'
       : eligible.map((a) => `  • ${a.type} [${a.status}] (id=${a.id})`).join('\n');
-
-    const confirmed = window.confirm(
-      `Deprovision student ${user.email}?\n\nAccounts to be removed:\n${accountList}\n\nThis cannot be undone.`,
-    );
-    if (!confirmed) return;
-
-    setBusy(true);
-    setActionError('');
-    try {
-      const result = await apiPost(`/api/admin/users/${user.id}/deprovision`);
-      if (result.failed && result.failed.length > 0) {
-        const failMsg = result.failed
-          .map((f: { accountId: number; error: string }) => `  • account ${f.accountId}: ${f.error}`)
-          .join('\n');
-        setActionError(`Deprovision partial failure — some accounts could not be removed:\n${failMsg}`);
-      }
-      await refresh();
-    } catch (err: any) {
-      setActionError(err.message ?? 'Deprovision failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Login actions
-  // -------------------------------------------------------------------------
-
-  async function handleRemoveLogin(login: Login) {
-    if (!user) return;
-    if (!window.confirm(`Remove ${login.provider} login (${login.providerEmail ?? login.providerUserId})?`)) return;
-    setBusy(true);
-    setActionError('');
-    try {
-      await apiDelete(`/api/admin/users/${user.id}/logins/${login.id}`);
-      await refresh();
-    } catch (err: any) {
-      setActionError(err.message ?? 'Remove login failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleAddLogin(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user) return;
-    if (!addLoginForm.providerUserId.trim()) {
-      setAddLoginError('Provider User ID is required');
-      return;
-    }
-    setBusy(true);
-    setAddLoginError('');
-    setActionError('');
-    try {
-      const res = await fetch(`/api/admin/users/${user.id}/logins`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: addLoginForm.provider,
-          providerUserId: addLoginForm.providerUserId.trim(),
-          providerEmail: addLoginForm.providerEmail.trim() || null,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-      }
-      setShowAddLogin(false);
-      setAddLoginForm({ provider: 'google', providerUserId: '', providerEmail: '' });
-      await refresh();
-    } catch (err: any) {
-      setAddLoginError(err.message ?? 'Add login failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Derived state helpers
-  // -------------------------------------------------------------------------
-
-  function hasActiveWorkspace(): boolean {
-    // A user has an active League (Google Workspace) account if either:
-    //  1. they have a workspace ExternalAccount row with status=active, OR
-    //  2. their primary email is on a jointheleague.org domain — the User
-    //     row itself proves a matching Google account exists (workspace
-    //     sync creates User rows without ExternalAccount rows by design).
-    if (
-      (user?.externalAccounts ?? []).some(
-        (a) => a.type === 'workspace' && a.status === 'active',
-      )
-    ) {
-      return true;
-    }
-    const email = user?.email?.toLowerCase() ?? '';
-    return /@([a-z0-9-]+\.)?jointheleague\.org$/.test(email);
-  }
-
-  function hasClaudeAccount(): boolean {
-    // Only active or pending Claude accounts block re-provisioning.
-    // A removed/suspended row is history — the button should re-enable so
-    // the admin can re-invite the student without hand-editing the DB.
-    return (user?.externalAccounts ?? []).some(
-      (a) => a.type === 'claude' && (a.status === 'active' || a.status === 'pending'),
+    await run(
+      () => apiPost(`/api/admin/users/${user.id}/deprovision`),
+      `Deprovision student ${user.email}?\n\nAccounts to be removed:\n${list}\n\nThis cannot be undone.`,
     );
   }
 
-  function provisionClaudeDisabledReason(): string | null {
-    if (hasClaudeAccount()) return 'Claude account already exists';
-    if (!hasActiveWorkspace()) return 'No active workspace account';
-    return null;
+  // -------------------------------------------------------------------------
+  // Derived state
+  // -------------------------------------------------------------------------
+
+  function prettifyNameFromUser(): string {
+    if (!user) return '';
+    return prettifyName({ email: user.email, displayName: user.displayName });
   }
+
+  /** Collect every unique email we know for this user. */
+  function allEmails(): string[] {
+    if (!user) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const add = (e?: string | null) => {
+      if (!e) return;
+      const k = e.toLowerCase();
+      if (seen.has(k)) return;
+      seen.add(k); out.push(e);
+    };
+    add(user.email);
+    for (const l of user.logins) add(l.providerEmail);
+    for (const a of user.externalAccounts) {
+      if (a.type === 'workspace') add(a.externalId);
+    }
+    return out;
+  }
+
+  /** Email addresses of a given flavor. */
+  function emailsMatching(pred: (e: string) => boolean): string[] {
+    return allEmails().filter(pred);
+  }
+
+  if (loading) return <p style={loadingStyle}>Loading user…</p>;
+  if (pageError) return <p style={errorStyle}>{pageError}</p>;
+  if (!user) return null;
+
+  const role = (user.role ?? '').toLowerCase();
+  const isStudent = role === 'student';
+  const emails = allEmails();
+  const studentEmails = emailsMatching(isStudentLeagueEmail);
+  const leagueStaffEmails = emailsMatching(isStaffLeagueEmail);
+  const externalGoogleLogin = user.logins.find(
+    (l) => l.provider === 'google' &&
+           !!l.providerEmail &&
+           !/@([a-z0-9-]+\.)?jointheleague\.org$/i.test(l.providerEmail ?? ''),
+  );
+  const studentWorkspaceAcct = user.externalAccounts.find(
+    (a) => a.type === 'workspace' &&
+           ['active', 'pending', 'suspended'].includes(a.status) &&
+           !!a.externalId && isStudentLeagueEmail(a.externalId),
+  );
+  const claudeAcct = user.externalAccounts.find(
+    (a) => a.type === 'claude' && (a.status === 'active' || a.status === 'pending'),
+  );
+  const claudeRemovedOrSuspended = user.externalAccounts.find(
+    (a) => a.type === 'claude' && (a.status === 'removed' || a.status === 'suspended'),
+  );
 
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
-  if (loading) return <p style={loadingStyle}>Loading user...</p>;
-  if (pageError) return <p style={errorStyle}>{pageError}</p>;
-  if (!user) return null;
-
-  const isStudent = user.role === 'student';
-  const disabledReason = provisionClaudeDisabledReason();
-
   return (
-    <div>
-      {/* Back link */}
+    <div style={pageStyle}>
       <button style={backButtonStyle} onClick={() => navigate('/users')}>
         ← Back to Users
       </button>
 
-      {/* Page-level action error */}
       {actionError && (
         <div style={actionErrorStyle} role="alert">
           <strong>Error: </strong>
@@ -408,352 +280,174 @@ export default function UserDetailPanel() {
             style={dismissButtonStyle}
             onClick={() => setActionError('')}
             aria-label="Dismiss error"
-          >
-            ×
-          </button>
+          >×</button>
         </div>
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* User identity                                                        */}
-      {/* ------------------------------------------------------------------ */}
-      <section style={sectionStyle}>
-        <h2 style={headingStyle}>User Details</h2>
-        <dl style={dlStyle}>
-          <dt style={dtStyle}>Email</dt>
-          <dd style={ddStyle}>{user.email}</dd>
-
-          <dt style={dtStyle}>Display Name</dt>
-          <dd style={ddStyle}>{user.displayName ?? <em style={{ color: '#94a3b8' }}>none</em>}</dd>
-
-          <dt style={dtStyle}>Role</dt>
-          <dd style={ddStyle}>
-            <span style={roleBadgeStyle(user.role)}>{user.role}</span>
-          </dd>
-
-          <dt style={dtStyle}>Cohort</dt>
-          <dd style={ddStyle}>{user.cohort ? user.cohort.name : <em style={{ color: '#94a3b8' }}>unassigned</em>}</dd>
-
-          <dt style={dtStyle}>Joined</dt>
-          <dd style={ddStyle}>{new Date(user.createdAt).toLocaleDateString()}</dd>
-        </dl>
-      </section>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Logins                                                               */}
-      {/* ------------------------------------------------------------------ */}
-      <section style={sectionStyle}>
-        <div style={sectionHeaderStyle}>
-          <h3 style={subHeadingStyle}>Logins</h3>
-          <button
-            style={addButtonStyle}
-            disabled={busy}
-            onClick={() => { setShowAddLogin((v) => !v); setAddLoginError(''); }}
-          >
-            {showAddLogin ? 'Cancel' : '+ Add Login'}
-          </button>
-        </div>
-
-        {showAddLogin && (
-          <form onSubmit={handleAddLogin} style={addLoginFormStyle}>
-            <label style={labelStyle}>
-              Provider
-              <select
-                value={addLoginForm.provider}
-                onChange={(e) => setAddLoginForm((f) => ({ ...f, provider: e.target.value as 'google' | 'github' }))}
-                style={inputStyle}
-                disabled={busy}
-              >
-                <option value="google">Google</option>
-                <option value="github">GitHub</option>
-              </select>
-            </label>
-            <label style={labelStyle}>
-              Provider User ID <span style={{ color: '#dc2626' }}>*</span>
-              <input
-                type="text"
-                value={addLoginForm.providerUserId}
-                onChange={(e) => setAddLoginForm((f) => ({ ...f, providerUserId: e.target.value }))}
-                placeholder="e.g. 1234567 or google-sub"
-                style={inputStyle}
-                disabled={busy}
-              />
-            </label>
-            <label style={labelStyle}>
-              Provider Email (optional)
-              <input
-                type="email"
-                value={addLoginForm.providerEmail}
-                onChange={(e) => setAddLoginForm((f) => ({ ...f, providerEmail: e.target.value }))}
-                placeholder="user@example.com"
-                style={inputStyle}
-                disabled={busy}
-              />
-            </label>
-            {addLoginError && <p style={inlineErrorStyle}>{addLoginError}</p>}
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button type="submit" style={approveButtonStyle} disabled={busy}>
-                {busy ? 'Adding...' : 'Add Login'}
-              </button>
-              <button
-                type="button"
-                style={cancelButtonStyle}
-                disabled={busy}
-                onClick={() => { setShowAddLogin(false); setAddLoginError(''); }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-
-        {user.logins.length === 0 ? (
-          <p style={emptyStyle}>No logins.</p>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Provider</th>
-                <th style={thStyle}>Provider User ID</th>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>Username</th>
-                <th style={thStyle}>Added</th>
-                <th style={thStyle}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {user.logins.map((login) => {
-                const isLast = user.logins.length === 1;
-                return (
-                  <tr key={login.id}>
-                    <td style={tdStyle}>{login.provider}</td>
-                    <td style={tdStyle}><code style={codeStyle}>{login.providerUserId}</code></td>
-                    <td style={tdStyle}>{login.providerEmail ?? <em style={{ color: '#94a3b8' }}>—</em>}</td>
-                    <td style={tdStyle}>{login.providerUsername ?? <em style={{ color: '#94a3b8' }}>—</em>}</td>
-                    <td style={tdStyle}>{new Date(login.createdAt).toLocaleDateString()}</td>
-                    <td style={tdStyle}>
-                      <span title={isLast ? 'Cannot unlink the last login' : undefined}>
-                        <button
-                          style={isLast ? disabledButtonStyle : removeButtonStyle}
-                          disabled={isLast || busy}
-                          onClick={() => handleRemoveLogin(login)}
-                        >
-                          Unlink
-                        </button>
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* External Accounts                                                    */}
-      {/* ------------------------------------------------------------------ */}
-      <section style={sectionStyle}>
-        <div style={sectionHeaderStyle}>
-          <h3 style={subHeadingStyle}>External Accounts</h3>
-          {isStudent && (
-            <span title={disabledReason ?? undefined}>
-              <button
-                style={disabledReason ? disabledButtonStyle : provisionButtonStyle}
-                disabled={!!disabledReason || busy}
-                onClick={handleProvisionClaude}
-              >
-                {disabledReason
-                  ? `Provision Claude Seat (${disabledReason})`
-                  : 'Provision Claude Seat'}
-              </button>
-            </span>
+      {/* ================================================================== */}
+      {/* 1. Identity                                                         */}
+      {/* ================================================================== */}
+      <section style={cardStyle}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+          <h1 style={{ margin: 0, fontSize: 22 }}>{prettifyNameFromUser()}</h1>
+          <span style={roleBadgeStyle(role)}>{role || 'student'}</span>
+          {user.cohort && (
+            <span style={{ color: '#64748b', fontSize: 13 }}>· cohort: {user.cohort.name}</span>
           )}
         </div>
-
-        {/* Create League Account button — students only, no active workspace, cohort required */}
-        {isStudent && user.cohort && !hasActiveWorkspace() && (
-          <div style={{ marginBottom: 12 }}>
-            <button
-              style={createLeagueAccountButtonStyle}
-              disabled={busy}
-              onClick={handleProvisionWorkspace}
-            >
-              {busy ? 'Creating...' : 'Create League Account'}
-            </button>
-            {workspaceProvisionError && (
-              <p style={inlineErrorStyle} role="alert">
-                {workspaceProvisionError}
-              </p>
-            )}
-          </div>
-        )}
-
-        {user.externalAccounts.length === 0 ? (
-          <p style={emptyStyle}>No external accounts.</p>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Type</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>External ID</th>
-                <th style={thStyle}>Status Changed</th>
-                <th style={thStyle}>Scheduled Delete</th>
-                <th style={thStyle}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {user.externalAccounts.map((account) => {
-                const canSuspend = account.status === 'active';
-                const canRemove = account.status === 'active' || account.status === 'suspended';
-                const isClaude = account.type === 'claude';
-                const isWorkspace = account.type === 'workspace';
-                const suspendLabel = isClaude ? 'Disable Claude' : 'Suspend';
-                const removeLabel = isWorkspace
-                  ? 'Delete League Account'
-                  : isClaude
-                  ? 'Delete Claude'
-                  : 'Remove';
-
-                return (
-                  <tr key={account.id}>
-                    <td style={tdStyle}>{account.type}</td>
-                    <td style={tdStyle}>
-                      <span style={statusBadgeStyle(account.status)}>{account.status}</span>
-                    </td>
-                    <td style={tdStyle}>
-                      {account.externalId
-                        ? <code style={codeStyle}>{account.externalId}</code>
-                        : <em style={{ color: '#94a3b8' }}>—</em>}
-                    </td>
-                    <td style={tdStyle}>
-                      {account.statusChangedAt
-                        ? new Date(account.statusChangedAt).toLocaleDateString()
-                        : <em style={{ color: '#94a3b8' }}>—</em>}
-                    </td>
-                    <td style={tdStyle}>
-                      {account.scheduledDeleteAt
-                        ? new Date(account.scheduledDeleteAt).toLocaleDateString()
-                        : <em style={{ color: '#94a3b8' }}>—</em>}
-                    </td>
-                    <td style={tdStyle}>
-                      {/* Lifecycle buttons are student-only; staff/admin rows are read-only */}
-                      {isStudent && (
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          {canSuspend && (
-                            <button
-                              style={suspendButtonStyle}
-                              disabled={busy}
-                              onClick={() => handleSuspend(account)}
-                              title={isClaude ? 'Suspend is a no-op for Claude accounts (per OQ-003)' : undefined}
-                            >
-                              {suspendLabel}
-                            </button>
-                          )}
-                          {canRemove && (
-                            <span title={isWorkspace ? 'Will hard-delete the Google Workspace account after 3 days' : undefined}>
-                              <button
-                                style={removeButtonStyle}
-                                disabled={busy}
-                                onClick={() => handleRemoveAccount(account)}
-                              >
-                                {removeLabel}
-                              </button>
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+        <div style={{ marginTop: 10, fontSize: 13 }}>
+          <div style={{ color: '#64748b', marginBottom: 4 }}>Email addresses</div>
+          <ul style={{ margin: 0, paddingLeft: 20, color: '#0f172a' }}>
+            {emails.map((e) => (<li key={e.toLowerCase()}>{e}</li>))}
+          </ul>
+        </div>
       </section>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Pike13 Record                                                        */}
-      {/* ------------------------------------------------------------------ */}
-      {pike13Data !== null && (
-        <section style={sectionStyle}>
-          <h3 style={subHeadingStyle}>Pike13 Record</h3>
-          {!pike13Data.present ? (
-            <p style={emptyStyle}>No Pike13 account linked.</p>
-          ) : 'error' in pike13Data ? (
-            <div style={pike13ErrorStyle} role="alert">
-              <strong>Pike13 data unavailable: </strong>
-              {pike13Data.error}
-            </div>
+      {/* ================================================================== */}
+      {/* 2. External Google (read-only; only if present)                     */}
+      {/* ================================================================== */}
+      {externalGoogleLogin && (
+        <AccountCard title="External Google">
+          <Kv k="Email" v={externalGoogleLogin.providerEmail ?? '—'} />
+          <Kv k="Google ID" v={externalGoogleLogin.providerUserId} />
+          <div style={mutedHintStyle}>Managed by Google — no admin action available here.</div>
+        </AccountCard>
+      )}
+
+      {/* ================================================================== */}
+      {/* 3. League (read-only; only if present)                              */}
+      {/* ================================================================== */}
+      {leagueStaffEmails.length > 0 && (
+        <AccountCard title="League (staff)">
+          {leagueStaffEmails.map((e) => (<div key={e} style={{ fontFamily: 'monospace' }}>{e}</div>))}
+          <div style={mutedHintStyle}>Managed in Google Workspace — no admin action available here.</div>
+        </AccountCard>
+      )}
+
+      {/* ================================================================== */}
+      {/* 4. Student account (add / delete)                                    */}
+      {/* ================================================================== */}
+      {(isStudent || studentEmails.length > 0) && (
+        <AccountCard title="Student account">
+          {studentEmails.length > 0 ? (
+            <>
+              {studentEmails.map((e) => (<div key={e} style={{ fontFamily: 'monospace' }}>{e}</div>))}
+              {studentWorkspaceAcct ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <ActionButton
+                    variant="danger"
+                    disabled={busy || studentWorkspaceAcct.status === 'removed'}
+                    onClick={() => removeExternal(
+                      studentWorkspaceAcct,
+                      'student account',
+                      'The Google Workspace account will be suspended now and hard-deleted after 3 days.',
+                    )}
+                  >
+                    Delete Student Account
+                  </ActionButton>
+                </div>
+              ) : (
+                <div style={mutedHintStyle}>
+                  Synced from Google; not tracked as an app-managed account.
+                </div>
+              )}
+            </>
           ) : (
-            <dl style={dlStyle}>
-              <dt style={dtStyle}>Name</dt>
-              <dd style={ddStyle}>{pike13Data.person.first_name} {pike13Data.person.last_name}</dd>
-
-              <dt style={dtStyle}>Email</dt>
-              <dd style={ddStyle}>{pike13Data.person.email}</dd>
-
-              {pike13Data.person.phone && (
-                <>
-                  <dt style={dtStyle}>Phone</dt>
-                  <dd style={ddStyle}>{pike13Data.person.phone}</dd>
-                </>
-              )}
-
-              {pike13Data.person.status && (
-                <>
-                  <dt style={dtStyle}>Status</dt>
-                  <dd style={ddStyle}>{pike13Data.person.status}</dd>
-                </>
-              )}
-
-              {pike13Data.person.custom_fields && (() => {
-                const cf = pike13Data.person.custom_fields!;
-                const leagueEmail = cf['League Email Address'] ?? cf['league_email_address'];
-                const githubUsername = cf['GitHub Username'] ?? cf['github_username'];
-                return (
-                  <>
-                    {leagueEmail !== undefined && leagueEmail !== null && (
-                      <>
-                        <dt style={dtStyle}>League Email</dt>
-                        <dd style={ddStyle}>{String(leagueEmail) || <em style={{ color: '#94a3b8' }}>—</em>}</dd>
-                      </>
-                    )}
-                    {githubUsername !== undefined && githubUsername !== null && (
-                      <>
-                        <dt style={dtStyle}>GitHub Username</dt>
-                        <dd style={ddStyle}>{String(githubUsername) || <em style={{ color: '#94a3b8' }}>—</em>}</dd>
-                      </>
-                    )}
-                  </>
-                );
-              })()}
-
-              <dt style={dtStyle}>Pike13 ID</dt>
-              <dd style={ddStyle}><code style={codeStyle}>{pike13Data.person.id}</code></dd>
-            </dl>
+            <>
+              <div style={{ color: '#64748b', fontStyle: 'italic', marginBottom: 10 }}>
+                No student account yet.
+              </div>
+              <ActionButton
+                variant="primary"
+                disabled={busy || !user.cohort}
+                title={user.cohort ? undefined : 'Assign a cohort before creating a student account.'}
+                onClick={provisionStudent}
+              >
+                + Add Student Account
+              </ActionButton>
+            </>
           )}
-        </section>
+        </AccountCard>
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Deprovision Student                                                  */}
-      {/* ------------------------------------------------------------------ */}
+      {/* ================================================================== */}
+      {/* 5. Pike13 (read-only; only if linked)                                */}
+      {/* ================================================================== */}
+      {pike13Data?.present === true && (
+        <AccountCard title="Pike13">
+          {'error' in pike13Data ? (
+            <div style={{ color: '#b45309' }}>Pike13 data unavailable: {pike13Data.error}</div>
+          ) : (
+            <>
+              <Kv k="Name" v={`${pike13Data.person.first_name} ${pike13Data.person.last_name}`} />
+              <Kv k="Email" v={pike13Data.person.email} />
+              {pike13Data.person.phone && <Kv k="Phone" v={pike13Data.person.phone} />}
+              {pike13Data.person.status && <Kv k="Status" v={pike13Data.person.status} />}
+              <Kv k="Pike13 ID" v={String(pike13Data.person.id)} />
+              <div style={mutedHintStyle}>Managed in Pike13 — no admin action available here.</div>
+            </>
+          )}
+        </AccountCard>
+      )}
+
+      {/* ================================================================== */}
+      {/* 6. Claude                                                            */}
+      {/* ================================================================== */}
+      <AccountCard title="Claude">
+        {claudeAcct ? (
+          <>
+            <Kv k="Status" v={<StatusPill status={claudeAcct.status} />} />
+            <Kv k="Anthropic ID" v={claudeAcct.externalId ?? '—'} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <ActionButton
+                variant="warning"
+                disabled={busy || claudeAcct.status !== 'active'}
+                onClick={() => suspendExternal(claudeAcct, 'Claude account')}
+              >
+                Disable Claude
+              </ActionButton>
+              <ActionButton
+                variant="danger"
+                disabled={busy}
+                onClick={() => removeExternal(claudeAcct, 'Claude account')}
+              >
+                Delete Claude
+              </ActionButton>
+            </div>
+          </>
+        ) : (
+          <>
+            {claudeRemovedOrSuspended && (
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>
+                Previously {claudeRemovedOrSuspended.status} — re-invite below.
+              </div>
+            )}
+            <div style={{ color: '#64748b', fontStyle: 'italic', marginBottom: 10 }}>
+              No Claude account.
+            </div>
+            <ActionButton
+              variant="primary"
+              disabled={busy}
+              onClick={provisionClaude}
+            >
+              + Add Claude Account
+            </ActionButton>
+          </>
+        )}
+      </AccountCard>
+
+      {/* ================================================================== */}
+      {/* 7. Danger zone                                                       */}
+      {/* ================================================================== */}
       {isStudent && (
-        <section style={{ ...sectionStyle, borderTop: '2px solid #fecaca', paddingTop: 16, marginTop: 24 }}>
-          <h3 style={{ ...subHeadingStyle, color: '#dc2626' }}>Danger Zone</h3>
-          <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
-            Deprovision removes all active workspace and Claude accounts for this student.
-            Pike13 accounts and logins are not affected.
+        <section style={dangerZoneStyle}>
+          <h3 style={{ margin: '0 0 6px', color: '#b91c1c', fontSize: 14 }}>Danger Zone</h3>
+          <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569' }}>
+            Deprovision removes all active Workspace and Claude accounts for this student. Pike13 and external Google logins are not touched.
           </p>
-          <button
-            style={deprovisionButtonStyle}
-            disabled={busy}
-            onClick={handleDeprovision}
-          >
-            {busy ? 'Working...' : 'Deprovision Student'}
-          </button>
+          <ActionButton variant="danger" disabled={busy} onClick={deprovision}>
+            Deprovision Student
+          </ActionButton>
         </section>
       )}
     </div>
@@ -761,296 +455,149 @@ export default function UserDetailPanel() {
 }
 
 // ---------------------------------------------------------------------------
+// Small presentational helpers
+// ---------------------------------------------------------------------------
+
+function AccountCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={cardStyle}>
+      <h2 style={cardTitleStyle}>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Kv({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, fontSize: 13, marginBottom: 2 }}>
+      <div style={{ color: '#64748b', minWidth: 100 }}>{k}</div>
+      <div style={{ color: '#0f172a' }}>{v}</div>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const c =
+    status === 'active' ? { bg: '#d1fae5', fg: '#065f46' }
+    : status === 'pending' ? { bg: '#fef3c7', fg: '#92400e' }
+    : status === 'suspended' ? { bg: '#fed7aa', fg: '#9a3412' }
+    : { bg: '#e2e8f0', fg: '#475569' };
+  return (
+    <span style={{ fontSize: 11, padding: '2px 8px', background: c.bg, color: c.fg, borderRadius: 999, fontWeight: 600 }}>
+      {status}
+    </span>
+  );
+}
+
+type ButtonVariant = 'primary' | 'warning' | 'danger';
+
+function ActionButton({
+  variant,
+  disabled,
+  onClick,
+  children,
+  title,
+}: {
+  variant: ButtonVariant;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  title?: string;
+}) {
+  const bg = variant === 'primary' ? '#2563eb' : variant === 'warning' ? '#d97706' : '#dc2626';
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        padding: '7px 14px',
+        background: bg,
+        color: '#fff',
+        border: 'none',
+        borderRadius: 6,
+        fontWeight: 600,
+        fontSize: 13,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function roleBadgeStyle(role: string): React.CSSProperties {
+  const palette: Record<string, { bg: string; fg: string }> = {
+    admin:   { bg: '#fef3c7', fg: '#92400e' },
+    staff:   { bg: '#dbeafe', fg: '#1e40af' },
+    student: { bg: '#ecfccb', fg: '#3f6212' },
+  };
+  const { bg, fg } = palette[role] ?? palette.student;
+  return { fontSize: 12, padding: '2px 8px', background: bg, color: fg, borderRadius: 999, fontWeight: 600 };
+}
+
+// ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
-const loadingStyle: React.CSSProperties = { color: '#64748b' };
-const errorStyle: React.CSSProperties = { color: '#dc2626' };
-
-const backButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 13,
-  background: 'none',
-  border: '1px solid #cbd5e1',
-  borderRadius: 4,
-  cursor: 'pointer',
-  color: '#475569',
-  marginBottom: 20,
+const pageStyle: React.CSSProperties = { maxWidth: 780 };
+const cardStyle: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid #e2e8f0',
+  borderRadius: 8,
+  padding: '16px 18px',
+  marginBottom: 14,
+  boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
 };
-
-const actionErrorStyle: React.CSSProperties = {
+const cardTitleStyle: React.CSSProperties = {
+  margin: '0 0 10px',
+  fontSize: 14,
+  fontWeight: 700,
+  color: '#0f172a',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+};
+const dangerZoneStyle: React.CSSProperties = {
+  ...cardStyle,
+  border: '1px solid #fecaca',
   background: '#fef2f2',
-  border: '1px solid #fca5a5',
-  borderRadius: 6,
-  padding: '10px 14px',
-  marginBottom: 16,
-  fontSize: 13,
-  color: '#dc2626',
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: 8,
 };
-
-const dismissButtonStyle: React.CSSProperties = {
-  marginLeft: 'auto',
-  background: 'none',
-  border: 'none',
-  cursor: 'pointer',
-  fontSize: 18,
-  lineHeight: 1,
-  color: '#dc2626',
-  padding: 0,
-  flexShrink: 0,
-};
-
-const sectionStyle: React.CSSProperties = {
-  marginBottom: 32,
-};
-
-const sectionHeaderStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  marginBottom: 12,
-};
-
-const headingStyle: React.CSSProperties = {
-  margin: '0 0 16px',
-  fontSize: 20,
-};
-
-const subHeadingStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 16,
-  fontWeight: 600,
-};
-
-const dlStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: '140px 1fr',
-  gap: '8px 16px',
-  fontSize: 14,
-};
-
-const dtStyle: React.CSSProperties = {
-  fontWeight: 600,
-  color: '#64748b',
-  fontSize: 13,
-};
-
-const ddStyle: React.CSSProperties = {
-  margin: 0,
-};
-
-const tableStyle: React.CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  fontSize: 14,
-};
-
-const thStyle: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '8px 12px',
-  borderBottom: '2px solid #e2e8f0',
-  fontWeight: 600,
-  fontSize: 13,
-  color: '#64748b',
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  borderBottom: '1px solid #f1f5f9',
-  verticalAlign: 'middle',
-};
-
-const emptyStyle: React.CSSProperties = {
+const mutedHintStyle: React.CSSProperties = {
+  marginTop: 8,
+  fontSize: 12,
   color: '#94a3b8',
-  fontSize: 13,
   fontStyle: 'italic',
 };
-
-const codeStyle: React.CSSProperties = {
-  fontFamily: 'monospace',
-  fontSize: 12,
-  background: '#f1f5f9',
-  padding: '1px 4px',
-  borderRadius: 3,
-};
-
-const inlineErrorStyle: React.CSSProperties = {
-  color: '#dc2626',
-  fontSize: 12,
-  margin: '4px 0 0',
-};
-
-const addLoginFormStyle: React.CSSProperties = {
-  background: '#f8fafc',
+const backButtonStyle: React.CSSProperties = {
+  background: 'none',
   border: '1px solid #e2e8f0',
   borderRadius: 6,
-  padding: '16px',
-  marginBottom: 16,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-  maxWidth: 480,
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
+  padding: '4px 10px',
+  cursor: 'pointer',
+  marginBottom: 14,
   fontSize: 13,
-  fontWeight: 600,
-  color: '#475569',
 };
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px 8px',
-  fontSize: 14,
-  border: '1px solid #cbd5e1',
-  borderRadius: 4,
-  fontFamily: 'inherit',
-};
-
-function roleBadgeStyle(role: string): React.CSSProperties {
-  const colors: Record<string, { bg: string; color: string }> = {
-    admin: { bg: '#fef3c7', color: '#92400e' },
-    staff: { bg: '#dbeafe', color: '#1e40af' },
-    student: { bg: '#dcfce7', color: '#166534' },
-  };
-  const c = colors[role] ?? { bg: '#f1f5f9', color: '#475569' };
-  return {
-    padding: '2px 8px',
-    borderRadius: 4,
-    fontSize: 12,
-    fontWeight: 600,
-    background: c.bg,
-    color: c.color,
-  };
-}
-
-function statusBadgeStyle(status: string): React.CSSProperties {
-  const colors: Record<string, { bg: string; color: string }> = {
-    active:    { bg: '#dcfce7', color: '#166534' },
-    suspended: { bg: '#fef3c7', color: '#92400e' },
-    removed:   { bg: '#fee2e2', color: '#991b1b' },
-    pending:   { bg: '#f1f5f9', color: '#475569' },
-  };
-  const c = colors[status] ?? { bg: '#f1f5f9', color: '#475569' };
-  return {
-    padding: '2px 8px',
-    borderRadius: 4,
-    fontSize: 12,
-    fontWeight: 600,
-    background: c.bg,
-    color: c.color,
-  };
-}
-
-const approveButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: '#16a34a',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const addButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: '#0ea5e9',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const cancelButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: '#94a3b8',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const suspendButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: '#f59e0b',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const removeButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: '#dc2626',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const disabledButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: '#e2e8f0',
-  color: '#94a3b8',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'not-allowed',
-  fontWeight: 600,
-};
-
-const provisionButtonStyle: React.CSSProperties = {
-  padding: '4px 12px',
-  fontSize: 12,
-  background: '#7c3aed',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const createLeagueAccountButtonStyle: React.CSSProperties = {
-  padding: '6px 14px',
-  fontSize: 13,
-  background: '#0369a1',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const pike13ErrorStyle: React.CSSProperties = {
-  background: '#fff7ed',
-  border: '1px solid #fed7aa',
+const loadingStyle: React.CSSProperties = { color: '#64748b' };
+const errorStyle: React.CSSProperties = { color: '#dc2626' };
+const actionErrorStyle: React.CSSProperties = {
+  position: 'relative',
+  background: '#fef2f2',
+  border: '1px solid #fecaca',
+  color: '#991b1b',
+  padding: '10px 36px 10px 12px',
   borderRadius: 6,
-  padding: '10px 14px',
   fontSize: 13,
-  color: '#c2410c',
+  marginBottom: 14,
 };
-
-const deprovisionButtonStyle: React.CSSProperties = {
-  padding: '8px 16px',
-  fontSize: 13,
-  background: '#dc2626',
-  color: '#fff',
+const dismissButtonStyle: React.CSSProperties = {
+  position: 'absolute',
+  right: 8,
+  top: 8,
+  background: 'transparent',
   border: 'none',
-  borderRadius: 4,
+  color: '#991b1b',
+  fontSize: 18,
   cursor: 'pointer',
-  fontWeight: 700,
+  lineHeight: 1,
 };
