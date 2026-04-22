@@ -158,13 +158,19 @@ describe('ProvisioningRequestService.create — workspace', () => {
     await expect(svc.create(user.id, 'workspace', user.id)).rejects.toThrow(ConflictError);
   });
 
-  it('throws ConflictError when user already has an approved workspace request', async () => {
+  it('allows a new workspace request when the prior approved request has no live ExternalAccount', async () => {
+    // Models the re-activation case: the student had a workspace account,
+    // the admin suspended/removed it, and the student wants it back. Only
+    // a pending request or an active/pending ExternalAccount should block
+    // a new request — not a stale 'approved' row on its own.
     const user = await makeUser();
     const svc = makeService();
 
     await makeProvisioningRequest(user, { requested_type: 'workspace', status: 'approved' });
 
-    await expect(svc.create(user.id, 'workspace', user.id)).rejects.toThrow(ConflictError);
+    const created = await svc.create(user.id, 'workspace', user.id);
+    expect(created).toHaveLength(1);
+    expect(created[0].status).toBe('pending');
   });
 
   it('throws ConflictError when user already has an active workspace ExternalAccount', async () => {

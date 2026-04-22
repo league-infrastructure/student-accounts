@@ -107,16 +107,21 @@ export class ProvisioningRequestService {
           );
         }
 
+        // Only *pending* requests block a new one. An earlier approved
+        // request that was later suspended/removed (by the admin or by
+        // lifecycle) shouldn't prevent the student from asking to have
+        // the account re-activated — the active/pending ExternalAccount
+        // check above is the real duplicate guard.
         const existingWorkspaceRequest = await (tx as any).provisioningRequest.findFirst({
           where: {
             user_id: userId,
             requested_type: 'workspace',
-            status: { in: ['pending', 'approved'] },
+            status: 'pending',
           },
         });
         if (existingWorkspaceRequest) {
           throw new ConflictError(
-            `User ${userId} already has a pending or approved workspace provisioning request`,
+            `User ${userId} already has a pending workspace provisioning request`,
           );
         }
 
