@@ -76,9 +76,17 @@ async function approveRequest({ id, cohortId }: ApprovePayload): Promise<void> {
   }
 }
 
-async function denyRequest(id: number): Promise<void> {
+async function denyRequest({
+  id,
+  permanent,
+}: {
+  id: number;
+  permanent?: boolean;
+}): Promise<void> {
   const res = await fetch(`/api/admin/provisioning-requests/${id}/reject`, {
     method: 'POST',
+    headers: permanent ? { 'Content-Type': 'application/json' } : undefined,
+    body: permanent ? JSON.stringify({ permanent: true }) : undefined,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -166,12 +174,15 @@ function PendingRequestsWidget() {
     },
   });
 
-  const denyMutation = useMutation<void, Error, number>({
+  const denyMutation = useMutation<void, Error, { id: number; permanent?: boolean }>({
     mutationFn: denyRequest,
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, { id, permanent }) => {
       const req = requests?.find((r) => r.id === id);
       const who = req ? prettifyName({ email: req.userEmail, displayName: req.userName }) : `#${id}`;
-      showToast(`Denied request for ${who}`, 'info');
+      showToast(
+        permanent ? `Permanently denied request for ${who}` : `Denied request for ${who}`,
+        'info',
+      );
       setRowErrors((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -179,7 +190,7 @@ function PendingRequestsWidget() {
       });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-requests'] });
     },
-    onError: (err, id) => {
+    onError: (err, { id }) => {
       setRowErrors((prev) => ({ ...prev, [id]: err.message }));
       showToast(`Deny failed: ${err.message}`, 'error');
     },
@@ -282,10 +293,26 @@ function PendingRequestsWidget() {
                             <button
                               style={denyButtonStyle}
                               disabled={anyPending}
-                              onClick={() => denyMutation.mutate(req.id)}
+                              onClick={() => denyMutation.mutate({ id: req.id })}
                               aria-label={`Deny request ${req.id}`}
                             >
                               Deny
+                            </button>
+                            <button
+                              style={permaDenyButtonStyle}
+                              disabled={anyPending}
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Permanently deny this ${req.requestedType} request? The user will not be able to request again.`,
+                                  )
+                                ) {
+                                  denyMutation.mutate({ id: req.id, permanent: true });
+                                }
+                              }}
+                              aria-label={`Permanently deny request ${req.id}`}
+                            >
+                              Deny permanently
                             </button>
                           </>
                         ) : (
@@ -301,10 +328,26 @@ function PendingRequestsWidget() {
                             <button
                               style={denyButtonStyle}
                               disabled={anyPending}
-                              onClick={() => denyMutation.mutate(req.id)}
+                              onClick={() => denyMutation.mutate({ id: req.id })}
                               aria-label={`Deny request ${req.id}`}
                             >
                               Deny
+                            </button>
+                            <button
+                              style={permaDenyButtonStyle}
+                              disabled={anyPending}
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Permanently deny this ${req.requestedType} request? The user will not be able to request again.`,
+                                  )
+                                ) {
+                                  denyMutation.mutate({ id: req.id, permanent: true });
+                                }
+                              }}
+                              aria-label={`Permanently deny request ${req.id}`}
+                            >
+                              Deny permanently
                             </button>
                           </>
                         )}
@@ -523,6 +566,17 @@ const denyButtonStyle: React.CSSProperties = {
   padding: '4px 10px',
   fontSize: 12,
   background: '#dc2626',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontWeight: 600,
+};
+
+const permaDenyButtonStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 12,
+  background: '#7f1d1d',
   color: '#fff',
   border: 'none',
   borderRadius: 4,

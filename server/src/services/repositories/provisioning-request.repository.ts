@@ -50,7 +50,7 @@ export class ProvisioningRequestRepository {
   static async updateStatus(
     db: DbClient,
     id: number,
-    status: 'pending' | 'approved' | 'rejected',
+    status: 'pending' | 'approved' | 'rejected' | 'rejected_permanent',
     decided_by?: number | null,
     decided_at?: Date | null,
   ): Promise<ProvisioningRequest> {

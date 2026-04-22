@@ -243,26 +243,45 @@ interface ServicesSectionProps {
 function ServicesSection({ data, onRequest, requesting, requestError }: ServicesSectionProps) {
   const workspaceBaseline = hasWorkspaceBaseline(data);
 
+  // "Live" ExternalAccounts — status active/pending. Removed/suspended rows
+  // shouldn't block re-requesting.
+  const liveStatuses = (s: string) => s === 'active' || s === 'pending';
+
   // Derive workspace state.
-  const workspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
+  const workspaceAccount = data.externalAccounts.find(
+    (a) => a.type === 'workspace' && liveStatuses(a.status),
+  );
   // Only *pending* requests block re-requesting. Rejected requests still show
   // up in the status column so the student knows what happened, but they
-  // don't lock the button forever.
+  // don't lock the button forever. A *rejected_permanent* request blocks
+  // forever (admin decision).
   const pendingWorkspaceRequest = data.provisioningRequests.find(
     (r) =>
       (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
       r.status === 'pending',
+  );
+  const permaRejectedWorkspace = data.provisioningRequests.some(
+    (r) =>
+      (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
+      r.status === 'rejected_permanent',
   );
   const latestWorkspaceRequest = data.provisioningRequests.find(
     (r) => r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude',
   );
 
   // Derive claude state.
-  const claudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
+  const claudeAccount = data.externalAccounts.find(
+    (a) => a.type === 'claude' && liveStatuses(a.status),
+  );
   const pendingClaudeRequest = data.provisioningRequests.find(
     (r) =>
       (r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude') &&
       r.status === 'pending',
+  );
+  const permaRejectedClaude = data.provisioningRequests.some(
+    (r) =>
+      (r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude') &&
+      r.status === 'rejected_permanent',
   );
   const latestClaudeRequest = data.provisioningRequests.find(
     (r) => r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude',
@@ -283,12 +302,19 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
   //     is @*.jointheleague.org). Requesting from an external Google/GitHub
   //     session points the invite at the wrong identity.
   const signedInAsLeague = isLeagueEmail(data.profile.primaryEmail);
-  const showWorkspaceButton = !hasActiveOrPendingWorkspace;
+  const showWorkspaceButton = !hasActiveOrPendingWorkspace && !permaRejectedWorkspace;
   const showClaudeButton =
-    !hasActiveOrPendingClaude && workspaceBaseline && signedInAsLeague;
-  const claudeBlockedOnWorkspace = !hasActiveOrPendingClaude && !workspaceBaseline;
+    !hasActiveOrPendingClaude &&
+    !permaRejectedClaude &&
+    workspaceBaseline &&
+    signedInAsLeague;
+  const claudeBlockedOnWorkspace =
+    !hasActiveOrPendingClaude && !permaRejectedClaude && !workspaceBaseline;
   const claudeBlockedOnLogin =
-    !hasActiveOrPendingClaude && workspaceBaseline && !signedInAsLeague;
+    !hasActiveOrPendingClaude &&
+    !permaRejectedClaude &&
+    workspaceBaseline &&
+    !signedInAsLeague;
 
   return (
     <div style={styles.card}>

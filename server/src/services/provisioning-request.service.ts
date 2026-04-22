@@ -119,10 +119,36 @@ export class ProvisioningRequestService {
             `User ${userId} already has a pending or approved workspace provisioning request`,
           );
         }
+
+        const permaRejectedWorkspace = await (tx as any).provisioningRequest.findFirst({
+          where: {
+            user_id: userId,
+            requested_type: 'workspace',
+            status: 'rejected_permanent',
+          },
+        });
+        if (permaRejectedWorkspace) {
+          throw new ConflictError(
+            `User ${userId} has been permanently denied a workspace account. Contact an admin.`,
+          );
+        }
       }
 
       // --- claude constraint check ---
       if (wantsClaude) {
+        const permaRejectedClaude = await (tx as any).provisioningRequest.findFirst({
+          where: {
+            user_id: userId,
+            requested_type: 'claude',
+            status: 'rejected_permanent',
+          },
+        });
+        if (permaRejectedClaude) {
+          throw new ConflictError(
+            `User ${userId} has been permanently denied a Claude seat. Contact an admin.`,
+          );
+        }
+
         // When workspace_and_claude, the workspace row is created in the same
         // transaction, so we must check "will workspace exist after this tx?".
         // For workspace_and_claude we are about to create the workspace request
@@ -323,13 +349,34 @@ export class ProvisioningRequestService {
   }
 
   /**
-   * Reject a provisioning request.
-   *
-   * Sets status=rejected, decided_by, decided_at, and records an audit event.
+   * Reject a provisioning request. The student can submit a new request
+   * of the same type after a plain reject. To block re-requests, use
+   * `rejectPermanent` instead.
    *
    * @throws NotFoundError if the request does not exist.
    */
   async reject(requestId: number, deciderId: number): Promise<ProvisioningRequest> {
+    return this._reject(requestId, deciderId, 'rejected');
+  }
+
+  /**
+   * Permanently reject a provisioning request. After this call, the student
+   * cannot re-request the same account type — `create()` will throw
+   * ConflictError if another request of that type is submitted. Used when
+   * the admin has decided the student should never get that account.
+   */
+  async rejectPermanent(
+    requestId: number,
+    deciderId: number,
+  ): Promise<ProvisioningRequest> {
+    return this._reject(requestId, deciderId, 'rejected_permanent');
+  }
+
+  private async _reject(
+    requestId: number,
+    deciderId: number,
+    targetStatus: 'rejected' | 'rejected_permanent',
+  ): Promise<ProvisioningRequest> {
     const existing = await ProvisioningRequestRepository.findById(this.prisma, requestId);
     if (!existing) throw new NotFoundError(`ProvisioningRequest ${requestId} not found`);
 
@@ -337,13 +384,16 @@ export class ProvisioningRequestService {
       const updated = await ProvisioningRequestRepository.updateStatus(
         tx,
         requestId,
-        'rejected',
+        targetStatus,
         deciderId,
         new Date(),
       );
       await this.audit.record(tx, {
         actor_user_id: deciderId,
-        action: 'reject_provisioning_request',
+        action:
+          targetStatus === 'rejected_permanent'
+            ? 'reject_provisioning_request_permanent'
+            : 'reject_provisioning_request',
         target_user_id: existing.user_id,
         target_entity_type: 'ProvisioningRequest',
         target_entity_id: String(requestId),
