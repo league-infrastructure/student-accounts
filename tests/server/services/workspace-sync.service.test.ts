@@ -90,8 +90,11 @@ async function findAuditEvents(action: string) {
 }
 
 async function createWorkspaceAccount(userId: number, status = 'active') {
+  // external_id on workspace rows is the League email — mirror the real
+  // provisioning service by defaulting it to the user's primary_email.
+  const u = await (prisma as any).user.findUnique({ where: { id: userId } });
   return (prisma as any).externalAccount.create({
-    data: { user_id: userId, type: 'workspace', status },
+    data: { user_id: userId, type: 'workspace', status, external_id: u?.primary_email ?? null },
   });
 }
 
@@ -589,7 +592,7 @@ describe('WorkspaceSyncService.syncStudents', () => {
 
     const events = await findAuditEvents('workspace_sync_flagged');
     expect(events).toHaveLength(1);
-    expect((events[0].details as any).primary_email).toBe('flagged@students.jointheleague.org');
+    expect((events[0].details as any).league_email).toBe('flagged@students.jointheleague.org');
   });
 
   it('records sync_students_completed audit event', async () => {
