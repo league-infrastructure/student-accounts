@@ -22,6 +22,7 @@ export interface AccountProfile {
   primaryEmail: string;
   cohort: { id: number; name: string } | null;
   role: string;
+  approvalStatus?: 'approved' | 'pending';
   createdAt: string;
 }
 
@@ -241,6 +242,23 @@ interface ServicesSectionProps {
 }
 
 function ServicesSection({ data, onRequest, requesting, requestError }: ServicesSectionProps) {
+  // Pending users see a banner instead of the services table — no services
+  // can be requested until an admin approves the account.
+  if (data.profile.approvalStatus === 'pending') {
+    return (
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>Services</h2>
+        <div style={styles.pendingBanner} role="status">
+          <strong>Your account is pending approval.</strong>
+          <span>
+            {' '}An admin will review your sign-in shortly. Once approved you'll be
+            able to request a League email and Claude seat here.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   const workspaceBaseline = hasWorkspaceBaseline(data);
 
   // "Live" ExternalAccounts — status active/pending. Removed/suspended rows
@@ -541,6 +559,10 @@ export default function Account() {
     queryFn: fetchAccount,
     // Skip fetching if the user is not a student — they will be redirected.
     enabled: !isNonStudent,
+    // While the account is pending, poll so the banner clears as soon as an
+    // admin approves the account. After approval, rely on normal refetching.
+    refetchInterval: (query) =>
+      query.state.data?.profile.approvalStatus === 'pending' ? 5000 : false,
   });
 
   const removeLoginMutation = useMutation({
@@ -728,6 +750,15 @@ const styles: Record<string, React.CSSProperties> = {
   profileMeta: {
     fontSize: '0.9rem',
     color: '#64748b',
+    lineHeight: 1.5,
+  },
+  pendingBanner: {
+    padding: '14px 16px',
+    borderRadius: 8,
+    border: '1px solid #fcd34d',
+    background: '#fef3c7',
+    color: '#78350f',
+    fontSize: '0.9rem',
     lineHeight: 1.5,
   },
   table: {

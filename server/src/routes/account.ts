@@ -12,6 +12,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { ConflictError, NotFoundError, UnprocessableError, ValidationError } from '../errors.js';
@@ -60,6 +61,7 @@ accountRouter.get(
         primaryEmail: user.primary_email,
         cohort,
         role: user.role,
+        approvalStatus: (user as any).approval_status ?? 'approved',
         createdAt: user.created_at,
       },
       logins: userLogins.map((l) => ({
@@ -182,6 +184,14 @@ accountRouter.post(
       });
     }
 
+    // Pending-approval users can't request services yet.
+    const self = await prisma.user.findUnique({ where: { id: userId } });
+    if (self?.approval_status === 'pending') {
+      return res.status(403).json({
+        error: 'Your account is awaiting admin approval. You cannot request services yet.',
+      });
+    }
+
     const { provisioningRequests } = req.services;
 
     try {
@@ -221,6 +231,39 @@ accountRouter.post(
  * 401 — not authenticated.
  * 403 — role is not 'student'.
  */
+// ---------------------------------------------------------------------------
+// POST /api/account/complete-onboarding — one-time setup step for new users
+// ---------------------------------------------------------------------------
+//
+// Called by the Onboarding page. Accepts { displayName } in the body and
+// writes it to the signed-in user's row along with onboarding_completed=true.
+// No role gate — League-identity users skip this path entirely (their
+// onboarding_completed is created as true), so in practice only newly
+// created external-identity students hit this.
+accountRouter.post(
+  '/account/complete-onboarding',
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId: number = (req.session as any).userId;
+      const raw = (req.body as { displayName?: unknown } | undefined)?.displayName;
+      const displayName = typeof raw === 'string' ? raw.trim() : '';
+      if (displayName.length === 0 || displayName.length > 120) {
+        return res
+          .status(400)
+          .json({ error: 'displayName must be a non-empty string under 120 characters' });
+      }
+      await prisma.user.update({
+        where: { id: userId },
+        data: { display_name: displayName, onboarding_completed: true },
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 accountRouter.get(
   '/account/provisioning-requests',
   requireAuth,
