@@ -40,6 +40,8 @@ adminProvisioningRequestsRouter.get('/provisioning-requests', async (req, res, n
           select: {
             display_name: true,
             primary_email: true,
+            cohort_id: true,
+            cohort: { select: { id: true, name: true } },
           },
         },
       },
@@ -50,6 +52,9 @@ adminProvisioningRequestsRouter.get('/provisioning-requests', async (req, res, n
       userId: row.user_id,
       userName: row.user.display_name,
       userEmail: row.user.primary_email,
+      userCohort: row.user.cohort
+        ? { id: row.user.cohort.id, name: row.user.cohort.name }
+        : null,
       requestedType: row.requested_type,
       createdAt: row.created_at,
     }));
