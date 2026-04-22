@@ -371,7 +371,8 @@ describe('Scenario 4 (UC-005): POST approve — workspace with FakeClient → fu
       });
       expect(accounts).toHaveLength(1);
       expect(accounts[0].status).toBe('active');
-      expect(accounts[0].external_id).toBe('fake-gws-user-789');
+      // external_id on workspace rows is the League email, not the Google user id.
+      expect(accounts[0].external_id).toMatch(new RegExp(`@${STUDENT_DOMAIN}$`));
 
       // FakeClient was called with correct email and orgUnitPath
       expect(fake.calls.createUser).toHaveLength(1);

@@ -42,22 +42,38 @@ adminProvisioningRequestsRouter.get('/provisioning-requests', async (req, res, n
             primary_email: true,
             cohort_id: true,
             cohort: { select: { id: true, name: true } },
+            external_accounts: {
+              where: { type: 'workspace', status: { in: ['active', 'pending'] } },
+              select: { external_id: true },
+              take: 1,
+            },
           },
         },
       },
     });
 
-    const result = rows.map((row: any) => ({
-      id: row.id,
-      userId: row.user_id,
-      userName: row.user.display_name,
-      userEmail: row.user.primary_email,
-      userCohort: row.user.cohort
-        ? { id: row.user.cohort.id, name: row.user.cohort.name }
-        : null,
-      requestedType: row.requested_type,
-      createdAt: row.created_at,
-    }));
+    const leagueRx = /@([a-z0-9-]+\.)?jointheleague\.org$/i;
+
+    const result = rows.map((row: any) => {
+      // Show the user's League email (where workspace/claude action lands)
+      // rather than their primary_email, which may be an external gmail.
+      const workspaceEmail: string | undefined = row.user.external_accounts?.[0]?.external_id;
+      const leagueEmail =
+        workspaceEmail ??
+        (leagueRx.test(row.user.primary_email ?? '') ? row.user.primary_email : null);
+
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userName: row.user.display_name,
+        userEmail: leagueEmail ?? row.user.primary_email,
+        userCohort: row.user.cohort
+          ? { id: row.user.cohort.id, name: row.user.cohort.name }
+          : null,
+        requestedType: row.requested_type,
+        createdAt: row.created_at,
+      };
+    });
 
     res.json(result);
   } catch (err) {
