@@ -1,12 +1,25 @@
 /**
  * PendingApproval — the only page a pending-approval user sees. No sidebar,
  * no account section, no navigation. Just a message and a logout button.
+ *
+ * Polls /api/auth/me every 5s so the page progresses to the normal app
+ * automatically as soon as an admin approves the account.
  */
 
+import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
+const POLL_INTERVAL_MS = 5000;
+
 export default function PendingApproval() {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      void refresh();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   return (
     <div style={shellStyle}>
