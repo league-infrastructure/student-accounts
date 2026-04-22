@@ -240,13 +240,26 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
 
   // Derive workspace state.
   const workspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
-  const workspaceRequest = data.provisioningRequests.find(
+  // Only *pending* requests block re-requesting. Rejected requests still show
+  // up in the status column so the student knows what happened, but they
+  // don't lock the button forever.
+  const pendingWorkspaceRequest = data.provisioningRequests.find(
+    (r) =>
+      (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
+      r.status === 'pending',
+  );
+  const latestWorkspaceRequest = data.provisioningRequests.find(
     (r) => r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude',
   );
 
   // Derive claude state.
   const claudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
-  const claudeRequest = data.provisioningRequests.find(
+  const pendingClaudeRequest = data.provisioningRequests.find(
+    (r) =>
+      (r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude') &&
+      r.status === 'pending',
+  );
+  const latestClaudeRequest = data.provisioningRequests.find(
     (r) => r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude',
   );
 
@@ -254,9 +267,9 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
   const pike13Account = data.externalAccounts.find((a) => a.type === 'pike13');
 
   const hasActiveOrPendingWorkspace =
-    workspaceAccount != null || workspaceRequest != null;
+    workspaceAccount != null || pendingWorkspaceRequest != null;
   const hasActiveOrPendingClaude =
-    claudeAccount != null || claudeRequest != null;
+    claudeAccount != null || pendingClaudeRequest != null;
 
   // Claude seats must land on a League email address, so a student without
   // a League Email baseline can't request Claude yet — the row shows a hint
@@ -284,8 +297,8 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
             <td style={styles.td}>
               {workspaceAccount
                 ? workspaceAccount.status
-                : workspaceRequest
-                  ? `Request ${workspaceRequest.status}`
+                : latestWorkspaceRequest
+                  ? `Request ${latestWorkspaceRequest.status}`
                   : 'None'}
             </td>
             <td style={styles.td}>
@@ -308,8 +321,8 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
             <td style={styles.td}>
               {claudeAccount
                 ? claudeAccount.status
-                : claudeRequest
-                  ? `Request ${claudeRequest.status}`
+                : latestClaudeRequest
+                  ? `Request ${latestClaudeRequest.status}`
                   : 'None'}
             </td>
             <td style={styles.td}>
