@@ -291,17 +291,45 @@ describe('WorkspaceProvisioningService.provision — existing workspace account'
     expect(fakeClient.calls.createUser).toHaveLength(0);
   });
 
-  it('allows provisioning when only a suspended workspace account exists', async () => {
+  it('reactivates (not recreates) when the user has a suspended workspace account', async () => {
     const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
     const student = await makeUser({ role: 'student', cohort_id: cohort.id });
     const admin = await makeUser({ role: 'admin' });
-    await makeExternalAccount(student, { type: 'workspace', status: 'suspended' });
+    const priorEmail = `old.student@${STUDENT_DOMAIN}`;
+    const prior = await makeExternalAccount(student, {
+      type: 'workspace',
+      status: 'suspended',
+      external_id: priorEmail,
+    });
 
     const svc = makeService(fakeClient);
     const account = await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
 
+    // Reactivation flips the existing row; no new Google user is created.
+    expect(account.id).toBe(prior.id);
     expect(account.status).toBe('active');
-    expect(fakeClient.calls.createUser).toHaveLength(1);
+    expect(fakeClient.calls.createUser).toHaveLength(0);
+    expect(fakeClient.calls.unsuspendUser).toEqual([priorEmail]);
+  });
+
+  it('reactivates when the user has a removed workspace account', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
+    const student = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const admin = await makeUser({ role: 'admin' });
+    const priorEmail = `old.student@${STUDENT_DOMAIN}`;
+    const prior = await makeExternalAccount(student, {
+      type: 'workspace',
+      status: 'removed',
+      external_id: priorEmail,
+    });
+
+    const svc = makeService(fakeClient);
+    const account = await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
+
+    expect(account.id).toBe(prior.id);
+    expect(account.status).toBe('active');
+    expect(fakeClient.calls.createUser).toHaveLength(0);
+    expect(fakeClient.calls.unsuspendUser).toEqual([priorEmail]);
   });
 });
 

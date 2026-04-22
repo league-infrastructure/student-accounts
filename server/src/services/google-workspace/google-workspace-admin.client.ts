@@ -275,6 +275,7 @@ export interface GoogleWorkspaceAdminClient {
   createUser(params: CreateUserParams): Promise<CreatedUser>;
   createOU(name: string): Promise<CreatedOU>;
   suspendUser(email: string): Promise<void>;
+  unsuspendUser(email: string): Promise<void>;
   deleteUser(email: string): Promise<void>;
   listUsersInOU(ouPath: string): Promise<WorkspaceUser[]>;
 }
@@ -755,6 +756,34 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
       throw new WorkspaceApiError(
         `Admin SDK suspendUser failed for ${email}: ${apiErr?.message ?? String(err)}`,
         'suspendUser',
+        statusCode,
+        err,
+      );
+    }
+  }
+
+  async unsuspendUser(email: string): Promise<void> {
+    this.assertWriteEnabled('unsuspendUser');
+    const auth = this.buildAuthClient(email);
+
+    try {
+      const adminSdk = google.admin({ version: 'directory_v1', auth });
+      await adminSdk.users.update({
+        userKey: email,
+        requestBody: { suspended: false },
+      });
+
+      logger.info({ email }, '[google-workspace-admin] unsuspendUser: user reactivated successfully.');
+    } catch (err) {
+      if (err instanceof WorkspaceWriteDisabledError) {
+        throw err;
+      }
+      const apiErr = err as any;
+      const statusCode: number | undefined = apiErr?.response?.status ?? apiErr?.code;
+      logger.error({ email, err }, '[google-workspace-admin] unsuspendUser failed.');
+      throw new WorkspaceApiError(
+        `Admin SDK unsuspendUser failed for ${email}: ${apiErr?.message ?? String(err)}`,
+        'unsuspendUser',
         statusCode,
         err,
       );
