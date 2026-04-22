@@ -52,6 +52,15 @@ function hasAccount(m: Member, type: AccountType, statuses: string[]): boolean {
   );
 }
 
+/** A cohort is a Google Workspace OU — every active member has a League
+ *  account by construction. Detection looks at the primary email rather
+ *  than ExternalAccount rows, which workspace sync doesn't create. */
+function hasLeagueAccount(m: Member): boolean {
+  const email = (m.email ?? '').toLowerCase();
+  if (/@([a-z0-9-]+\.)?jointheleague\.org$/.test(email)) return true;
+  return hasAccount(m, 'workspace', ['active', 'pending']);
+}
+
 export default function CohortDetailPanel() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -125,7 +134,7 @@ export default function CohortDetailPanel() {
   if (!data) return <p style={{ color: '#64748b' }}>Loading cohort…</p>;
 
   const missingWorkspace = data.users.filter(
-    (m) => m.role === 'student' && !hasAccount(m, 'workspace', ['active', 'pending']),
+    (m) => m.role === 'student' && !hasLeagueAccount(m),
   ).length;
   const missingClaude = data.users.filter(
     (m) => m.role === 'student' && !hasAccount(m, 'claude', ['active', 'pending']),
@@ -225,7 +234,15 @@ export default function CohortDetailPanel() {
                   </Link>
                 </td>
                 <td style={td}>{m.email}</td>
-                <td style={td}>{ws ? <StatusPill status={ws.status} /> : <em style={{ color: '#94a3b8' }}>none</em>}</td>
+                <td style={td}>
+                  {ws ? (
+                    <StatusPill status={ws.status} />
+                  ) : hasLeagueAccount(m) ? (
+                    <StatusPill status="active" />
+                  ) : (
+                    <em style={{ color: '#94a3b8' }}>none</em>
+                  )}
+                </td>
                 <td style={td}>{cl ? <StatusPill status={cl.status} /> : <em style={{ color: '#94a3b8' }}>none</em>}</td>
               </tr>
             );
