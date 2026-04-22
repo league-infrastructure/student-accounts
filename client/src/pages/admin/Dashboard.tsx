@@ -24,8 +24,14 @@ interface ProvisioningRequest {
   userId: number;
   userName: string | null;
   userEmail: string;
+  userCohort: { id: number; name: string } | null;
   requestedType: 'workspace' | 'claude' | 'workspace_and_claude';
   createdAt: string;
+}
+
+interface ApprovePayload {
+  id: number;
+  cohortId?: number;
 }
 
 interface Cohort {
@@ -57,9 +63,11 @@ async function fetchPendingRequests(): Promise<ProvisioningRequest[]> {
   return res.json();
 }
 
-async function approveRequest(id: number): Promise<void> {
+async function approveRequest({ id, cohortId }: ApprovePayload): Promise<void> {
   const res = await fetch(`/api/admin/provisioning-requests/${id}/approve`, {
     method: 'POST',
+    headers: cohortId != null ? { 'Content-Type': 'application/json' } : undefined,
+    body: cohortId != null ? JSON.stringify({ cohortId }) : undefined,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -119,23 +127,34 @@ const DISPLAY_LIMIT = 5;
 function PendingRequestsWidget() {
   const queryClient = useQueryClient();
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
+  const [cohortPickerFor, setCohortPickerFor] = useState<Record<number, number>>({});
 
   const { data: requests, isLoading, error } = useQuery<ProvisioningRequest[], Error>({
     queryKey: ['admin', 'dashboard', 'pending-requests'],
     queryFn: fetchPendingRequests,
   });
 
-  const approveMutation = useMutation<void, Error, number>({
+  const { data: cohorts } = useQuery<Cohort[], Error>({
+    queryKey: ['admin', 'dashboard', 'cohorts'],
+    queryFn: fetchCohorts,
+  });
+
+  const approveMutation = useMutation<void, Error, ApprovePayload>({
     mutationFn: approveRequest,
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, { id }) => {
       setRowErrors((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setCohortPickerFor((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-requests'] });
     },
-    onError: (err, id) => {
+    onError: (err, { id }) => {
       setRowErrors((prev) => ({ ...prev, [id]: err.message }));
     },
   });
@@ -196,6 +215,9 @@ function PendingRequestsWidget() {
                   displayName: req.userName,
                 });
                 const rowError = rowErrors[req.id];
+                const needsCohort =
+                  req.requestedType === 'workspace' && req.userCohort == null;
+                const pickedCohortId = cohortPickerFor[req.id] ?? 0;
 
                 return (
                   <tr key={req.id}>
@@ -211,22 +233,70 @@ function PendingRequestsWidget() {
                     </td>
                     <td style={tdStyle}>
                       <div style={actionsCellStyle}>
-                        <button
-                          style={approveButtonStyle}
-                          disabled={anyPending}
-                          onClick={() => approveMutation.mutate(req.id)}
-                          aria-label={`Approve request ${req.id}`}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          style={denyButtonStyle}
-                          disabled={anyPending}
-                          onClick={() => denyMutation.mutate(req.id)}
-                          aria-label={`Deny request ${req.id}`}
-                        >
-                          Deny
-                        </button>
+                        {needsCohort ? (
+                          <>
+                            <select
+                              style={selectStyle}
+                              value={pickedCohortId || ''}
+                              disabled={anyPending}
+                              onChange={(e) =>
+                                setCohortPickerFor((prev) => ({
+                                  ...prev,
+                                  [req.id]: parseInt(e.target.value, 10) || 0,
+                                }))
+                              }
+                              aria-label={`Select cohort for request ${req.id}`}
+                            >
+                              <option value="">Select a cohort…</option>
+                              {(cohorts ?? []).map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                  {c.google_ou_path ? '' : ' (no OU)'}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              style={approveButtonStyle}
+                              disabled={anyPending || !pickedCohortId}
+                              onClick={() =>
+                                approveMutation.mutate({
+                                  id: req.id,
+                                  cohortId: pickedCohortId,
+                                })
+                              }
+                              aria-label={`Approve request ${req.id} with selected cohort`}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              style={denyButtonStyle}
+                              disabled={anyPending}
+                              onClick={() => denyMutation.mutate(req.id)}
+                              aria-label={`Deny request ${req.id}`}
+                            >
+                              Deny
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              style={approveButtonStyle}
+                              disabled={anyPending}
+                              onClick={() => approveMutation.mutate({ id: req.id })}
+                              aria-label={`Approve request ${req.id}`}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              style={denyButtonStyle}
+                              disabled={anyPending}
+                              onClick={() => denyMutation.mutate(req.id)}
+                              aria-label={`Deny request ${req.id}`}
+                            >
+                              Deny
+                            </button>
+                          </>
+                        )}
                         {rowError && (
                           <span style={inlineErrorStyle} role="alert">
                             {rowError}
@@ -447,6 +517,14 @@ const denyButtonStyle: React.CSSProperties = {
   borderRadius: 4,
   cursor: 'pointer',
   fontWeight: 600,
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: '4px 8px',
+  fontSize: 12,
+  borderRadius: 4,
+  border: '1px solid #cbd5e1',
+  background: '#fff',
 };
 
 const inlineErrorStyle: React.CSSProperties = {

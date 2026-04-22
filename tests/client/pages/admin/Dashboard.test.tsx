@@ -28,6 +28,7 @@ function makeRequests(count: number) {
     userId: 100 + i,
     userName: `Student ${i + 1}`,
     userEmail: `student${i + 1}@example.com`,
+    userCohort: { id: 1, name: 'Spring 2025' },
     requestedType: i % 3 === 0 ? 'workspace' : i % 3 === 1 ? 'claude' : 'workspace_and_claude',
     createdAt: '2025-03-01T10:00:00Z',
   }));
