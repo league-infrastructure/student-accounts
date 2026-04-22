@@ -25,6 +25,9 @@ export interface AccountProfile {
   role: string;
   approvalStatus?: 'approved' | 'pending';
   createdAt: string;
+  /** Shared one-shot temp password for the League account (only set when
+   *  the user has a live workspace ExternalAccount). */
+  workspaceTempPassword?: string | null;
 }
 
 export interface AccountLogin {
@@ -456,7 +459,17 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
                   {workspaceReactivation ? 'Request re-activation' : 'Request League Email'}
                 </button>
               ) : liveWorkspaceAccount && leagueEmailDisplay ? (
-                <span style={styles.emailValue}>{leagueEmailDisplay}</span>
+                <div style={styles.emailColumn}>
+                  <span style={styles.emailValue}>{leagueEmailDisplay}</span>
+                  {data.profile.workspaceTempPassword && (
+                    <span
+                      style={styles.tempPasswordHint}
+                      title="Shared temp password — you'll be asked to change it on first sign-in"
+                    >
+                      password: <code style={styles.emailValue}>{data.profile.workspaceTempPassword}</code>
+                    </span>
+                  )}
+                </div>
               ) : null}
             </td>
           </tr>
@@ -973,6 +986,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.85rem',
     color: '#1e293b',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  },
+  emailColumn: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+  },
+  tempPasswordHint: {
+    fontSize: '0.78rem',
+    color: '#64748b',
   },
   readOnlyHint: {
     fontSize: '0.82rem',
