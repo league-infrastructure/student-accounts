@@ -137,12 +137,25 @@ export class WorkspaceProvisioningService {
     );
 
     // --- 6. Call Google Admin SDK (may throw; caller's tx rolls back) ---
+    //
+    // Pass the student's own primary_email as recoveryEmail so Google's
+    // welcome/password email lands in an inbox they can actually read.
+    // (They can't read the League inbox yet — it's the account being
+    // created.) We skip this when primary_email is itself a League
+    // address, which would just loop back.
+    const leagueDomainRx = /@([a-z0-9-]+\.)?jointheleague\.org$/i;
+    const recoveryEmail =
+      user.primary_email && !leagueDomainRx.test(user.primary_email)
+        ? user.primary_email
+        : null;
+
     const createdUser = await this.googleClient.createUser({
       primaryEmail: workspaceEmail,
       orgUnitPath: cohort.google_ou_path,
       givenName,
       familyName,
       sendNotificationEmail: true,
+      recoveryEmail,
     });
 
     logger.info(
