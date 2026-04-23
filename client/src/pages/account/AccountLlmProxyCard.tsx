@@ -166,7 +166,7 @@ claude
 curl -X POST "${status.endpoint}/messages" \\
   -H "authorization: Bearer ${status.token ?? 'llmp_…'}" \\
   -H "content-type: application/json" \\
-  -d '{"model":"claude-3-5-haiku-latest","max_tokens":64,
+  -d '{"model":"claude-haiku-4-5-20251001","max_tokens":64,
        "messages":[{"role":"user","content":"hi"}]}'`}
       </pre>
     </section>
