@@ -185,6 +185,11 @@ export class GroupRepository {
             external_accounts: {
               select: { type: true, status: true, external_id: true },
             },
+            llm_proxy_tokens: {
+              select: { revoked_at: true, expires_at: true },
+              orderBy: { created_at: 'desc' as any },
+              take: 1,
+            },
           },
         },
       },

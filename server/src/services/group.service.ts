@@ -49,6 +49,7 @@ export type GroupDetail = {
     email: string;
     role: string;
     externalAccounts: Array<{ type: string; status: string; externalId: string | null }>;
+    llmProxyToken?: { status: 'active' | 'pending' | 'none' };
   }>;
 };
 
@@ -189,6 +190,17 @@ export class GroupService {
   async listMembers(groupId: number): Promise<GroupDetail> {
     const group = await this.findById(groupId);
     const members = await GroupRepository.listMembers(this.prisma, groupId);
+
+    // Helper function to compute LLM proxy status
+    const computeProxyStatus = (tokens: any[]): 'active' | 'pending' | 'none' => {
+      if (!tokens || tokens.length === 0) return 'none';
+      const token = tokens[0]; // Most recent token
+      if (token.revoked_at) return 'none';
+      const now = new Date();
+      if (token.expires_at && now > token.expires_at) return 'pending'; // Expired
+      return 'active';
+    };
+
     return {
       group: {
         id: group.id,
@@ -206,6 +218,9 @@ export class GroupService {
           status: a.status,
           externalId: a.external_id,
         })),
+        llmProxyToken: {
+          status: computeProxyStatus((u as any).llm_proxy_tokens ?? []),
+        },
       })),
     };
   }
