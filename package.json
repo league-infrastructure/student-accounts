@@ -1,6 +1,6 @@
 {
   "name": "docker-nodeapp",
-  "version": "0.20260421.1",
+  "version": "0.20260422.1",
   "private": true,
   "scripts": {
     "dev": "./scripts/dev.sh",
