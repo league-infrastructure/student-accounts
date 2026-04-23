@@ -34,6 +34,7 @@ import { NotFoundError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
 import type { AnthropicAdminClient } from './anthropic/anthropic-admin.client.js';
+import { AnthropicAdminApiError } from './anthropic/anthropic-admin.client.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
 
@@ -476,18 +477,43 @@ export class ExternalAccountLifecycleService {
       // External id may be an invite id (never accepted) or a user id
       // (invite accepted, now an org member). The Admin API rejects
       // cross-calls with "User id must have `user_` prefix."
+      //
+      // 404 (NotFound) and 400 (frequently returned when an invite has
+      // already been cancelled or accepted) are treated as no-ops:
+      // the upstream record is already gone, so local cleanup should
+      // proceed. Anything else bubbles.
+      const isAlreadyGone = (err: unknown): boolean =>
+        err instanceof AnthropicAdminApiError &&
+        (err.statusCode === 404 || err.statusCode === 400);
+
       if (memberId.startsWith('invite_')) {
-        await this.claudeTeamClient.cancelInvite(memberId);
-        logger.info(
-          { accountId, memberId },
-          '[external-account-lifecycle] remove: cancelled outstanding Claude invite',
-        );
+        try {
+          await this.claudeTeamClient.cancelInvite(memberId);
+          logger.info(
+            { accountId, memberId },
+            '[external-account-lifecycle] remove: cancelled outstanding Claude invite',
+          );
+        } catch (err) {
+          if (!isAlreadyGone(err)) throw err;
+          logger.info(
+            { accountId, memberId, statusCode: (err as AnthropicAdminApiError).statusCode },
+            '[external-account-lifecycle] remove: Claude invite already gone upstream — treating as no-op',
+          );
+        }
       } else {
-        await this.claudeTeamClient.deleteOrgUser(memberId);
-        logger.info(
-          { accountId, memberId },
-          '[external-account-lifecycle] remove: claude org user deleted',
-        );
+        try {
+          await this.claudeTeamClient.deleteOrgUser(memberId);
+          logger.info(
+            { accountId, memberId },
+            '[external-account-lifecycle] remove: claude org user deleted',
+          );
+        } catch (err) {
+          if (!isAlreadyGone(err)) throw err;
+          logger.info(
+            { accountId, memberId, statusCode: (err as AnthropicAdminApiError).statusCode },
+            '[external-account-lifecycle] remove: Claude org user already gone upstream — treating as no-op',
+          );
+        }
       }
     }
 
