@@ -23,31 +23,17 @@ import type { ClaudeProvisioningService } from './claude-provisioning.service.js
 import { UserRepository } from './repositories/user.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { CohortRepository } from './repositories/cohort.repository.js';
+import {
+  processAccounts,
+  type AccountRow,
+  type AccountType,
+  type BulkOperationFailure,
+  type BulkOperationResult,
+} from './bulk-account.shared.js';
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-export type AccountType = 'workspace' | 'claude';
-
-export type BulkOperationFailure = {
-  accountId: number;
-  userId: number;
-  userName: string;
-  /**
-   * Optional account type — populated by the *AllInCohort bulk methods
-   * that mix workspace and claude accounts in the same batch, so the UI
-   * can render "name (claude): reason". Omitted by the legacy per-type
-   * methods where type is implicit from the request.
-   */
-  type?: AccountType;
-  error: string;
-};
-
-export type BulkOperationResult = {
-  succeeded: number[];
-  failed: BulkOperationFailure[];
-};
+// Re-export the shared types so existing importers of this module keep
+// working unchanged after the Sprint 012 extraction.
+export type { AccountType, BulkOperationFailure, BulkOperationResult };
 
 export type PreviewResult = {
   cohortId: number;
@@ -154,7 +140,13 @@ export class BulkCohortService {
     await this._assertCohortExists(cohortId);
 
     const accounts = await this._loadEligibleForSuspend(cohortId, accountType);
-    return this._processAccounts(accounts, actorId, 'suspend');
+    return processAccounts(
+      this.prisma,
+      this.externalAccountLifecycle,
+      accounts,
+      actorId,
+      'suspend',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -179,7 +171,13 @@ export class BulkCohortService {
     await this._assertCohortExists(cohortId);
 
     const accounts = await this._loadEligibleForRemove(cohortId, accountType);
-    return this._processAccounts(accounts, actorId, 'remove');
+    return processAccounts(
+      this.prisma,
+      this.externalAccountLifecycle,
+      accounts,
+      actorId,
+      'remove',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -203,7 +201,13 @@ export class BulkCohortService {
     await this._assertCohortExists(cohortId);
 
     const accounts = await this._loadAllEligibleForSuspend(cohortId);
-    return this._processAccounts(accounts, actorId, 'suspend');
+    return processAccounts(
+      this.prisma,
+      this.externalAccountLifecycle,
+      accounts,
+      actorId,
+      'suspend',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -226,7 +230,13 @@ export class BulkCohortService {
     await this._assertCohortExists(cohortId);
 
     const accounts = await this._loadAllEligibleForRemove(cohortId);
-    return this._processAccounts(accounts, actorId, 'remove');
+    return processAccounts(
+      this.prisma,
+      this.externalAccountLifecycle,
+      accounts,
+      actorId,
+      'remove',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -389,45 +399,4 @@ export class BulkCohortService {
     }));
   }
 
-  /**
-   * Iterate accounts, calling suspend or remove on each in its own
-   * transaction. Collects results fail-soft.
-   *
-   * Each input row may carry an optional `type` field (populated by the
-   * *AllInCohort methods that mix workspace + claude in a single batch);
-   * when present, it is propagated to each BulkOperationFailure so the
-   * UI can render "name (type): reason".
-   */
-  private async _processAccounts(
-    accounts: Array<{ id: number; userId: number; userName: string; type?: AccountType }>,
-    actorId: number,
-    operation: 'suspend' | 'remove',
-  ): Promise<BulkOperationResult> {
-    const succeeded: number[] = [];
-    const failed: BulkOperationFailure[] = [];
-
-    for (const account of accounts) {
-      try {
-        await (this.prisma as any).$transaction(async (tx: any) => {
-          if (operation === 'suspend') {
-            await this.externalAccountLifecycle.suspend(account.id, actorId, tx);
-          } else {
-            await this.externalAccountLifecycle.remove(account.id, actorId, tx);
-          }
-        });
-        succeeded.push(account.id);
-      } catch (err: any) {
-        const entry: BulkOperationFailure = {
-          accountId: account.id,
-          userId: account.userId,
-          userName: account.userName,
-          error: err instanceof Error ? err.message : String(err),
-        };
-        if (account.type !== undefined) entry.type = account.type;
-        failed.push(entry);
-      }
-    }
-
-    return { succeeded, failed };
-  }
 }

@@ -1,7 +1,7 @@
 ---
-id: "012"
-title: "App-level groups — multi-membership, search, bulk provisioning"
-status: roadmap
+id: '012'
+title: "App-level groups \u2014 multi-membership, search, bulk provisioning"
+status: done
 branch: sprint/012-app-level-groups-multi-membership-search-bulk-provisioning
 use-cases: []
 ---
@@ -73,4 +73,12 @@ that we use for arbitrary sets and bulk operations.
 
 ## Tickets
 
-(To be populated during detail-phase planning.)
+1. **001 — Data model — Group and UserGroup entities, repository**
+   (no deps)
+2. **002 — GroupService — CRUD, membership, search, audit**
+   (deps: 001)
+3. **003 — Shared bulk helper + BulkGroupService**
+   (deps: 001, 002)
+4. **004 — Admin groups HTTP routes** (deps: 002, 003)
+5. **005 — Client — Groups list and detail pages** (deps: 004)
+6. **006 — Client — Groups section on UserDetailPanel** (deps: 004)

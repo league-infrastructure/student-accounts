@@ -23,6 +23,7 @@ import { adminStatsRouter } from './stats';
 import { adminProvisionWorkspaceRouter } from './provision-workspace';
 import { anthropicSyncRouter } from './anthropic-sync';
 import { adminEventsRouter } from './events';
+import { adminGroupsRouter } from './groups';
 
 export const adminRouter = Router();
 
@@ -54,3 +55,4 @@ adminRouter.use('/admin', adminStatsRouter);
 adminRouter.use('/admin', adminProvisionWorkspaceRouter);
 adminRouter.use('/admin', anthropicSyncRouter);
 adminRouter.use('/admin', adminEventsRouter);
+adminRouter.use('/admin', adminGroupsRouter);

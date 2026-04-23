@@ -19,6 +19,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { prettifyName } from './utils/prettifyName';
+import UserGroupsCard from './UserGroupsCard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -309,6 +310,14 @@ export default function UserDetailPanel() {
           </ul>
         </div>
       </section>
+
+      {/* ================================================================== */}
+      {/* 1b. Groups (Sprint 012 T006)                                         */}
+      {/* ================================================================== */}
+      <UserGroupsCard
+        userId={user.id}
+        userName={prettifyNameFromUser()}
+      />
 
       {/* ================================================================== */}
       {/* 2. External Google (read-only; only if present)                     */}

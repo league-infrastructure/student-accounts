@@ -1,5 +1,13 @@
 ---
-status: pending
+status: done
+sprint: '012'
+tickets:
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
 ---
 
 # App-level groups for bulk provisioning

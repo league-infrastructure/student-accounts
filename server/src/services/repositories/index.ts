@@ -24,3 +24,13 @@ export type { CreateProvisioningRequestInput } from './provisioning-request.repo
 
 export { MergeSuggestionRepository } from './merge-suggestion.repository.js';
 export type { CreateMergeSuggestionInput } from './merge-suggestion.repository.js';
+
+export { GroupRepository } from './group.repository.js';
+export type {
+  CreateGroupInput,
+  UpdateGroupInput,
+  UserSearchMatch,
+  UserSearchResult,
+  GroupWithMemberCount,
+  MemberRow,
+} from './group.repository.js';
