@@ -1,11 +1,16 @@
 ---
-id: "003"
-title: "Shared bulk helper + BulkGroupService"
-status: todo
-use-cases: ["SUC-012-006", "SUC-012-007", "SUC-012-008"]
-depends-on: ["001", "002"]
-github-issue: ""
-todo: ""
+id: '003'
+title: Shared bulk helper + BulkGroupService
+status: done
+use-cases:
+- SUC-012-006
+- SUC-012-007
+- SUC-012-008
+depends-on:
+- '001'
+- '002'
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -20,7 +25,7 @@ membership.
 
 ## Acceptance Criteria
 
-- [ ] New file `server/src/services/bulk-account.shared.ts` exports:
+- [x] New file `server/src/services/bulk-account.shared.ts` exports:
       - `AccountType = 'workspace' | 'claude'`.
       - `BulkOperationFailure` (same shape as current
         `bulk-cohort.service.ts`).
@@ -31,13 +36,13 @@ membership.
         `lifecycle.suspend` or `lifecycle.remove`, and collects
         results. `type` on failure entries is carried through if
         the input row supplies one.
-- [ ] `BulkCohortService` is refactored to import `processAccounts`,
+- [x] `BulkCohortService` is refactored to import `processAccounts`,
       `AccountType`, and the result types from
       `bulk-account.shared.ts`. Its public API is unchanged. The
       private `_processAccounts` method is removed.
-- [ ] Existing `bulk-cohort.service.test.ts` (if present) and
+- [x] Existing `bulk-cohort.service.test.ts` (if present) and
       `bulk-cohort.routes.test.ts` still pass unchanged.
-- [ ] New file `server/src/services/bulk-group.service.ts` exports
+- [x] New file `server/src/services/bulk-group.service.ts` exports
       `BulkGroupService` with:
       - `previewCount(groupId, accountType, operation)` — eligible
         account count; throws `NotFoundError` if group missing.
@@ -50,9 +55,9 @@ membership.
         and runs `processAccounts(..., 'suspend')`.
       - `removeAllInGroup(groupId, actorId)` — same with
         `active` | `suspended` statuses and `'remove'`.
-- [ ] Registered on `ServiceRegistry` as `bulkGroup: BulkGroupService`
+- [x] Registered on `ServiceRegistry` as `bulkGroup: BulkGroupService`
       with the same provisioner wiring as `bulkCohort`.
-- [ ] Unit tests in
+- [x] Unit tests in
       `tests/server/services/bulk-group.service.test.ts` cover
       eligibility scoping, fail-soft per-account, `NotFoundError`
       on missing group, and the `type`-carrying failure shape for
