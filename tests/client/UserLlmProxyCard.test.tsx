@@ -58,11 +58,11 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('UserLlmProxyCard — disabled state', () => {
-  it('renders "Not enabled" when the GET returns { enabled: false }', async () => {
+  it('renders the disabled pill + Grant access button when the GET returns { enabled: false }', async () => {
     setFetch([() => jsonResponse(200, { enabled: false })]);
     render(<UserLlmProxyCard userId={7} userName="Pat" />);
     await waitFor(() => {
-      expect(screen.getByText(/not enabled/i)).toBeTruthy();
+      expect(screen.getByText(/^disabled$/i)).toBeTruthy();
     });
     expect(screen.getByRole('button', { name: /grant access/i })).toBeTruthy();
   });
@@ -183,7 +183,7 @@ describe('UserLlmProxyCard — revoke', () => {
     fireEvent.click(screen.getByRole('button', { name: /revoke access/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/not enabled/i)).toBeTruthy();
+      expect(screen.getByText(/^disabled$/i)).toBeTruthy();
     });
     const methods = calls.map((c) => (c.init?.method ?? 'GET').toUpperCase());
     expect(methods).toContain('DELETE');
