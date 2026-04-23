@@ -1,21 +1,22 @@
 ---
-id: "010"
-title: "Admin Console Consolidation — UX Overhaul, Anthropic Admin API, Env Var Cleanup"
-status: active
+id: '010'
+title: "Admin Console Consolidation \u2014 UX Overhaul, Anthropic Admin API, Env Var\
+  \ Cleanup"
+status: done
 branch: sprint/010-admin-console-consolidation-ux-overhaul-anthropic-admin-api-env-var-cleanup
 use-cases:
-  - SUC-010-001
-  - SUC-010-002
-  - SUC-010-003
-  - SUC-010-004
-  - SUC-010-005
-  - SUC-010-006
-  - SUC-010-007
-  - SUC-010-008
+- SUC-010-001
+- SUC-010-002
+- SUC-010-003
+- SUC-010-004
+- SUC-010-005
+- SUC-010-006
+- SUC-010-007
+- SUC-010-008
 todos:
-  - plan-admin-ux-overhaul-dashboard-route-split-user-detail-account-lifecycle.md
-  - plan-claude-team-account-management-real-admin-api-integration.md
-  - plan-rename-google-credentials-env-var-to-google-cred-file.md
+- plan-admin-ux-overhaul-dashboard-route-split-user-detail-account-lifecycle.md
+- plan-claude-team-account-management-real-admin-api-integration.md
+- plan-rename-google-credentials-env-var-to-google-cred-file.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
