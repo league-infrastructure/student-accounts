@@ -27,6 +27,8 @@ import UserDetailPanel from './pages/admin/UserDetailPanel';
 import ProvisioningRequests from './pages/admin/ProvisioningRequests';
 import Cohorts from './pages/admin/Cohorts';
 import CohortDetailPanel from './pages/admin/CohortDetailPanel';
+import Groups from './pages/admin/Groups';
+import GroupDetailPanel from './pages/admin/GroupDetailPanel';
 import SyncPanel from './pages/admin/SyncPanel';
 import MergeQueuePanel from './pages/admin/MergeQueuePanel';
 import Dashboard from './pages/admin/Dashboard';
@@ -79,6 +81,8 @@ function App() {
                 <Route path="/requests" element={<ProvisioningRequests />} />
                 <Route path="/cohorts" element={<Cohorts />} />
                 <Route path="/cohorts/:id" element={<CohortDetailPanel />} />
+                <Route path="/groups" element={<Groups />} />
+                <Route path="/groups/:id" element={<GroupDetailPanel />} />
                 <Route path="/users" element={<UsersPanel />} />
                 <Route path="/users/:id" element={<UserDetailPanel />} />
                 <Route path="/sync" element={<SyncPanel />} />

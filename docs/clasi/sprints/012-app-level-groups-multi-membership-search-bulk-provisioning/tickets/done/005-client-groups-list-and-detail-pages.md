@@ -1,11 +1,19 @@
 ---
-id: "005"
-title: "Client — Groups list and detail pages"
-status: todo
-use-cases: ["SUC-012-001", "SUC-012-002", "SUC-012-003", "SUC-012-005", "SUC-012-006", "SUC-012-007", "SUC-012-008"]
-depends-on: ["004"]
-github-issue: ""
-todo: ""
+id: '005'
+title: "Client \u2014 Groups list and detail pages"
+status: done
+use-cases:
+- SUC-012-001
+- SUC-012-002
+- SUC-012-003
+- SUC-012-005
+- SUC-012-006
+- SUC-012-007
+- SUC-012-008
+depends-on:
+- '004'
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -20,7 +28,7 @@ recognises the pair.
 
 ## Acceptance Criteria
 
-- [ ] New file `client/src/pages/admin/Groups.tsx`:
+- [x] New file `client/src/pages/admin/Groups.tsx`:
       - Fetches `GET /api/admin/groups` via `useQuery`
         (`queryKey: ['admin', 'groups']`).
       - Renders a sortable table with columns: Name (linked to
@@ -28,7 +36,7 @@ recognises the pair.
       - Inline create form at the top with Name + Description fields;
         on submit, `POST /api/admin/groups`, invalidate the query.
       - Shows a friendly inline error on 409 / 422.
-- [ ] New file `client/src/pages/admin/GroupDetailPanel.tsx`:
+- [x] New file `client/src/pages/admin/GroupDetailPanel.tsx`:
       - Fetches `GET /api/admin/groups/:id/members`.
       - Header shows name + description + member count.
       - Header has Edit (opens an inline form backed by
@@ -49,13 +57,13 @@ recognises the pair.
       - **Member table** with columns: Name (linked), Email, League
         (StatusPill), Claude (StatusPill), Remove (confirms,
         `DELETE /admin/groups/:id/members/:userId`).
-- [ ] `client/src/App.tsx` adds routes inside
+- [x] `client/src/App.tsx` adds routes inside
       `<AdminOnlyRoute>`: `/groups` → `Groups`,
       `/groups/:id` → `GroupDetailPanel`.
-- [ ] Sidebar navigation in `client/src/components/AppLayout.tsx`
+- [x] Sidebar navigation in `client/src/components/AppLayout.tsx`
       (or equivalent nav source-of-truth) includes a "Groups" entry
       alongside "Cohorts" (admin-only).
-- [ ] New tests:
+- [x] New tests:
       - `tests/client/Groups.test.tsx` — renders table, submits
         create form, shows inline error on duplicate, renders member
         counts.
@@ -63,7 +71,7 @@ recognises the pair.
         runs search-and-add, runs remove, runs each of the four bulk
         buttons, renders banner with `name (type): reason` on a
         canned 207 response.
-- [ ] Existing client tests continue to pass (pre-existing Sprint-010
+- [x] Existing client tests continue to pass (pre-existing Sprint-010
       drift is acceptable per sprint brief).
 
 ## Testing
