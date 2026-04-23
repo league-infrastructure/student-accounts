@@ -173,6 +173,13 @@ export default function UserDetailPanel() {
     );
   }
 
+  async function unsuspendExternal(account: ExternalAccount, label: string) {
+    await run(
+      () => apiPost(`/api/admin/external-accounts/${account.id}/unsuspend`),
+      `Unsuspend the ${label}?`,
+    );
+  }
+
   async function removeExternal(account: ExternalAccount, label: string, note = '') {
     await run(
       () => apiPost(`/api/admin/external-accounts/${account.id}/remove`),
@@ -256,10 +263,10 @@ export default function UserDetailPanel() {
            !!a.externalId && isStudentLeagueEmail(a.externalId),
   );
   const claudeAcct = user.externalAccounts.find(
-    (a) => a.type === 'claude' && (a.status === 'active' || a.status === 'pending'),
+    (a) => a.type === 'claude' && (a.status === 'active' || a.status === 'pending' || a.status === 'suspended'),
   );
-  const claudeRemovedOrSuspended = user.externalAccounts.find(
-    (a) => a.type === 'claude' && (a.status === 'removed' || a.status === 'suspended'),
+  const claudeRemoved = user.externalAccounts.find(
+    (a) => a.type === 'claude' && a.status === 'removed',
   );
 
   // -------------------------------------------------------------------------
@@ -325,7 +332,7 @@ export default function UserDetailPanel() {
       )}
 
       {/* ================================================================== */}
-      {/* 4. Student account (add / delete)                                    */}
+      {/* 4. Student account (add / unsuspend / delete)                        */}
       {/* ================================================================== */}
       {(isStudent || studentEmails.length > 0) && (
         <AccountCard title="Student account">
@@ -333,19 +340,31 @@ export default function UserDetailPanel() {
             <>
               {studentEmails.map((e) => (<div key={e} style={{ fontFamily: 'monospace' }}>{e}</div>))}
               {studentWorkspaceAcct ? (
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <ActionButton
-                    variant="danger"
-                    disabled={busy || studentWorkspaceAcct.status === 'removed'}
-                    onClick={() => removeExternal(
-                      studentWorkspaceAcct,
-                      'student account',
-                      'The Google Workspace account will be suspended now and hard-deleted after 3 days.',
+                <>
+                  <Kv k="Status" v={<StatusPill status={studentWorkspaceAcct.status} />} />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    {studentWorkspaceAcct.status === 'suspended' && (
+                      <ActionButton
+                        variant="primary"
+                        disabled={busy}
+                        onClick={() => unsuspendExternal(studentWorkspaceAcct, 'student account')}
+                      >
+                        Unsuspend Student Account
+                      </ActionButton>
                     )}
-                  >
-                    Delete Student Account
-                  </ActionButton>
-                </div>
+                    <ActionButton
+                      variant="danger"
+                      disabled={busy || studentWorkspaceAcct.status === 'removed'}
+                      onClick={() => removeExternal(
+                        studentWorkspaceAcct,
+                        'student account',
+                        'The Google Workspace account will be suspended now and hard-deleted after 3 days.',
+                      )}
+                    >
+                      Delete Student Account
+                    </ActionButton>
+                  </div>
+                </>
               ) : (
                 <div style={mutedHintStyle}>
                   Synced from Google; not tracked as an app-managed account.
@@ -398,7 +417,25 @@ export default function UserDetailPanel() {
           <>
             <Kv k="Status" v={<StatusPill status={claudeAcct.status} />} />
             <Kv k="Anthropic ID" v={claudeAcct.externalId ?? '—'} />
+            {claudeAcct.status === 'suspended' &&
+              claudeAcct.externalId &&
+              !claudeAcct.externalId.startsWith('invite_') && (
+                <div style={mutedHintStyle}>
+                  Claude user accounts can't be un-suspended — delete this account
+                  and re-invite with + Add Claude Account.
+                </div>
+              )}
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              {claudeAcct.status === 'suspended' &&
+                claudeAcct.externalId?.startsWith('invite_') && (
+                  <ActionButton
+                    variant="primary"
+                    disabled={busy}
+                    onClick={() => unsuspendExternal(claudeAcct, 'Claude account')}
+                  >
+                    Unsuspend Claude
+                  </ActionButton>
+                )}
               <ActionButton
                 variant="warning"
                 disabled={busy || claudeAcct.status !== 'active'}
@@ -417,9 +454,9 @@ export default function UserDetailPanel() {
           </>
         ) : (
           <>
-            {claudeRemovedOrSuspended && (
+            {claudeRemoved && (
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>
-                Previously {claudeRemovedOrSuspended.status} — re-invite below.
+                Previously removed — re-invite below.
               </div>
             )}
             <div style={{ color: '#64748b', fontStyle: 'italic', marginBottom: 10 }}>
