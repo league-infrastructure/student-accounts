@@ -1,11 +1,14 @@
 ---
-id: "005"
-title: "Admin single-user grant/revoke/status endpoints + UserLlmProxyCard"
-status: todo
-use-cases: ["SUC-013-001", "SUC-013-002"]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: '005'
+title: Admin single-user grant/revoke/status endpoints + UserLlmProxyCard
+status: done
+use-cases:
+- SUC-013-001
+- SUC-013-002
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -72,25 +75,25 @@ rest of `UserDetailPanel.tsx` has (the parent enforces the role).
 
 ## Acceptance Criteria
 
-- [ ] `POST /api/admin/users/:id/llm-proxy-token` returns 201 with
+- [x] `POST /api/admin/users/:id/llm-proxy-token` returns 201 with
       `{token, tokenId, expiresAt, tokenLimit}` when no active
       token exists.
-- [ ] Returns 409 when an active token already exists.
-- [ ] Returns 404 when the user does not exist.
-- [ ] Returns 400 when `expiresAt` is past or malformed, or
+- [x] Returns 409 when an active token already exists.
+- [x] Returns 404 when the user does not exist.
+- [x] Returns 400 when `expiresAt` is past or malformed, or
       `tokenLimit` is not a positive integer.
-- [ ] `DELETE /api/admin/users/:id/llm-proxy-token` returns 204
+- [x] `DELETE /api/admin/users/:id/llm-proxy-token` returns 204
       when the active token was revoked, 404 otherwise.
-- [ ] `GET /api/admin/users/:id/llm-proxy-token` returns
+- [x] `GET /api/admin/users/:id/llm-proxy-token` returns
       `{enabled: true, tokensUsed, tokenLimit, expiresAt, ...}`
       without the plaintext or hash when active; returns
       `{enabled: false}` otherwise.
-- [ ] `UserLlmProxyCard.tsx` renders all three states (disabled,
+- [x] `UserLlmProxyCard.tsx` renders all three states (disabled,
       grant-flow with plaintext shown once, enabled).
-- [ ] The plaintext token appears in the UI exactly once — only
+- [x] The plaintext token appears in the UI exactly once — only
       from the POST response, never from the GET.
-- [ ] New server + client tests pass.
-- [ ] `npm run test:server` and `npm run test:client` pass relative
+- [x] New server + client tests pass.
+- [x] `npm run test:server` and `npm run test:client` pass relative
       to pre-existing drift.
 
 ## Testing
