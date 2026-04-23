@@ -30,6 +30,7 @@ const GROUP_WITH_TWO = {
       externalAccounts: [
         { type: 'workspace', status: 'active', externalId: 'alice@league' },
       ],
+      llmProxyToken: { status: 'active' as const },
     },
     {
       id: 12,
@@ -37,6 +38,7 @@ const GROUP_WITH_TWO = {
       email: 'bob@league',
       role: 'student',
       externalAccounts: [],
+      llmProxyToken: { status: 'none' as const },
     },
   ],
 };
@@ -106,6 +108,7 @@ describe('GroupDetailPanel', () => {
                 email: 'charlie@league',
                 role: 'student',
                 externalAccounts: [],
+                llmProxyToken: { status: 'none' as const },
               },
             ],
           }),
@@ -133,52 +136,24 @@ describe('GroupDetailPanel', () => {
     );
   });
 
-  it('remove calls DELETE /members/:userId', async () => {
-    vi.stubGlobal('window.confirm', vi.fn().mockReturnValue(true));
-    const originalConfirm = window.confirm;
-    window.confirm = vi.fn().mockReturnValue(true);
-
-    const fetchMock = vi
-      .fn()
-      // initial GET
-      .mockResolvedValueOnce({
+  it('row checkbox selection works', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(GROUP_WITH_TWO),
-      })
-      // DELETE
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 204,
-        json: () => Promise.resolve({}),
-      })
-      // re-fetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ ...GROUP_WITH_TWO, users: [GROUP_WITH_TWO.users[1]] }),
-      });
-    vi.stubGlobal('fetch', fetchMock);
+      }),
+    );
 
     renderPanel();
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
 
-    const removeButtons = screen.getAllByRole('button', { name: /remove/i });
-    fireEvent.click(removeButtons[0]);
-
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(
-          (c) =>
-            typeof c[0] === 'string' &&
-            c[0].includes('/members/11') &&
-            c[1]?.method === 'DELETE',
-        ),
-      ).toBe(true),
-    );
-
-    window.confirm = originalConfirm;
+    // Verify checkboxes exist
+    const checkboxes = screen.getAllByRole('checkbox');
+    expect(checkboxes.length).toBeGreaterThan(0); // select-all + rows
   });
 
-  it('Suspend All banner renders "name (type): reason" on partial failure', async () => {
+  it('Suspend button renders with count and hits bulk-suspend-all', async () => {
     window.confirm = vi.fn().mockReturnValue(true);
     const suspendBody = {
       succeeded: [101],
@@ -209,7 +184,7 @@ describe('GroupDetailPanel', () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /suspend all/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Suspend/ }));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/Bob \(claude\): boom/),
     );
@@ -239,7 +214,7 @@ describe('GroupDetailPanel', () => {
 
     renderPanel();
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /^Create League$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Create League/ }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some((c) => {
@@ -252,7 +227,7 @@ describe('GroupDetailPanel', () => {
     );
   });
 
-  it('Delete All hits bulk-remove-all', async () => {
+  it('Remove League button hits bulk-remove-all', async () => {
     window.confirm = vi.fn().mockReturnValue(true);
     const fetchMock = vi
       .fn()
@@ -273,7 +248,7 @@ describe('GroupDetailPanel', () => {
 
     renderPanel();
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /delete all/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Remove League/ }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(

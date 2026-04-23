@@ -1,9 +1,10 @@
 ---
-id: "014-009"
-title: "Cohorts — students count column"
-status: todo
+id: 014-009
+title: "Cohorts \u2014 students count column"
+status: done
 group: 5
-depends_on: ["014-001"]
+depends_on:
+- 014-001
 ---
 
 # Ticket 014-009: Cohorts — Students Count Column

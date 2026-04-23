@@ -1,9 +1,11 @@
 ---
-id: "014-008"
-title: "GroupDetailPanel — LLM proxy column, button redesign"
-status: todo
+id: 014-008
+title: "GroupDetailPanel \u2014 LLM proxy column, button redesign"
+status: in-progress
 group: 4
-depends_on: ["014-002", "014-003"]
+depends_on:
+- 014-002
+- 014-003
 ---
 
 # Ticket 014-008: GroupDetailPanel — LLM Proxy Column, Button Redesign

@@ -1,7 +1,7 @@
 ---
-id: "014-005"
-title: "Dashboard — widget cleanup"
-status: todo
+id: 014-005
+title: "Dashboard \u2014 widget cleanup"
+status: done
 group: 3
 depends_on: []
 ---

@@ -1,7 +1,7 @@
 ---
-id: "014-004"
-title: "AppLayout — navigation reordering"
-status: todo
+id: 014-004
+title: "AppLayout \u2014 navigation reordering"
+status: done
 group: 2
 depends_on: []
 ---

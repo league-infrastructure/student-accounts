@@ -1,7 +1,7 @@
 ---
-id: "014-006"
-title: "SyncPanel — remove Claude section"
-status: todo
+id: 014-006
+title: "SyncPanel \u2014 remove Claude section"
+status: done
 group: 3
 depends_on: []
 ---

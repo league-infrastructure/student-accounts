@@ -1,7 +1,7 @@
 ---
-id: "014-002"
-title: "Group members endpoint — add LLM proxy status"
-status: todo
+id: 014-002
+title: "Group members endpoint \u2014 add LLM proxy status"
+status: done
 group: 1
 depends_on: []
 ---

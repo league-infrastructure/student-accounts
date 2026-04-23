@@ -1,9 +1,10 @@
 ---
-id: "014-007"
-title: "GroupDetailPanel — click-to-edit name, row selection"
-status: todo
+id: 014-007
+title: "GroupDetailPanel \u2014 click-to-edit name, row selection"
+status: in-progress
 group: 4
-depends_on: ["014-002"]
+depends_on:
+- 014-002
 ---
 
 # Ticket 014-007: GroupDetailPanel — Click-to-Edit Name, Row Selection
