@@ -1,7 +1,7 @@
 ---
 id: 014-008
 title: "GroupDetailPanel \u2014 LLM proxy column, button redesign"
-status: in-progress
+status: done
 group: 4
 depends_on:
 - 014-002

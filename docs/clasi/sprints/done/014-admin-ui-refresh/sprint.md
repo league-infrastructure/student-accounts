@@ -1,7 +1,7 @@
 ---
-id: "014"
-title: "Admin UI Refresh"
-status: planning
+id: '014'
+title: Admin UI Refresh
+status: done
 branch: sprint/014-admin-ui-refresh
 use-cases: []
 ---

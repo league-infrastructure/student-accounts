@@ -1,7 +1,7 @@
 ---
 id: 014-007
 title: "GroupDetailPanel \u2014 click-to-edit name, row selection"
-status: in-progress
+status: done
 group: 4
 depends_on:
 - 014-002
