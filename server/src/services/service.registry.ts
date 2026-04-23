@@ -20,6 +20,7 @@ import { ClaudeProvisioningService } from './claude-provisioning.service';
 import { ExternalAccountLifecycleService } from './external-account-lifecycle.service';
 import { WorkspaceSyncService } from './workspace-sync.service';
 import { BulkCohortService } from './bulk-cohort.service';
+import { GroupService } from './group.service';
 import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
@@ -71,6 +72,8 @@ export class ServiceRegistry {
   readonly workspaceSync: WorkspaceSyncService;
   readonly bulkCohort: BulkCohortService;
   readonly anthropicSync: AnthropicSyncService;
+  /** App-level Group service (Sprint 012). */
+  readonly groups: GroupService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -192,6 +195,9 @@ export class ServiceRegistry {
       defaultPrisma,
       this.audit,
     );
+
+    // GroupService — Sprint 012 T002.
+    this.groups = new GroupService(defaultPrisma, this.audit);
   }
 
   static create(
@@ -227,11 +233,15 @@ export class ServiceRegistry {
     await p.mergeSuggestion.deleteMany();
     await p.provisioningRequest.deleteMany();
     await p.auditEvent.deleteMany();
+    // UserGroup has FK → User + Group (Cascade). Explicit delete keeps
+    // teardown symmetry with other deleteMany calls.
+    await (p as any).userGroup.deleteMany();
     // Login and ExternalAccount have FK → User with onDelete: Restrict,
     // so they must be deleted before User.
     await p.login.deleteMany();
     await p.externalAccount.deleteMany();
     await p.user.deleteMany();
     await p.cohort.deleteMany();
+    await (p as any).group.deleteMany();
   }
 }
