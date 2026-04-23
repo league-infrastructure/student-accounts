@@ -1,7 +1,7 @@
 ---
 id: '011'
 title: "Admin UX cleanup \u2014 unsuspend UI + cohort page simplification"
-status: active
+status: done
 branch: sprint/011-admin-ux-cleanup-unsuspend-ui-cohort-page-simplification
 use-cases:
 - SUC-011-001
