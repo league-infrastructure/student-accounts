@@ -1,11 +1,13 @@
 ---
-id: "003"
-title: "UserDetailPanel: surface suspended status and render Unsuspend buttons"
-status: todo
-use-cases: ["SUC-011-001"]
-depends-on: ["001"]
-github-issue: ""
-todo: "admin-user-page-unsuspend-ui.md"
+id: '003'
+title: 'UserDetailPanel: surface suspended status and render Unsuspend buttons'
+status: in-progress
+use-cases:
+- SUC-011-001
+depends-on:
+- '001'
+github-issue: ''
+todo: admin-user-page-unsuspend-ui.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -32,14 +34,14 @@ direct Unsuspend lever.
 
 ## Acceptance Criteria
 
-- [ ] A suspended workspace ExternalAccount's Student account card displays the literal status "suspended" via `StatusPill`.
-- [ ] A suspended workspace ExternalAccount's card renders an Unsuspend button that calls `POST /api/admin/external-accounts/:id/unsuspend` and refreshes on success.
-- [ ] A suspended claude ExternalAccount's card displays "suspended" via `StatusPill`.
-- [ ] A suspended claude ExternalAccount with `invite_*` external_id renders an Unsuspend button.
-- [ ] A suspended claude ExternalAccount with a non-`invite_*` external_id renders a clear informational hint instead of an Unsuspend button.
-- [ ] All action buttons are disabled during an in-flight Unsuspend request.
-- [ ] Server errors surface in the existing action-error banner.
-- [ ] `npm run test:client` passes.
+- [x] A suspended workspace ExternalAccount's Student account card displays the literal status "suspended" via `StatusPill`.
+- [x] A suspended workspace ExternalAccount's card renders an Unsuspend button that calls `POST /api/admin/external-accounts/:id/unsuspend` and refreshes on success.
+- [x] A suspended claude ExternalAccount's card displays "suspended" via `StatusPill`.
+- [x] A suspended claude ExternalAccount with `invite_*` external_id renders an Unsuspend button.
+- [x] A suspended claude ExternalAccount with a non-`invite_*` external_id renders a clear informational hint instead of an Unsuspend button.
+- [x] All action buttons are disabled during an in-flight Unsuspend request.
+- [x] Server errors surface in the existing action-error banner.
+- [x] `npm run test:client` passes.
 
 ## Plan
 
