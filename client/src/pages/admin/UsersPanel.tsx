@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { prettifyName } from './utils/prettifyName';
@@ -9,6 +10,14 @@ import { prettifyName } from './utils/prettifyName';
 
 interface UserProvider {
   provider: string;
+  email?: string | null;
+  username?: string | null;
+}
+
+interface UserExternalAccount {
+  type: string;
+  externalId: string | null;
+  status: string;
 }
 
 interface AdminUser {
@@ -20,6 +29,7 @@ interface AdminUser {
   providers: UserProvider[];
   cohort: { id: number; name: string } | null;
   externalAccountTypes: string[];
+  externalAccounts?: UserExternalAccount[];
   createdAt: string;
 }
 
@@ -40,13 +50,85 @@ type FilterOption =
   | { type: 'account-google' }
   | { type: 'account-league' }
   | { type: 'account-pike13' }
+  | { type: 'account-claude' }
   | { type: 'cohort'; cohortId: number; cohortName: string };
 
 // ---------------------------------------------------------------------------
 // Sort types
 // ---------------------------------------------------------------------------
 
-type SortCol = 'name' | 'email' | 'cohort' | 'admin' | 'joined';
+type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'admin' | 'joined';
+
+// Account chip identifiers rendered in the Accounts column, ordered so
+// they sort in a stable, meaningful way. League accounts are split into
+// staff (flag) vs student (bolt) by whether "student" appears in any
+// jointheleague.org address on the user.
+type AccountKind = 'google' | 'league-staff' | 'league-student' | 'pike13' | 'claude';
+const ACCOUNT_ORDER: AccountKind[] = ['league-staff', 'league-student', 'google', 'claude', 'pike13'];
+
+/** Any @jointheleague.org address attached to the user (primary, a login
+ *  email, or a workspace external_id). */
+function leagueEmails(u: AdminUser): string[] {
+  const out: string[] = [];
+  const add = (e?: string | null) => {
+    if (e && e.toLowerCase().endsWith('@jointheleague.org')) out.push(e.toLowerCase());
+    else if (e && e.toLowerCase().endsWith('.jointheleague.org')) out.push(e.toLowerCase());
+  };
+  add(u.email);
+  for (const p of u.providers ?? []) add(p.email ?? null);
+  for (const a of u.externalAccounts ?? []) {
+    if (a.type === 'workspace') add(a.externalId ?? null);
+  }
+  return out;
+}
+
+function userAccounts(u: AdminUser): AccountKind[] {
+  const out = new Set<AccountKind>();
+  // League account: any @jointheleague.org address. Split staff vs student
+  // by whether the token "student" appears in any of those emails (covers
+  // @students.jointheleague.org and any other student.* local parts).
+  const leagues = leagueEmails(u);
+  if (leagues.length > 0) {
+    const hasStudent = leagues.some((e) => /student/i.test(e));
+    out.add(hasStudent ? 'league-student' : 'league-staff');
+  }
+  // Google Login (external Google sign-in, e.g. gmail.com)
+  if (u.providers?.some((p) => p.provider === 'google')) out.add('google');
+  const eats = u.externalAccountTypes ?? [];
+  if (eats.includes('claude')) out.add('claude');
+  if (eats.includes('pike13')) out.add('pike13');
+  return ACCOUNT_ORDER.filter((k) => out.has(k));
+}
+
+function accountsSortKey(u: AdminUser): string {
+  // Sort alphabetically by the concatenated kinds (so users with the same
+  // account set cluster together), with count desc as a tiebreaker.
+  const accts = userAccounts(u);
+  return `${String(9 - accts.length).padStart(2, '0')}-${accts.join(',')}`;
+}
+
+function userEmails(u: AdminUser): string[] {
+  // Primary email first, then unique provider_email values from Logins
+  // that are not the same as the primary. Typically: primary + workspace
+  // email (e.g., student@students.jointheleague.org) for students who
+  // have a League workspace account.
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (e?: string | null) => {
+    if (!e) return;
+    const norm = e.toLowerCase();
+    if (seen.has(norm)) return;
+    seen.add(norm);
+    out.push(e);
+  };
+  add(u.email);
+  for (const p of u.providers ?? []) add(p.email ?? null);
+  // Workspace external_id is the League email
+  for (const a of u.externalAccounts ?? []) {
+    if (a.type === 'workspace' && a.externalId) add(a.externalId);
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,9 +162,24 @@ function filterUsers(users: AdminUser[], filter: FilterOption): AdminUser[] {
     case 'account-google':
       return users.filter((u) => u.providers.some((p) => p.provider === 'google'));
     case 'account-league':
-      return users.filter((u) => u.externalAccountTypes.includes('workspace'));
+      // Anyone whose primary_email, a login email, or their workspace
+      // ExternalAccount external_id ends in @jointheleague.org — covers
+      // students/staff/admins whether or not we've minted an app-local
+      // workspace ExternalAccount row for them.
+      return users.filter((u) => {
+        if (u.email?.toLowerCase().endsWith('@jointheleague.org')) return true;
+        if ((u.providers ?? []).some((p) => p.email?.toLowerCase().endsWith('@jointheleague.org'))) return true;
+        if (
+          (u.externalAccounts ?? []).some(
+            (a) => a.type === 'workspace' && a.externalId?.toLowerCase().endsWith('@jointheleague.org'),
+          )
+        ) return true;
+        return false;
+      });
     case 'account-pike13':
       return users.filter((u) => u.externalAccountTypes.includes('pike13'));
+    case 'account-claude':
+      return users.filter((u) => u.externalAccountTypes.includes('claude'));
     case 'cohort':
       return users.filter((u) => u.cohort?.id === filter.cohortId);
     default:
@@ -114,6 +211,9 @@ function sortUsers(users: AdminUser[], col: SortCol, dir: 'asc' | 'desc'): Admin
       case 'cohort':
         cmp = cohortLabel(a).localeCompare(cohortLabel(b));
         break;
+      case 'accounts':
+        cmp = accountsSortKey(a).localeCompare(accountsSortKey(b));
+        break;
       case 'admin': {
         const aAdmin = normalizeRole(a.role) === 'admin' ? 0 : 1;
         const bAdmin = normalizeRole(b.role) === 'admin' ? 0 : 1;
@@ -143,6 +243,8 @@ function filterLabel(filter: FilterOption): string {
       return 'Filter: League';
     case 'account-pike13':
       return 'Filter: Pike13';
+    case 'account-claude':
+      return 'Filter: Claude';
     case 'cohort':
       return `Filter: ${filter.cohortName}`;
     default:
@@ -159,6 +261,66 @@ const PROVIDER_LOGOS: Record<string, { src: string; alt: string }> = {
   google: { src: 'https://www.google.com/favicon.ico', alt: 'Google' },
   pike13: { src: 'https://www.pike13.com/favicon.ico', alt: 'Pike 13' },
 };
+
+function AccountIcon({ kind }: { kind: AccountKind }) {
+  const common = { width: 20, height: 20, verticalAlign: 'middle' as const };
+  if (kind === 'google') {
+    return (
+      <img
+        src="https://www.google.com/favicon.ico"
+        alt="Google"
+        title="External Google account"
+        style={common}
+      />
+    );
+  }
+  if (kind === 'league-staff') {
+    return (
+      <img
+        src="https://images.jointheleague.org/logos/flag.png"
+        alt="League staff"
+        title="League staff account (@jointheleague.org)"
+        style={common}
+      />
+    );
+  }
+  if (kind === 'league-student') {
+    return (
+      <img
+        src="https://images.jointheleague.org/logos/bolt.png"
+        alt="League student"
+        title="League student account (student in address)"
+        style={common}
+      />
+    );
+  }
+  if (kind === 'claude') {
+    return (
+      <img
+        src="https://www.anthropic.com/favicon.ico"
+        alt="Claude"
+        title="Claude (Anthropic) account"
+        style={common}
+      />
+    );
+  }
+  // Pike13 — just text per spec
+  return (
+    <span
+      title="Pike13 account"
+      style={{
+        fontSize: 11,
+        padding: '2px 6px',
+        background: '#fef3c7',
+        borderRadius: 4,
+        color: '#92400e',
+        fontWeight: 600,
+      }}
+    >
+      Pike13
+    </span>
+  );
+}
 
 function ProviderBadge({ provider }: { provider: string }) {
   const logo = PROVIDER_LOGOS[provider];
@@ -200,17 +362,41 @@ interface FilterDropdownProps {
 
 function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  // Close on outside click (the menu is a portal so we check both refs).
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const t = e.target as Node;
+      if (buttonRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  // Compute viewport-relative coords whenever the menu opens or the
+  // window resizes. Using viewport coords + position:fixed means the
+  // menu escapes any ancestor with overflow:auto.
+  useLayoutEffect(() => {
+    if (!open) return;
+    function update() {
+      const el = buttonRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setCoords({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 220) });
+    }
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
 
   function choose(f: FilterOption) {
     onSelect(f);
@@ -219,19 +405,20 @@ function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
 
   const isActive = (f: FilterOption) => JSON.stringify(f) === JSON.stringify(filter);
 
-  return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={dropdownButtonStyle}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {filterLabel(filter)}
-        <span style={{ marginLeft: 6, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div style={dropdownMenuStyle} role="listbox">
+  const menu = open && coords
+    ? createPortal(
+        <div
+          ref={menuRef}
+          role="listbox"
+          style={{
+            ...dropdownMenuStyle,
+            position: 'fixed',
+            top: coords.top,
+            left: coords.left,
+            minWidth: coords.width,
+            maxHeight: `calc(100vh - ${coords.top + 16}px)`,
+          }}
+        >
           {/* Role section */}
           <div style={sectionHeaderStyle}>Role</div>
           {[
@@ -257,6 +444,7 @@ function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
           {[
             { label: 'Google', value: { type: 'account-google' } as FilterOption },
             { label: 'League', value: { type: 'account-league' } as FilterOption },
+            { label: 'Claude', value: { type: 'account-claude' } as FilterOption },
             { label: 'Pike13', value: { type: 'account-pike13' } as FilterOption },
           ].map((item) => (
             <button
@@ -291,8 +479,24 @@ function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
               })}
             </>
           )}
-        </div>
-      )}
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        ref={buttonRef}
+        onClick={() => setOpen((v) => !v)}
+        style={dropdownButtonStyle}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {filterLabel(filter)}
+        <span style={{ marginLeft: 6, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {menu}
     </div>
   );
 }
@@ -464,7 +668,7 @@ export default function UsersPanel() {
     const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
     setUpdating(user.id);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
+      const res = await fetch(`/api/users/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
@@ -484,7 +688,7 @@ export default function UsersPanel() {
   async function handleImpersonate(user: AdminUser) {
     setImpersonating(user.id);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/impersonate`, {
+      const res = await fetch(`/api/users/${user.id}/impersonate`, {
         method: 'POST',
       });
       if (!res.ok) {
@@ -501,7 +705,7 @@ export default function UsersPanel() {
   async function handleRowDelete(user: AdminUser) {
     if (!window.confirm(`Delete user "${prettifyName(user)}"?`)) return;
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
@@ -535,16 +739,6 @@ export default function UsersPanel() {
     setBulkDeleting(false);
   }
 
-  function getProviders(user: AdminUser): string[] {
-    const set = new Set<string>();
-    if (user.providers) {
-      for (const p of user.providers) set.add(p.provider);
-    }
-    if (user.provider && !set.has(user.provider)) {
-      set.add(user.provider);
-    }
-    return Array.from(set);
-  }
 
   function handleSort(col: SortCol) {
     if (col === sortCol) {
@@ -689,7 +883,9 @@ export default function UsersPanel() {
             <SortableTh col="cohort" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Cohort
             </SortableTh>
-            <th style={thStyle}>Providers</th>
+            <SortableTh col="accounts" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+              Accounts
+            </SortableTh>
             <SortableTh col="admin" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Admin
             </SortableTh>
@@ -701,7 +897,6 @@ export default function UsersPanel() {
         </thead>
         <tbody>
           {visible.map((user) => {
-            const providers = getProviders(user);
             const isOwnRow = currentUser?.id === user.id;
             const isChecked = selected.has(user.id);
             return (
@@ -719,14 +914,24 @@ export default function UsersPanel() {
                   )}
                 </td>
                 <td style={tdStyle}>
-                  <Link to={`/admin/users/${user.id}`} style={nameLinkStyle}>
+                  <Link to={`/users/${user.id}`} style={nameLinkStyle}>
                     {prettifyName(user)}
                   </Link>
                 </td>
                 <td style={tdStyle}>
-                  <Link to={`/admin/users/${user.id}`} style={emailLinkStyle}>
-                    {user.email}
-                  </Link>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Link to={`/users/${user.id}`} style={emailLinkStyle}>
+                      {user.email}
+                    </Link>
+                    {userEmails(user).slice(1).map((e) => (
+                      <span
+                        key={e}
+                        style={{ color: '#64748b', fontSize: 11, marginLeft: 0 }}
+                      >
+                        {e}
+                      </span>
+                    ))}
+                  </div>
                 </td>
                 <td style={tdStyle}>
                   <span style={cohortChipStyle(normalizeRole(user.role))}>
@@ -735,11 +940,11 @@ export default function UsersPanel() {
                 </td>
                 <td style={tdStyle}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {providers.length === 0 && (
+                    {userAccounts(user).length === 0 && (
                       <span style={{ color: '#94a3b8', fontSize: 13 }}>none</span>
                     )}
-                    {providers.map((p) => (
-                      <ProviderBadge key={p} provider={p} />
+                    {userAccounts(user).map((kind) => (
+                      <AccountIcon key={kind} kind={kind} />
                     ))}
                   </div>
                 </td>
@@ -764,7 +969,7 @@ export default function UsersPanel() {
                       setOpenMenuId((prev) => (prev === user.id ? null : user.id))
                     }
                     onClose={() => setOpenMenuId(null)}
-                    onEdit={() => navigate(`/admin/users/${user.id}`)}
+                    onEdit={() => navigate(`/users/${user.id}`)}
                     onDelete={() => void handleRowDelete(user)}
                     onImpersonate={() => void handleImpersonate(user)}
                   />

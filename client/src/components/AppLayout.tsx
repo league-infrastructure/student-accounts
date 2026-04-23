@@ -17,12 +17,23 @@ const MAIN_NAV: NavItem[] = [
   { to: '/account', label: 'Account' },
 ];
 
+/**
+ * Admin workflow nav — shown in the main sidebar when user.role === 'admin'
+ * and the current path is NOT under /admin/*.
+ */
+const ADMIN_WORKFLOW_NAV: NavItem[] = [
+  { to: '/', label: 'Dashboard', end: true },
+  { to: '/requests', label: 'Provisioning Requests' },
+  { to: '/cohorts', label: 'Cohorts' },
+  { to: '/users', label: 'Users' },
+  { to: '/sync', label: 'Sync' },
+  { to: '/merge-queue', label: 'Merge Queue' },
+];
+
+/**
+ * Ops-only nav — shown in the sidebar when the current path is under /admin/*.
+ */
 const ADMIN_NAV: NavItem[] = [
-  { to: '/admin/provisioning-requests', label: 'Provisioning Requests' },
-  { to: '/admin/merge-queue', label: 'Merge Queue' },
-  { to: '/admin/cohorts', label: 'Cohorts' },
-  { to: '/admin/sync', label: 'Sync' },
-  { to: '/admin/users', label: 'Users' },
   { to: '/admin/audit-log', label: 'Audit Log' },
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },
@@ -339,7 +350,13 @@ export default function AppLayout() {
 
   /* ---------- Sidebar ---------- */
 
-  const primaryNav = isAdminSection ? ADMIN_NAV : MAIN_NAV;
+  // When in the /admin/* section, show ops-only nav.
+  // When in the main app, show MAIN_NAV + ADMIN_WORKFLOW_NAV (for admins).
+  const primaryNav = isAdminSection
+    ? ADMIN_NAV
+    : isAdmin
+      ? [...MAIN_NAV, ...ADMIN_WORKFLOW_NAV]
+      : MAIN_NAV;
 
   const sidebarStyle = isMobile
     ? styles.sidebar(sidebarOpen)
@@ -461,7 +478,7 @@ export default function AppLayout() {
         )}
         {isAdmin && !isAdminSection && (
           <NavLink
-            to="/admin/users"
+            to="/admin/env"
             onClick={closeSidebarIfMobile}
             style={({ isActive }) => styles.navLink(isActive)}
           >

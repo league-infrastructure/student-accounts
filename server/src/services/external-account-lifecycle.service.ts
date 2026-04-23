@@ -11,19 +11,21 @@
  *
  * Dependency injection:
  *  - googleClient          — GoogleWorkspaceAdminClient (real or fake)
- *  - claudeTeamClient      — ClaudeTeamAdminClient (real or fake)
+ *  - claudeTeamClient      — AnthropicAdminClient (real or fake)
  *  - externalAccountRepo   — ExternalAccountRepository (writes inside tx)
  *  - auditService          — AuditService
  *
  * Environment variables consumed:
- *  - WORKSPACE_DELETE_DELAY_DAYS — optional; number of days before a removed
+ *  - WORKSPACE_DELETE_DELAY_DAYS  — optional; number of days before a removed
  *    workspace account is hard-deleted (default 3).
+ *  - CLAUDE_STUDENT_WORKSPACE     — name of the Students workspace in Anthropic
+ *    (default "Students"). Used to look up the workspace ID for suspend calls.
  *
  * Errors thrown:
  *  - NotFoundError (404)       — accountId does not exist.
  *  - UnprocessableError (422)  — account is already in status=removed.
  *  - GoogleWorkspaceAdminClient errors — propagated as-is.
- *  - ClaudeTeamAdminClient errors      — propagated as-is.
+ *  - AnthropicAdminClient errors       — propagated as-is.
  */
 
 import { createLogger } from './logger.js';
@@ -31,7 +33,7 @@ import { createLogger } from './logger.js';
 import { NotFoundError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
-import type { ClaudeTeamAdminClient } from './claude-team/claude-team-admin.client.js';
+import type { AnthropicAdminClient } from './anthropic/anthropic-admin.client.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
 
@@ -41,12 +43,58 @@ const logger = createLogger('external-account-lifecycle');
 const DEFAULT_WORKSPACE_DELETE_DELAY_DAYS = 3;
 
 export class ExternalAccountLifecycleService {
+  /** Cached Students workspace ID (resolved once per process). */
+  private studentsWorkspaceIdCache: string | undefined;
+
   constructor(
     private readonly googleClient: GoogleWorkspaceAdminClient,
-    private readonly claudeTeamClient: ClaudeTeamAdminClient,
+    private readonly claudeTeamClient: AnthropicAdminClient,
     private readonly externalAccountRepo: typeof ExternalAccountRepository,
     private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Resolve the Students workspace ID for Anthropic workspace operations.
+   *
+   * Calls listWorkspaces() once and caches the result for the lifetime of
+   * this service instance. Uses CLAUDE_STUDENT_WORKSPACE env var (default
+   * "Students") as the target name.
+   *
+   * Returns null when CLAUDE_STUDENT_WORKSPACE is not set, or when the
+   * named workspace is not found. Suspend on Claude is still allowed in
+   * that case; it just becomes a no-op at the workspace layer and only
+   * records the status change locally.
+   */
+  private async resolveStudentsWorkspaceId(): Promise<string | null> {
+    if (this.studentsWorkspaceIdCache !== undefined) {
+      return this.studentsWorkspaceIdCache;
+    }
+
+    const targetName = process.env.CLAUDE_STUDENT_WORKSPACE;
+    if (!targetName) {
+      this.studentsWorkspaceIdCache = null as any;
+      return null;
+    }
+
+    try {
+      const workspaces = await this.claudeTeamClient.listWorkspaces();
+      const workspace = workspaces.find((ws) => ws.name === targetName);
+      if (!workspace) {
+        logger.warn(
+          { targetName, available: workspaces.map((w) => w.name) },
+          '[external-account-lifecycle] target workspace not found — suspend will only update local status',
+        );
+        this.studentsWorkspaceIdCache = null as any;
+        return null;
+      }
+      this.studentsWorkspaceIdCache = workspace.id;
+      return workspace.id;
+    } catch (err) {
+      logger.warn({ err }, '[external-account-lifecycle] listWorkspaces failed — suspend will only update local status');
+      this.studentsWorkspaceIdCache = null as any;
+      return null;
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // suspend
@@ -102,10 +150,39 @@ export class ExternalAccountLifecycleService {
           `ExternalAccount ${accountId} has no external_id (Claude member id); cannot suspend`,
         );
       }
-      // OQ-003: suspendMember is currently a no-op in ClaudeTeamAdminClientImpl.
-      // We still call it so the behaviour can be swapped in without changing callers.
-      await this.claudeTeamClient.suspendMember(memberId);
-      logger.info({ accountId, memberId }, '[external-account-lifecycle] suspend: claude member suspend called (OQ-003 no-op)');
+      if (memberId.startsWith('invite_')) {
+        // The invite was never accepted, so there's nothing in any
+        // workspace to remove. Cancel the outstanding invite so the
+        // student can't accept it out of band.
+        try {
+          await this.claudeTeamClient.cancelInvite(memberId);
+          logger.info(
+            { accountId, memberId },
+            '[external-account-lifecycle] suspend: cancelled outstanding Claude invite',
+          );
+        } catch (err) {
+          logger.warn(
+            { accountId, memberId, err },
+            '[external-account-lifecycle] suspend: cancelInvite failed — continuing with local status update',
+          );
+        }
+      } else {
+        const studentsWsId = await this.resolveStudentsWorkspaceId();
+        if (studentsWsId) {
+          try {
+            await this.claudeTeamClient.removeUserFromWorkspace(studentsWsId, memberId);
+            logger.info(
+              { accountId, memberId, studentsWsId },
+              '[external-account-lifecycle] suspend: claude user removed from Students workspace',
+            );
+          } catch (err) {
+            logger.warn(
+              { accountId, memberId, studentsWsId, err },
+              '[external-account-lifecycle] suspend: removeUserFromWorkspace failed — continuing with local status update',
+            );
+          }
+        }
+      }
     }
 
     // --- 3. Persist status change ---
@@ -208,8 +285,22 @@ export class ExternalAccountLifecycleService {
           `ExternalAccount ${accountId} has no external_id (Claude member id); cannot remove`,
         );
       }
-      await this.claudeTeamClient.removeMember(memberId);
-      logger.info({ accountId, memberId }, '[external-account-lifecycle] remove: claude member removed');
+      // External id may be an invite id (never accepted) or a user id
+      // (invite accepted, now an org member). The Admin API rejects
+      // cross-calls with "User id must have `user_` prefix."
+      if (memberId.startsWith('invite_')) {
+        await this.claudeTeamClient.cancelInvite(memberId);
+        logger.info(
+          { accountId, memberId },
+          '[external-account-lifecycle] remove: cancelled outstanding Claude invite',
+        );
+      } else {
+        await this.claudeTeamClient.deleteOrgUser(memberId);
+        logger.info(
+          { accountId, memberId },
+          '[external-account-lifecycle] remove: claude org user deleted',
+        );
+      }
     }
 
     // --- 3. Persist status change ---

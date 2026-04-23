@@ -97,7 +97,7 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('WorkspaceProvisioningService.provision — happy path', () => {
-  it('creates an active ExternalAccount with the Google user id', async () => {
+  it('creates an active ExternalAccount whose external_id is the League email', async () => {
     const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
     const student = await makeUser({ role: 'student', cohort_id: cohort.id, display_name: 'Alice Smith' });
     const admin = await makeUser({ role: 'admin' });
@@ -108,7 +108,8 @@ describe('WorkspaceProvisioningService.provision — happy path', () => {
     expect(account.user_id).toBe(student.id);
     expect(account.type).toBe('workspace');
     expect(account.status).toBe('active');
-    expect(account.external_id).toBe('fake-gws-user-id');
+    // By convention, workspace external_id holds the League email.
+    expect(account.external_id).toMatch(/@students\.jointheleague\.org$/);
     expect(account.status_changed_at).not.toBeNull();
   });
 
@@ -180,17 +181,20 @@ describe('WorkspaceProvisioningService.provision — happy path', () => {
     expect(account.id).toBeGreaterThan(0);
   });
 
-  it('uses the google user id from the client response as external_id', async () => {
+  it('stores the primaryEmail returned by the client as external_id', async () => {
     const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
     const student = await makeUser({ role: 'student', cohort_id: cohort.id });
     const admin = await makeUser({ role: 'admin' });
 
-    fakeClient.configure('createUser', { id: 'custom-google-id-123', primaryEmail: `student@${STUDENT_DOMAIN}` });
+    fakeClient.configure('createUser', {
+      id: 'custom-google-id-123',
+      primaryEmail: `student@${STUDENT_DOMAIN}`,
+    });
 
     const svc = makeService(fakeClient);
     const account = await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
 
-    expect(account.external_id).toBe('custom-google-id-123');
+    expect(account.external_id).toBe(`student@${STUDENT_DOMAIN}`);
   });
 });
 
@@ -287,17 +291,45 @@ describe('WorkspaceProvisioningService.provision — existing workspace account'
     expect(fakeClient.calls.createUser).toHaveLength(0);
   });
 
-  it('allows provisioning when only a suspended workspace account exists', async () => {
+  it('reactivates (not recreates) when the user has a suspended workspace account', async () => {
     const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
     const student = await makeUser({ role: 'student', cohort_id: cohort.id });
     const admin = await makeUser({ role: 'admin' });
-    await makeExternalAccount(student, { type: 'workspace', status: 'suspended' });
+    const priorEmail = `old.student@${STUDENT_DOMAIN}`;
+    const prior = await makeExternalAccount(student, {
+      type: 'workspace',
+      status: 'suspended',
+      external_id: priorEmail,
+    });
 
     const svc = makeService(fakeClient);
     const account = await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
 
+    // Reactivation flips the existing row; no new Google user is created.
+    expect(account.id).toBe(prior.id);
     expect(account.status).toBe('active');
-    expect(fakeClient.calls.createUser).toHaveLength(1);
+    expect(fakeClient.calls.createUser).toHaveLength(0);
+    expect(fakeClient.calls.unsuspendUser).toEqual([priorEmail]);
+  });
+
+  it('reactivates when the user has a removed workspace account', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
+    const student = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const admin = await makeUser({ role: 'admin' });
+    const priorEmail = `old.student@${STUDENT_DOMAIN}`;
+    const prior = await makeExternalAccount(student, {
+      type: 'workspace',
+      status: 'removed',
+      external_id: priorEmail,
+    });
+
+    const svc = makeService(fakeClient);
+    const account = await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
+
+    expect(account.id).toBe(prior.id);
+    expect(account.status).toBe('active');
+    expect(fakeClient.calls.createUser).toHaveLength(0);
+    expect(fakeClient.calls.unsuspendUser).toEqual([priorEmail]);
   });
 });
 

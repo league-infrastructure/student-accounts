@@ -136,7 +136,7 @@ function makeAccountData(overrides: Partial<AccountData> = {}): AccountData {
     profile: {
       id: 1,
       displayName: 'Alice',
-      primaryEmail: 'alice@example.com',
+      primaryEmail: 'alice@students.jointheleague.org',
       cohort: { id: 2, name: 'Spring 2025' },
       role: 'student',
       createdAt: '2024-01-01T00:00:00.000Z',
@@ -384,36 +384,20 @@ describe('Journey 3: Services section — workspace pending enables standalone C
     });
   });
 
-  it('shows "Requires League Email" hint when no workspace and claude is requested alone', async () => {
-    // State: claude is pending but workspace is not (edge case from manual admin entry).
-    // hasWorkspaceBaseline = false (no active workspace, no workspace request).
-    // showCombinedButton = false (claude is pending, so hasActiveOrPendingClaude=true).
-    // showClaudeButton = false (already pending).
-    // showWorkspaceButton = true (no active/pending workspace and showCombinedButton=false).
+  it('shows "Requires League Email" hint when no workspace and no claude', async () => {
+    // State: fresh student with nothing. No combined button is offered —
+    // Claude always requires a League email first.
     const data = makeAccountData({
       externalAccounts: [],
-      provisioningRequests: [
-        {
-          id: 5,
-          requestedType: 'claude',
-          status: 'pending',
-          createdAt: '2024-06-01T00:00:00.000Z',
-          decidedAt: null,
-        },
-      ],
+      provisioningRequests: [],
     });
 
     renderAccount(accountFetch(data));
 
     await waitFor(() => {
-      // The "Requires League Email" hint is shown for the Claude row
       expect(screen.getByLabelText(/claude seat requires a league email account first/i))
         .toBeInTheDocument();
-
-      // The standalone "Request League Email" button is shown
-      expect(screen.getByRole('button', { name: /request league email$/i })).toBeInTheDocument();
-
-      // Combined button is NOT shown
+      expect(screen.getByRole('button', { name: /^request league email$/i })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /request league email \+ claude seat/i }))
         .not.toBeInTheDocument();
     });
@@ -421,16 +405,15 @@ describe('Journey 3: Services section — workspace pending enables standalone C
 });
 
 // ---------------------------------------------------------------------------
-// Journey 4: Request provisioning — click combined button, POST fired, state updates
+// Journey 4: Request provisioning — League Email button fires POST
 //
-// Full journey: start with no workspace or claude. Click "Request League Email +
-// Claude Seat". Verify the POST request body contains requestType=workspace_and_claude.
-// After the mutation, when the query refetches with both requests pending, verify the
-// buttons disappear and the status text reflects the pending state.
+// Full journey: start with no workspace or claude. Click "Request League
+// Email". Verify POST body.requestType === 'workspace'. Claude seats require
+// a League email first, so there is no combined button anymore.
 // ---------------------------------------------------------------------------
 
-describe('Journey 4: provisioning request journey — click combined button triggers POST', () => {
-  it('clicking combined button fires POST with requestType=workspace_and_claude', async () => {
+describe('Journey 4: provisioning request journey — League Email button triggers POST', () => {
+  it('clicking League Email button fires POST with requestType=workspace', async () => {
     const user = userEvent.setup();
     const data = makeAccountData({ externalAccounts: [], provisioningRequests: [] });
 
@@ -450,13 +433,6 @@ describe('Journey 4: provisioning request journey — click combined button trig
                 createdAt: '2024-06-01T00:00:00.000Z',
                 decidedAt: null,
               },
-              {
-                id: 31,
-                requestedType: 'claude',
-                status: 'pending',
-                createdAt: '2024-06-01T00:00:00.000Z',
-                decidedAt: null,
-              },
             ]),
         });
       }
@@ -465,15 +441,12 @@ describe('Journey 4: provisioning request journey — click combined button trig
 
     renderAccount(fetchMock);
 
-    // Wait for the combined button to appear
     await waitFor(() =>
-      screen.getByRole('button', { name: /request league email \+ claude seat/i }),
+      screen.getByRole('button', { name: /^request league email$/i }),
     );
 
-    // Click it
-    await user.click(screen.getByRole('button', { name: /request league email \+ claude seat/i }));
+    await user.click(screen.getByRole('button', { name: /^request league email$/i }));
 
-    // Verify POST was fired with the correct payload
     await waitFor(() => {
       const postCalls = fetchMock.mock.calls.filter(
         ([url, opts]: [string, RequestInit | undefined]) =>
@@ -481,7 +454,7 @@ describe('Journey 4: provisioning request journey — click combined button trig
       );
       expect(postCalls).toHaveLength(1);
       const bodyParsed = JSON.parse(postCalls[0][1].body as string);
-      expect(bodyParsed.requestType).toBe('workspace_and_claude');
+      expect(bodyParsed.requestType).toBe('workspace');
     });
   });
 

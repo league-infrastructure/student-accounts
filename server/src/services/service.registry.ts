@@ -20,6 +20,7 @@ import { ClaudeProvisioningService } from './claude-provisioning.service';
 import { ExternalAccountLifecycleService } from './external-account-lifecycle.service';
 import { WorkspaceSyncService } from './workspace-sync.service';
 import { BulkCohortService } from './bulk-cohort.service';
+import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -28,9 +29,10 @@ import {
   type GoogleWorkspaceAdminClient,
 } from './google-workspace/google-workspace-admin.client';
 import {
-  ClaudeTeamAdminClientImpl,
-  type ClaudeTeamAdminClient,
-} from './claude-team/claude-team-admin.client';
+  AnthropicAdminClientImpl,
+  resolveAnthropicAdminApiKey,
+  type AnthropicAdminClient,
+} from './anthropic/anthropic-admin.client';
 import {
   Pike13ApiClientImpl,
   resolvePike13ApiUrl,
@@ -61,16 +63,19 @@ export class ServiceRegistry {
   readonly sessions: SessionService;
   /** Exposed so index.ts can wire the Google Workspace client into background jobs. */
   readonly googleClient: GoogleWorkspaceAdminClient;
+  /** Anthropic Admin API client (Sprint 010 T008). Primary Anthropic/Claude org management client. */
+  readonly anthropicAdmin: AnthropicAdminClient;
   /** Exposed so route handlers can call pike13Client.getPerson(...) directly. */
   readonly pike13Client: Pike13ApiClient;
   readonly pike13Sync: Pike13SyncService;
   readonly workspaceSync: WorkspaceSyncService;
   readonly bulkCohort: BulkCohortService;
+  readonly anthropicSync: AnthropicSyncService;
 
   private constructor(
     source: ServiceSource = 'UI',
     googleClient?: GoogleWorkspaceAdminClient,
-    claudeClient?: ClaudeTeamAdminClient,
+    anthropicAdminClient?: AnthropicAdminClient,
   ) {
     this.source = source;
     this.audit = new AuditService();
@@ -87,7 +92,7 @@ export class ServiceRegistry {
       new GoogleWorkspaceAdminClientImpl(
         process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '',
         process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '',
-        process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '',
+        process.env.GOOGLE_CRED_FILE ?? '',
       );
 
     // CohortService receives the Google client so createWithOU can call createOU.
@@ -103,27 +108,27 @@ export class ServiceRegistry {
       CohortRepository,
     );
 
-    // Build a Claude Team Admin client if not provided. The client constructor
-    // defers credential errors to first use (fail-secure RD-001).
-    const ctClient: ClaudeTeamAdminClient =
-      claudeClient ??
-      new ClaudeTeamAdminClientImpl(
-        process.env.CLAUDE_TEAM_API_KEY ?? '',
-        process.env.CLAUDE_TEAM_PRODUCT_ID ?? '',
-      );
+    // Build an Anthropic Admin client if not provided. Prefers
+    // ANTHROPIC_ADMIN_API_KEY; falls back to CLAUDE_TEAM_API_KEY. Errors are
+    // deferred to the first method call (fail-secure RD-001).
+    this.anthropicAdmin =
+      anthropicAdminClient ??
+      new AnthropicAdminClientImpl(resolveAnthropicAdminApiKey());
 
-    // ClaudeProvisioningService — Sprint 005 T004.
+    // ClaudeProvisioningService — Sprint 005 T004 / Sprint 010 T008.
+    // Wired to anthropicAdmin (AnthropicAdminClientImpl) rather than the legacy
+    // ClaudeTeamAdminClient. The service type was updated to AnthropicAdminClient.
     this.claudeProvisioning = new ClaudeProvisioningService(
-      ctClient,
+      this.anthropicAdmin,
       ExternalAccountRepository,
       this.audit,
       UserRepository,
     );
 
-    // ExternalAccountLifecycleService — Sprint 005 T005.
+    // ExternalAccountLifecycleService — Sprint 005 T005 / Sprint 010 T008.
     this.externalAccountLifecycle = new ExternalAccountLifecycleService(
       wsClient,
-      ctClient,
+      this.anthropicAdmin,
       ExternalAccountRepository,
       this.audit,
     );
@@ -177,15 +182,24 @@ export class ServiceRegistry {
       UserRepository,
       ExternalAccountRepository,
       CohortRepository,
+      this.workspaceProvisioning,
+      this.claudeProvisioning,
+    );
+
+    // AnthropicSyncService — Sprint 010 T011.
+    this.anthropicSync = new AnthropicSyncService(
+      this.anthropicAdmin,
+      defaultPrisma,
+      this.audit,
     );
   }
 
   static create(
     source?: ServiceSource,
     googleClient?: GoogleWorkspaceAdminClient,
-    claudeClient?: ClaudeTeamAdminClient,
+    anthropicAdminClient?: AnthropicAdminClient,
   ): ServiceRegistry {
-    return new ServiceRegistry(source, googleClient, claudeClient);
+    return new ServiceRegistry(source, googleClient, anthropicAdminClient);
   }
 
   // --- Config ---

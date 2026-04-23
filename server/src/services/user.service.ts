@@ -41,6 +41,8 @@ export class UserService {
       created_via: 'social_login' | 'pike13_sync' | 'admin_created';
       role?: 'student' | 'staff' | 'admin';
       cohort_id?: number | null;
+      approval_status?: 'approved' | 'pending';
+      onboarding_completed?: boolean;
     },
     actorId: number | null = null,
   ): Promise<User> {

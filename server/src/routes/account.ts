@@ -12,10 +12,12 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { ConflictError, NotFoundError, UnprocessableError, ValidationError } from '../errors.js';
 import type { CreateRequestType } from '../services/provisioning-request.service.js';
+import { adminBus } from '../services/change-bus.js';
 
 export const accountRouter = Router();
 
@@ -53,6 +55,16 @@ accountRouter.get(
       cohort = { id: cohortRecord.id, name: cohortRecord.name };
     }
 
+    // Temp password for the welcome flow. Only surfaced to the student
+    // when they have a live workspace ExternalAccount — no reason for
+    // someone without one to see a value they can't use.
+    const hasLiveWorkspace = userAccounts.some(
+      (a) => a.type === 'workspace' && (a.status === 'active' || a.status === 'pending'),
+    );
+    const workspaceTempPassword = hasLiveWorkspace
+      ? (process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD ?? null)
+      : null;
+
     const body = {
       profile: {
         id: user.id,
@@ -60,7 +72,9 @@ accountRouter.get(
         primaryEmail: user.primary_email,
         cohort,
         role: user.role,
+        approvalStatus: (user as any).approval_status ?? 'approved',
         createdAt: user.created_at,
+        workspaceTempPassword,
       },
       logins: userLogins.map((l) => ({
         id: l.id,
@@ -182,6 +196,14 @@ accountRouter.post(
       });
     }
 
+    // Pending-approval users can't request services yet.
+    const self = await prisma.user.findUnique({ where: { id: userId } });
+    if (self?.approval_status === 'pending') {
+      return res.status(403).json({
+        error: 'Your account is awaiting admin approval. You cannot request services yet.',
+      });
+    }
+
     const { provisioningRequests } = req.services;
 
     try {
@@ -195,6 +217,8 @@ accountRouter.post(
         createdAt: r.created_at,
         decidedAt: r.decided_at ?? null,
       }));
+
+      adminBus.notify('pending-requests');
 
       res.status(201).json(body);
     } catch (err) {
@@ -221,6 +245,70 @@ accountRouter.post(
  * 401 — not authenticated.
  * 403 — role is not 'student'.
  */
+// ---------------------------------------------------------------------------
+// PATCH /api/account/profile — self-service profile edit
+// ---------------------------------------------------------------------------
+//
+// Accepts { displayName } and writes it to the signed-in user's row. The
+// only editable field for now. No role gate — every authenticated user
+// can rename themselves.
+accountRouter.patch(
+  '/account/profile',
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId: number = (req.session as any).userId;
+      const raw = (req.body as { displayName?: unknown } | undefined)?.displayName;
+      const displayName = typeof raw === 'string' ? raw.trim() : '';
+      if (displayName.length === 0 || displayName.length > 120) {
+        return res
+          .status(400)
+          .json({ error: 'displayName must be a non-empty string under 120 characters' });
+      }
+      await prisma.user.update({
+        where: { id: userId },
+        data: { display_name: displayName },
+      });
+      res.json({ ok: true, displayName });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/account/complete-onboarding — one-time setup step for new users
+// ---------------------------------------------------------------------------
+//
+// Called by the Onboarding page. Accepts { displayName } in the body and
+// writes it to the signed-in user's row along with onboarding_completed=true.
+// No role gate — League-identity users skip this path entirely (their
+// onboarding_completed is created as true), so in practice only newly
+// created external-identity students hit this.
+accountRouter.post(
+  '/account/complete-onboarding',
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId: number = (req.session as any).userId;
+      const raw = (req.body as { displayName?: unknown } | undefined)?.displayName;
+      const displayName = typeof raw === 'string' ? raw.trim() : '';
+      if (displayName.length === 0 || displayName.length > 120) {
+        return res
+          .status(400)
+          .json({ error: 'displayName must be a non-empty string under 120 characters' });
+      }
+      await prisma.user.update({
+        where: { id: userId },
+        data: { display_name: displayName, onboarding_completed: true },
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 accountRouter.get(
   '/account/provisioning-requests',
   requireAuth,

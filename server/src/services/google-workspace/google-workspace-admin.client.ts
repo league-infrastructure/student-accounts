@@ -14,8 +14,7 @@
  *  - CreatedOU                   — return type for createOU
  *  - WorkspaceUser               — element type for listUsersInOU
  *  - resolveCredentialsFileEnvVar — helper that resolves the credentials file
- *    env var, accepting both GOOGLE_CREDENTIALS_FILE (wins) and the legacy
- *    GOOGLE_SERVICE_ACCOUNT_FILE as an alias (OOP fix, Sprint 004).
+ *    env var, reading GOOGLE_CRED_FILE.
  *
  * Design decisions:
  *  - Extends in place (Architecture Decision 1): credential loading, auth
@@ -28,9 +27,8 @@
  *    implemented in T002. This ticket delivers the structural extension only.
  *  - GOOGLE_STUDENT_OU_ROOT is read from process.env inside createOU().
  *    The guard against an invalid/missing root is T002's responsibility.
- *  - Credential file env var alias (OOP fix): GOOGLE_CREDENTIALS_FILE takes
- *    precedence over GOOGLE_SERVICE_ACCOUNT_FILE when both are set. One INFO
- *    log per process records which var and which default is active.
+ *  - Credential file env var: GOOGLE_CRED_FILE is the single canonical name
+ *    for the service account credentials file path (Sprint 010 rename).
  *  - League-specific defaults (OOP fix): GOOGLE_STUDENT_DOMAIN defaults to
  *    "students.jointheleague.org", GOOGLE_STUDENT_OU_ROOT defaults to
  *    "/Students". Each default is logged at INFO once per process.
@@ -119,16 +117,11 @@ export function resolveStudentOuRoot(): string {
 /**
  * Resolve the Google service account credentials file env var.
  *
- * Accepts two names — newer name wins when both are set:
- *  1. GOOGLE_CREDENTIALS_FILE  (preferred — the name the stakeholder added)
- *  2. GOOGLE_SERVICE_ACCOUNT_FILE  (Sprint 002 legacy name, still accepted)
- *
- * Returns the resolved value (possibly an empty string when neither is set).
+ * Reads GOOGLE_CRED_FILE. Returns the value (possibly an empty string when
+ * not set).
  */
 export function resolveCredentialsFileEnvVar(): string {
-  const newName = process.env.GOOGLE_CREDENTIALS_FILE ?? '';
-  const legacyName = process.env.GOOGLE_SERVICE_ACCOUNT_FILE ?? '';
-  return newName || legacyName;
+  return process.env.GOOGLE_CRED_FILE ?? '';
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +218,13 @@ export interface CreateUserParams {
   givenName: string;
   familyName: string;
   sendNotificationEmail: boolean;
+  /**
+   * Recovery/secondary email used for Google's welcome-email flow. When
+   * set, Google sends the welcome message (with the temp password, if
+   * welcome email is enabled at the org level) here rather than to the
+   * brand-new League inbox that the student can't yet log into.
+   */
+  recoveryEmail?: string | null;
 }
 
 export interface CreatedUser {
@@ -242,6 +242,8 @@ export interface WorkspaceUser {
   id: string;
   primaryEmail: string;
   orgUnitPath: string;
+  suspended?: boolean;
+  fullName?: string | null;
 }
 
 export interface WorkspaceOU {
@@ -273,6 +275,7 @@ export interface GoogleWorkspaceAdminClient {
   createUser(params: CreateUserParams): Promise<CreatedUser>;
   createOU(name: string): Promise<CreatedOU>;
   suspendUser(email: string): Promise<void>;
+  unsuspendUser(email: string): Promise<void>;
   deleteUser(email: string): Promise<void>;
   listUsersInOU(ouPath: string): Promise<WorkspaceUser[]>;
 }
@@ -303,7 +306,7 @@ const ADMIN_SDK_SCOPES = [
  *     new GoogleWorkspaceAdminClientImpl(
  *       '',
  *       process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL!,
- *       process.env.GOOGLE_SERVICE_ACCOUNT_FILE,
+ *       process.env.GOOGLE_CRED_FILE,
  *     );
  *
  *   Option 2 — inline JSON string (preferred for Docker Swarm secrets):
@@ -327,7 +330,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
   }
 
   /**
-   * Resolve the filesystem path from GOOGLE_SERVICE_ACCOUNT_FILE.
+   * Resolve the filesystem path from GOOGLE_CRED_FILE.
    *
    * Rules:
    *  - If the value contains a path separator (absolute or relative path),
@@ -375,7 +378,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         raw = fs.readFileSync(resolvedPath, 'utf-8');
       } catch (readErr) {
         const msg =
-          `[google-workspace-admin] Cannot read GOOGLE_SERVICE_ACCOUNT_FILE ` +
+          `[google-workspace-admin] Cannot read GOOGLE_CRED_FILE ` +
           `'${this.serviceAccountFile}' (resolved: '${resolvedPath}'). ` +
           `Cannot look up OU for ${callerEmail}. @jointheleague.org sign-in denied (RD-001).`;
         logger.error({ email: callerEmail, err: readErr }, msg);
@@ -390,7 +393,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         JSON.parse(raw);
       } catch (parseErr) {
         const msg =
-          `[google-workspace-admin] GOOGLE_SERVICE_ACCOUNT_FILE ` +
+          `[google-workspace-admin] GOOGLE_CRED_FILE ` +
           `'${this.serviceAccountFile}' (resolved: '${resolvedPath}') is not valid JSON. ` +
           `Cannot look up OU for ${callerEmail}. @jointheleague.org sign-in denied (RD-001).`;
         logger.error({ email: callerEmail, err: parseErr }, msg);
@@ -402,7 +405,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         );
       }
       logger.info(
-        { email: callerEmail, source: 'GOOGLE_SERVICE_ACCOUNT_FILE', resolvedPath },
+        { email: callerEmail, source: 'GOOGLE_CRED_FILE', resolvedPath },
         '[google-workspace-admin] Using service account credentials from file.',
       );
       return raw;
@@ -417,7 +420,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
     }
 
     const msg =
-      '[google-workspace-admin] Neither GOOGLE_SERVICE_ACCOUNT_FILE nor ' +
+      '[google-workspace-admin] Neither GOOGLE_CRED_FILE nor ' +
       'GOOGLE_SERVICE_ACCOUNT_JSON is set. ' +
       `Cannot look up OU for ${callerEmail}. @jointheleague.org sign-in denied (RD-001).`;
     logger.error({ email: callerEmail }, msg);
@@ -438,7 +441,7 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
     if (!this.serviceAccountFile && !this.serviceAccountJson) {
       const msg =
         '[google-workspace-admin] GOOGLE_SERVICE_ACCOUNT_JSON or ' +
-        'GOOGLE_SERVICE_ACCOUNT_FILE and GOOGLE_ADMIN_DELEGATED_USER_EMAIL are missing. ' +
+        'GOOGLE_CRED_FILE and GOOGLE_ADMIN_DELEGATED_USER_EMAIL are missing. ' +
         `Cannot perform operation for ${callerRef}. Access denied (RD-001).`;
       logger.error({ ref: callerRef }, msg);
       throw new StaffOULookupError(
@@ -630,23 +633,34 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
   async createUser(params: CreateUserParams): Promise<CreatedUser> {
     this.assertWriteEnabled('createUser');
-    const { primaryEmail, orgUnitPath, givenName, familyName } = params;
+    const { primaryEmail, orgUnitPath, givenName, familyName, recoveryEmail } = params;
     this.assertStudentDomainAndOU(primaryEmail, orgUnitPath);
     // Note: sendNotificationEmail from params is recorded for callers' use but the
     // Admin SDK users.insert does not expose this as a direct parameter. Welcome
-    // email delivery is governed by domain-level Google Workspace settings.
+    // email delivery is governed by domain-level Google Workspace settings and is
+    // routed to `recoveryEmail` when set — which the caller should populate with
+    // the student's external primary email so the password lands somewhere they
+    // can actually read.
     const auth = this.buildAuthClient(primaryEmail);
 
     try {
       const adminSdk = google.admin({ version: 'directory_v1', auth });
-      const response = await adminSdk.users.insert({
-        requestBody: {
-          primaryEmail,
-          orgUnitPath,
-          name: { givenName, familyName },
-          password: crypto.randomUUID(), // temporary password; user sets own via welcome email
-        },
-      });
+      // Shared one-shot temp password. The student sees it on their
+      // Account page; changePasswordAtNextLogin forces a rotation on
+      // first login so the shared value never becomes a real secret.
+      const tempPassword =
+        process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD ?? 'ChangeMeNow!';
+      const requestBody: Record<string, unknown> = {
+        primaryEmail,
+        orgUnitPath,
+        name: { givenName, familyName },
+        password: tempPassword,
+        changePasswordAtNextLogin: true,
+      };
+      if (recoveryEmail && recoveryEmail.trim() !== '') {
+        requestBody.recoveryEmail = recoveryEmail.trim();
+      }
+      const response = await adminSdk.users.insert({ requestBody });
 
       const data = response.data;
       if (!data.id || !data.primaryEmail) {
@@ -753,6 +767,34 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
     }
   }
 
+  async unsuspendUser(email: string): Promise<void> {
+    this.assertWriteEnabled('unsuspendUser');
+    const auth = this.buildAuthClient(email);
+
+    try {
+      const adminSdk = google.admin({ version: 'directory_v1', auth });
+      await adminSdk.users.update({
+        userKey: email,
+        requestBody: { suspended: false },
+      });
+
+      logger.info({ email }, '[google-workspace-admin] unsuspendUser: user reactivated successfully.');
+    } catch (err) {
+      if (err instanceof WorkspaceWriteDisabledError) {
+        throw err;
+      }
+      const apiErr = err as any;
+      const statusCode: number | undefined = apiErr?.response?.status ?? apiErr?.code;
+      logger.error({ email, err }, '[google-workspace-admin] unsuspendUser failed.');
+      throw new WorkspaceApiError(
+        `Admin SDK unsuspendUser failed for ${email}: ${apiErr?.message ?? String(err)}`,
+        'unsuspendUser',
+        statusCode,
+        err,
+      );
+    }
+  }
+
   async deleteUser(email: string): Promise<void> {
     this.assertWriteEnabled('deleteUser');
     const auth = this.buildAuthClient(email);
@@ -803,6 +845,8 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
               id: u.id,
               primaryEmail: u.primaryEmail,
               orgUnitPath: u.orgUnitPath,
+              suspended: u.suspended ?? false,
+              fullName: u.name?.fullName ?? null,
             });
           }
         }

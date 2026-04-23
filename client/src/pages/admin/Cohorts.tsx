@@ -20,10 +20,11 @@
  *  - On success: query is invalidated so the list refreshes.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BulkActionDialog } from './BulkActionDialog';
-import type { BulkAction, BulkAccountType, BulkOperation } from './BulkActionDialog';
+
+type SortCol = 'name' | 'google_ou_path' | 'createdAt';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,18 +64,6 @@ async function createCohort(name: string): Promise<Cohort> {
 }
 
 // ---------------------------------------------------------------------------
-// Bulk action option values
-// ---------------------------------------------------------------------------
-
-type BulkSelectValue = '' | 'suspend-workspace' | 'suspend-claude' | 'remove-workspace' | 'remove-claude';
-
-function parseBulkSelectValue(value: BulkSelectValue): { accountType: BulkAccountType; operation: BulkOperation } | null {
-  if (!value) return null;
-  const [operation, accountType] = value.split('-') as [BulkOperation, BulkAccountType];
-  return { operation, accountType };
-}
-
-// ---------------------------------------------------------------------------
 // Cohorts component
 // ---------------------------------------------------------------------------
 
@@ -82,7 +71,8 @@ export default function Cohorts() {
   const queryClient = useQueryClient();
   const [newName, setNewName] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
-  const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
+  const [sortCol, setSortCol] = useState<SortCol>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const { data: cohorts, isLoading, error } = useQuery<Cohort[], Error>({
     queryKey: ['admin', 'cohorts'],
@@ -110,17 +100,6 @@ export default function Cohorts() {
       return;
     }
     createMutation.mutate(trimmed);
-  }
-
-  function handleBulkSelect(cohort: Cohort, value: BulkSelectValue) {
-    const parsed = parseBulkSelectValue(value);
-    if (!parsed) return;
-    setBulkAction({
-      cohortId: cohort.id,
-      cohortName: cohort.name,
-      accountType: parsed.accountType,
-      operation: parsed.operation,
-    });
   }
 
   // -------------------------------------------------------------------------
@@ -172,53 +151,87 @@ export default function Cohorts() {
       {cohorts && cohorts.length === 0 ? (
         <p style={emptyStyle}>No cohorts yet.</p>
       ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={thStyle}>Name</th>
-              <th style={thStyle}>Google OU Path</th>
-              <th style={thStyle}>Created On</th>
-              <th style={thStyle}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(cohorts ?? []).map((cohort) => (
-              <tr key={cohort.id}>
-                <td style={tdStyle}>{cohort.name}</td>
-                <td style={tdStyle}>{cohort.google_ou_path ?? '-'}</td>
-                <td style={tdStyle}>
-                  {new Date(cohort.createdAt).toLocaleDateString()}
-                </td>
-                <td style={tdStyle}>
-                  <select
-                    style={bulkSelectStyle}
-                    value=""
-                    aria-label={`Bulk actions for ${cohort.name}`}
-                    onChange={(e) =>
-                      handleBulkSelect(cohort, e.target.value as BulkSelectValue)
-                    }
-                  >
-                    <option value="" disabled>Bulk Actions</option>
-                    <option value="suspend-workspace">Suspend Workspace</option>
-                    <option value="suspend-claude">Suspend Claude</option>
-                    <option value="remove-workspace">Remove Workspace</option>
-                    <option value="remove-claude">Remove Claude</option>
-                  </select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {/* Bulk action dialog */}
-      {bulkAction && (
-        <BulkActionDialog
-          action={bulkAction}
-          onClose={() => setBulkAction(null)}
+        <CohortsTable
+          cohorts={cohorts ?? []}
+          sortCol={sortCol}
+          sortDir={sortDir}
+          onSort={(col) => {
+            if (col === sortCol) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+            else { setSortCol(col); setSortDir('asc'); }
+          }}
         />
       )}
+
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CohortsTable — sortable table; cohort names link to /cohorts/:id
+// ---------------------------------------------------------------------------
+
+interface CohortsTableProps {
+  cohorts: Cohort[];
+  sortCol: SortCol;
+  sortDir: 'asc' | 'desc';
+  onSort: (col: SortCol) => void;
+}
+
+function CohortsTable({ cohorts, sortCol, sortDir, onSort }: CohortsTableProps) {
+  const sorted = useMemo(() => {
+    const copy = [...cohorts];
+    copy.sort((a, b) => {
+      let cmp = 0;
+      switch (sortCol) {
+        case 'name':
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case 'google_ou_path':
+          cmp = (a.google_ou_path ?? '').localeCompare(b.google_ou_path ?? '');
+          break;
+        case 'createdAt':
+          cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return copy;
+  }, [cohorts, sortCol, sortDir]);
+
+  const arrow = (col: SortCol) => (col === sortCol ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
+  const thProps = (col: SortCol): React.CSSProperties => ({
+    ...thStyle,
+    cursor: 'pointer',
+    userSelect: 'none',
+  });
+
+  return (
+    <table style={tableStyle}>
+      <thead>
+        <tr>
+          <th style={thProps('name')} onClick={() => onSort('name')}>Name{arrow('name')}</th>
+          <th style={thProps('google_ou_path')} onClick={() => onSort('google_ou_path')}>
+            Google OU Path{arrow('google_ou_path')}
+          </th>
+          <th style={thProps('createdAt')} onClick={() => onSort('createdAt')}>
+            Created On{arrow('createdAt')}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((cohort) => (
+          <tr key={cohort.id}>
+            <td style={tdStyle}>
+              <Link to={`/cohorts/${cohort.id}`} style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'none' }}>
+                {cohort.name}
+              </Link>
+            </td>
+            <td style={tdStyle}>{cohort.google_ou_path ?? '-'}</td>
+            <td style={tdStyle}>{new Date(cohort.createdAt).toLocaleDateString()}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

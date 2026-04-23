@@ -155,25 +155,37 @@ export class WorkspaceSyncService {
     const wsUsers = await this.googleClient.listUsersInOU(staffOuPath);
     let staffUpserted = 0;
 
+    const seenEmails = new Set<string>();
     for (const wsUser of wsUsers) {
+      // Skip suspended Google accounts — they're deactivated below.
+      if (wsUser.suspended) continue;
+
+      seenEmails.add(wsUser.primaryEmail);
       const existing = await this.userRepo.findByEmail(db, wsUser.primaryEmail);
 
       if (!existing) {
         await this.userRepo.create(db, {
           primary_email: wsUser.primaryEmail,
-          display_name: wsUser.primaryEmail,
+          display_name: wsUser.fullName ?? wsUser.primaryEmail,
           role: 'staff',
           created_via: 'workspace_sync',
         });
-      } else if (existing.role !== 'admin') {
-        if (existing.role !== 'staff') {
-          await this.userRepo.update(db, existing.id, { role: 'staff' });
+      } else {
+        const patch: any = {};
+        if (existing.is_active === false) patch.is_active = true;
+        if (existing.role !== 'admin' && existing.role !== 'staff') {
+          patch.role = 'staff';
+        }
+        if (Object.keys(patch).length > 0) {
+          await this.userRepo.update(db, existing.id, patch);
         }
       }
-      // admin role is never touched
-
       staffUpserted++;
     }
+
+    // Deactivate staff Users whose Google account is no longer live in the
+    // staff OU (suspended, moved to /graveyard, or deleted).
+    await this._deactivateNotSeen(db, 'staff', seenEmails, actorId);
 
     await this.audit.record(db, {
       actor_user_id: actorId,
@@ -227,7 +239,8 @@ export class WorkspaceSyncService {
     // 1. Root-level students (no cohort assignment)
     const rootUsers = await this.googleClient.listUsersInOU(studentRoot);
     for (const wsUser of rootUsers) {
-      await this._upsertStudent(db, wsUser.primaryEmail, null, actorId);
+      if (wsUser.suspended) continue; // deactivated by the not-seen pass
+      await this._upsertUserFromWorkspace(db, wsUser, null, actorId);
       seenEmails.add(wsUser.primaryEmail);
       studentsUpserted++;
     }
@@ -237,18 +250,23 @@ export class WorkspaceSyncService {
     for (const cohort of cohorts) {
       const cohortUsers = await this.googleClient.listUsersInOU(cohort.google_ou_path!);
       for (const wsUser of cohortUsers) {
-        await this._upsertStudent(db, wsUser.primaryEmail, cohort.id, actorId);
+        if (wsUser.suspended) continue;
+        await this._upsertUserFromWorkspace(db, wsUser, cohort.id, actorId);
         seenEmails.add(wsUser.primaryEmail);
         studentsUpserted++;
       }
     }
 
-    // 3. Flag workspace ExternalAccounts whose email was not seen
+    // 3a. Flag workspace ExternalAccounts whose email was not seen
     const flaggedAccounts = await this._flagRemovedWorkspaceAccounts(
       db,
       seenEmails,
       actorId,
     );
+
+    // 3b. Soft-delete student Users whose Google account is no longer live
+    //     (suspended, moved to /graveyard, or deleted from Google).
+    await this._deactivateNotSeen(db, 'student', seenEmails, actorId);
 
     await this.audit.record(db, {
       actor_user_id: actorId,
@@ -359,55 +377,132 @@ export class WorkspaceSyncService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Upsert a student user by email.
-   * - If the user does not exist, create with role=student, created_via=workspace_sync.
-   * - If the user exists and role is admin, leave role unchanged.
-   * - If the user exists with any other role, set role=student and cohort_id.
+   * Derive role from primary_email domain:
+   *  - @students.jointheleague.org → student
+   *  - @jointheleague.org          → staff (any other subdomain stays staff)
+   *  - anything else               → student (fallback)
+   *
+   * Presence in the /Students OU is not sufficient to call someone a
+   * student — legacy @jointheleague.org staff accounts sometimes sit
+   * there too and get mis-labeled otherwise.
    */
-  private async _upsertStudent(
+  private _roleForEmail(primaryEmail: string): 'student' | 'staff' {
+    const e = primaryEmail.toLowerCase();
+    if (/@students\.jointheleague\.org$/.test(e)) return 'student';
+    if (/@jointheleague\.org$/.test(e)) return 'staff';
+    return 'student';
+  }
+
+  /**
+   * Upsert a user synced from a Google Workspace OU. Role is chosen from
+   * the email domain (see _roleForEmail), NOT from which OU they were
+   * listed in — /Students can contain legacy staff emails that shouldn't
+   * be re-labeled as students.
+   *
+   * - If the user does not exist, create with the domain-derived role.
+   * - If the user has role=admin, preserve it (admin is sticky).
+   * - Otherwise set role to the domain-derived role.
+   * - cohort_id is assigned only when the derived role is student.
+   */
+  private async _upsertUserFromWorkspace(
     db: any,
-    primaryEmail: string,
+    wsUser: { primaryEmail: string; fullName?: string | null },
     cohortId: number | null,
     actorId: number | null,
   ): Promise<void> {
+    const primaryEmail = wsUser.primaryEmail;
+    const derivedRole = this._roleForEmail(primaryEmail);
+    // Only assign a cohort to actual students.
+    const targetCohortId = derivedRole === 'student' ? cohortId : null;
+
     const existing = await this.userRepo.findByEmail(db, primaryEmail);
 
     if (!existing) {
       await this.userRepo.create(db, {
         primary_email: primaryEmail,
-        display_name: primaryEmail,
-        role: 'student',
+        display_name: wsUser.fullName ?? primaryEmail,
+        role: derivedRole,
         created_via: 'workspace_sync',
-        cohort_id: cohortId,
+        cohort_id: targetCohortId,
       });
       return;
     }
 
-    // Preserve admin role, but update cohort_id
+    // Re-activate any previously soft-deleted user that's now back in Google.
+    const patch: any = {};
+    if (existing.is_active === false) patch.is_active = true;
+
     if (existing.role === 'admin') {
-      if (existing.cohort_id !== cohortId) {
-        await this.userRepo.update(db, existing.id, { cohort_id: cohortId });
+      // Preserve admin role. Only touch cohort_id.
+      if (existing.cohort_id !== targetCohortId) patch.cohort_id = targetCohortId;
+      if (Object.keys(patch).length > 0) {
+        await this.userRepo.update(db, existing.id, patch);
       }
       return;
     }
 
-    // For staff/student: set role=student and cohort_id
-    const needsUpdate =
-      existing.role !== 'student' || existing.cohort_id !== cohortId;
-    if (needsUpdate) {
-      await this.userRepo.update(db, existing.id, {
-        role: 'student',
-        cohort_id: cohortId,
+    if (existing.role !== derivedRole) patch.role = derivedRole;
+    if (existing.cohort_id !== targetCohortId) patch.cohort_id = targetCohortId;
+    if (Object.keys(patch).length > 0) {
+      await this.userRepo.update(db, existing.id, patch);
+    }
+  }
+
+  /**
+   * Soft-delete (is_active=false) every active User of the given role whose
+   * primary_email is NOT in seenEmails AND who was either imported from
+   * Google sync (created_via='workspace_sync') OR has a @*.jointheleague.org
+   * email. This catches users whose Google accounts were suspended / moved
+   * to /graveyard / deleted since the last sync. Admin role is never touched.
+   */
+  private async _deactivateNotSeen(
+    db: any,
+    role: 'student' | 'staff',
+    seenEmails: Set<string>,
+    actorId: number | null,
+  ): Promise<void> {
+    const candidates: any[] = await (db as any).user.findMany({
+      where: {
+        role,
+        is_active: true,
+        OR: [
+          { created_via: 'workspace_sync' },
+          { primary_email: { endsWith: '@jointheleague.org' } },
+          { primary_email: { endsWith: '.jointheleague.org' } },
+        ],
+      },
+      select: { id: true, primary_email: true },
+    });
+
+    for (const u of candidates) {
+      if (seenEmails.has(u.primary_email)) continue;
+      await (db as any).user.update({
+        where: { id: u.id },
+        data: { is_active: false },
+      });
+      await this.audit.record(db, {
+        actor_user_id: actorId,
+        action: 'user_deactivated_by_sync',
+        target_user_id: u.id,
+        target_entity_type: 'User',
+        target_entity_id: String(u.id),
+        details: { primary_email: u.primary_email, role, reason: 'google_account_gone' },
       });
     }
   }
 
   /**
-   * For every workspace ExternalAccount whose user's primary_email is NOT in
-   * seenEmails, set status=removed and record a workspace_sync_flagged audit
+   * For every active/pending workspace ExternalAccount whose League email
+   * (stored in `external_id`) is NOT present in `seenEmails`, flag the
+   * ExternalAccount as removed and record a workspace_sync_flagged audit
    * event.
    *
-   * Returns the list of flagged emails.
+   * Does NOT deactivate the User row. Losing a League seat doesn't revoke
+   * the person's ability to sign in with their external identity — the
+   * User record is a login identity, while the ExternalAccount is the
+   * per-service seat that can come and go.
+   *
+   * Returns the list of flagged League emails.
    */
   private async _flagRemovedWorkspaceAccounts(
     db: any,
@@ -420,25 +515,30 @@ export class WorkspaceSyncService {
         type: 'workspace',
         status: { in: ['pending', 'active'] },
       },
-      include: { user: { select: { primary_email: true } } },
+      include: { user: { select: { id: true, primary_email: true } } },
     });
 
     const flagged: string[] = [];
 
     for (const account of activeAccounts) {
-      const email: string = account.user.primary_email;
-      if (!seenEmails.has(email)) {
-        await this.externalAccountRepo.updateStatus(db, account.id, 'removed');
-        await this.audit.record(db, {
-          actor_user_id: actorId,
-          action: 'workspace_sync_flagged',
-          target_user_id: account.user_id,
-          target_entity_type: 'ExternalAccount',
-          target_entity_id: String(account.id),
-          details: { primary_email: email },
-        });
-        flagged.push(email);
-      }
+      // `external_id` on workspace rows is the League email (the field
+      // that actually shows up in Google's directory), so that's what we
+      // compare against `seenEmails`. The user's primary_email may be an
+      // external gmail and is never the right key here.
+      const leagueEmail: string | null = account.external_id ?? null;
+      if (!leagueEmail || seenEmails.has(leagueEmail)) continue;
+
+      await this.externalAccountRepo.updateStatus(db, account.id, 'removed');
+      await this.audit.record(db, {
+        actor_user_id: actorId,
+        action: 'workspace_sync_flagged',
+        target_user_id: account.user_id,
+        target_entity_type: 'ExternalAccount',
+        target_entity_id: String(account.id),
+        details: { league_email: leagueEmail, primary_email: account.user.primary_email },
+      });
+
+      flagged.push(leagueEmail);
     }
 
     return flagged;

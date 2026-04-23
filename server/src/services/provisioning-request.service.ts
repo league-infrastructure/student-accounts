@@ -107,22 +107,53 @@ export class ProvisioningRequestService {
           );
         }
 
+        // Only *pending* requests block a new one. An earlier approved
+        // request that was later suspended/removed (by the admin or by
+        // lifecycle) shouldn't prevent the student from asking to have
+        // the account re-activated — the active/pending ExternalAccount
+        // check above is the real duplicate guard.
         const existingWorkspaceRequest = await (tx as any).provisioningRequest.findFirst({
           where: {
             user_id: userId,
             requested_type: 'workspace',
-            status: { in: ['pending', 'approved'] },
+            status: 'pending',
           },
         });
         if (existingWorkspaceRequest) {
           throw new ConflictError(
-            `User ${userId} already has a pending or approved workspace provisioning request`,
+            `User ${userId} already has a pending workspace provisioning request`,
+          );
+        }
+
+        const permaRejectedWorkspace = await (tx as any).provisioningRequest.findFirst({
+          where: {
+            user_id: userId,
+            requested_type: 'workspace',
+            status: 'rejected_permanent',
+          },
+        });
+        if (permaRejectedWorkspace) {
+          throw new ConflictError(
+            `User ${userId} has been permanently denied a workspace account. Contact an admin.`,
           );
         }
       }
 
       // --- claude constraint check ---
       if (wantsClaude) {
+        const permaRejectedClaude = await (tx as any).provisioningRequest.findFirst({
+          where: {
+            user_id: userId,
+            requested_type: 'claude',
+            status: 'rejected_permanent',
+          },
+        });
+        if (permaRejectedClaude) {
+          throw new ConflictError(
+            `User ${userId} has been permanently denied a Claude seat. Contact an admin.`,
+          );
+        }
+
         // When workspace_and_claude, the workspace row is created in the same
         // transaction, so we must check "will workspace exist after this tx?".
         // For workspace_and_claude we are about to create the workspace request
@@ -221,7 +252,11 @@ export class ProvisioningRequestService {
    * @throws NotFoundError if the request does not exist.
    * @throws ConflictError if the request is not in 'pending' status.
    */
-  async approve(requestId: number, deciderId: number): Promise<ProvisioningRequest> {
+  async approve(
+    requestId: number,
+    deciderId: number,
+    opts?: { cohortId?: number },
+  ): Promise<ProvisioningRequest> {
     const existing = await ProvisioningRequestRepository.findById(this.prisma, requestId);
     if (!existing) throw new NotFoundError(`ProvisioningRequest ${requestId} not found`);
     if (existing.status !== 'pending') {
@@ -231,6 +266,23 @@ export class ProvisioningRequestService {
     }
 
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Optional cohort assignment — resolves the common "user has no cohort"
+      // block without forcing the admin to leave the approval UI.
+      if (opts?.cohortId != null) {
+        await (tx as any).user.update({
+          where: { id: existing.user_id },
+          data: { cohort_id: opts.cohortId },
+        });
+        await this.audit.record(tx, {
+          actor_user_id: deciderId,
+          action: 'assign_cohort',
+          target_user_id: existing.user_id,
+          target_entity_type: 'User',
+          target_entity_id: String(existing.user_id),
+          details: { cohort_id: opts.cohortId, via: 'provisioning_request_approve' },
+        });
+      }
+
       const updated = await ProvisioningRequestRepository.updateStatus(
         tx,
         requestId,
@@ -238,14 +290,9 @@ export class ProvisioningRequestService {
         deciderId,
         new Date(),
       );
-      await this.audit.record(tx, {
-        actor_user_id: deciderId,
-        action: 'approve_provisioning_request',
-        target_user_id: existing.user_id,
-        target_entity_type: 'ProvisioningRequest',
-        target_entity_id: String(requestId),
-        details: { requestedType: existing.requested_type },
-      });
+
+      // Build audit details — may be extended below for auto-chain.
+      const auditDetails: Record<string, unknown> = { requestedType: existing.requested_type };
 
       if (existing.requested_type === 'workspace') {
         if (!this.workspaceProvisioningService) {
@@ -265,6 +312,27 @@ export class ProvisioningRequestService {
             'ProvisioningRequestService: claudeProvisioningService is required to approve claude requests but was not injected',
           );
         }
+
+        // Auto-chain: if the user has no active workspace ExternalAccount,
+        // provision the workspace first so ClaudeProvisioningService can
+        // find it when it looks up the workspace email.
+        const activeWorkspace = await (tx as any).externalAccount.findFirst({
+          where: { user_id: existing.user_id, type: 'workspace', status: 'active' },
+        });
+        if (!activeWorkspace) {
+          if (!this.workspaceProvisioningService) {
+            throw new Error(
+              'ProvisioningRequestService: workspaceProvisioningService is required for auto-chain but was not injected',
+            );
+          }
+          logger.info(
+            { requestId, userId: existing.user_id, deciderId },
+            '[provisioning-request] Auto-chain: no active workspace — provisioning workspace before Claude',
+          );
+          await this.workspaceProvisioningService.provision(existing.user_id, deciderId, tx);
+          auditDetails.auto_chained = true;
+        }
+
         logger.info(
           { requestId, userId: existing.user_id, deciderId },
           '[provisioning-request] Calling ClaudeProvisioningService.provision for claude request',
@@ -272,18 +340,48 @@ export class ProvisioningRequestService {
         await this.claudeProvisioningService.provision(existing.user_id, deciderId, tx);
       }
 
+      await this.audit.record(tx, {
+        actor_user_id: deciderId,
+        action: 'approve_provisioning_request',
+        target_user_id: existing.user_id,
+        target_entity_type: 'ProvisioningRequest',
+        target_entity_id: String(requestId),
+        details: auditDetails,
+      });
+
       return updated;
     });
   }
 
   /**
-   * Reject a provisioning request.
-   *
-   * Sets status=rejected, decided_by, decided_at, and records an audit event.
+   * Reject a provisioning request. The student can submit a new request
+   * of the same type after a plain reject. To block re-requests, use
+   * `rejectPermanent` instead.
    *
    * @throws NotFoundError if the request does not exist.
    */
   async reject(requestId: number, deciderId: number): Promise<ProvisioningRequest> {
+    return this._reject(requestId, deciderId, 'rejected');
+  }
+
+  /**
+   * Permanently reject a provisioning request. After this call, the student
+   * cannot re-request the same account type — `create()` will throw
+   * ConflictError if another request of that type is submitted. Used when
+   * the admin has decided the student should never get that account.
+   */
+  async rejectPermanent(
+    requestId: number,
+    deciderId: number,
+  ): Promise<ProvisioningRequest> {
+    return this._reject(requestId, deciderId, 'rejected_permanent');
+  }
+
+  private async _reject(
+    requestId: number,
+    deciderId: number,
+    targetStatus: 'rejected' | 'rejected_permanent',
+  ): Promise<ProvisioningRequest> {
     const existing = await ProvisioningRequestRepository.findById(this.prisma, requestId);
     if (!existing) throw new NotFoundError(`ProvisioningRequest ${requestId} not found`);
 
@@ -291,13 +389,16 @@ export class ProvisioningRequestService {
       const updated = await ProvisioningRequestRepository.updateStatus(
         tx,
         requestId,
-        'rejected',
+        targetStatus,
         deciderId,
         new Date(),
       );
       await this.audit.record(tx, {
         actor_user_id: deciderId,
-        action: 'reject_provisioning_request',
+        action:
+          targetStatus === 'rejected_permanent'
+            ? 'reject_provisioning_request_permanent'
+            : 'reject_provisioning_request',
         target_user_id: existing.user_id,
         target_entity_type: 'ProvisioningRequest',
         target_entity_id: String(requestId),

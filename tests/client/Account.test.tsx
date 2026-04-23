@@ -86,7 +86,7 @@ function makeAccountData(overrides: Partial<AccountData> = {}): AccountData {
     profile: {
       id: 1,
       displayName: 'Alice',
-      primaryEmail: 'alice@example.com',
+      primaryEmail: 'alice@students.jointheleague.org',
       cohort: { id: 2, name: 'Spring 2025' },
       role: 'student',
       createdAt: '2024-01-01T00:00:00.000Z',
@@ -171,11 +171,12 @@ describe('AccountPage', () => {
   // 2. Happy-path render — all four sections
   // -------------------------------------------------------------------------
 
-  it('renders all four section headings after data loads', async () => {
+  it('renders all section headings after data loads', async () => {
     renderAccount(accountFetch(makeAccountData()));
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /profile/i })).toBeInTheDocument();
+      // Profile is rendered as an unboxed header at the top of the page,
+      // not a section card — so no "Profile" heading.
       expect(screen.getByRole('heading', { name: /sign-in methods/i })).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: /services/i })).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: /help/i })).toBeInTheDocument();
@@ -191,7 +192,7 @@ describe('AccountPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Alice')).toBeInTheDocument();
-      expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+      expect(screen.getByText('alice@students.jointheleague.org')).toBeInTheDocument();
     });
   });
 
@@ -199,16 +200,19 @@ describe('AccountPage', () => {
     renderAccount(accountFetch(makeAccountData()));
 
     await waitFor(() => {
-      expect(screen.getByText('Spring 2025')).toBeInTheDocument();
+      // Profile header renders "<role> · <cohort name>" in one text node.
+      expect(screen.getByText(/Spring 2025/)).toBeInTheDocument();
     });
   });
 
-  it('shows "No cohort assigned" when cohort is null', async () => {
+  it('omits cohort line when cohort is null', async () => {
     const data = makeAccountData({ profile: { ...makeAccountData().profile, cohort: null } });
     renderAccount(accountFetch(data));
 
     await waitFor(() => {
-      expect(screen.getByText('No cohort assigned')).toBeInTheDocument();
+      // No cohort assigned → profile just renders the role label alone.
+      expect(screen.getByText('Student')).toBeInTheDocument();
+      expect(screen.queryByText(/·/)).not.toBeInTheDocument();
     });
   });
 
@@ -400,7 +404,9 @@ describe('AccountPage', () => {
   // 7. Services section — workspace / claude / combined buttons
   // -------------------------------------------------------------------------
 
-  it('shows combined "Request League Email + Claude Seat" button when neither exists', async () => {
+  it('shows League Email button + Claude "Requires League Email" hint when neither exists', async () => {
+    // Claude requires a League email, so the Claude row only offers a hint
+    // until the workspace account is pending or active — no combined button.
     const data = makeAccountData({
       externalAccounts: [],
       provisioningRequests: [],
@@ -408,9 +414,11 @@ describe('AccountPage', () => {
     renderAccount(accountFetch(data));
 
     await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^request league email$/i })).toBeInTheDocument();
+      expect(screen.getByLabelText(/claude seat requires a league email account first/i)).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: /request league email \+ claude seat/i }),
-      ).toBeInTheDocument();
+        screen.queryByRole('button', { name: /request league email \+ claude seat/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -445,25 +453,25 @@ describe('AccountPage', () => {
     });
   });
 
-  it('shows disabled hint for Claude Seat when workspace constraint is not met', async () => {
-    // No workspace, but claude is not pending either — normally the combined button appears.
-    // To test the "requires league email" hint we need: workspace is missing but claude IS pending
-    // (so the combined button is hidden, workspace button shows, and claude row shows the hint).
+  it('shows disabled hint for Claude Seat when workspace is missing', async () => {
+    // Claude seats must land on a League email. A student with no workspace
+    // account and no workspace request sees the "Requires League Email" hint
+    // on the Claude row and the "Request League Email" button on the
+    // workspace row — there is no combined button.
     const data = makeAccountData({
       externalAccounts: [],
-      provisioningRequests: [
-        { id: 5, requestedType: 'claude', status: 'pending', createdAt: '2024-06-01T00:00:00.000Z', decidedAt: null },
-      ],
+      provisioningRequests: [],
     });
     renderAccount(accountFetch(data));
 
     await waitFor(() => {
-      // The Claude row should have a "Requires League Email" hint, not a button
       expect(screen.getByLabelText(/claude seat requires a league email account first/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^request league email$/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /request league email \+ claude seat/i })).not.toBeInTheDocument();
     });
   });
 
-  it('Request mutation POSTs workspace_and_claude correctly', async () => {
+  it('Request mutation POSTs workspace when the League Email button is clicked', async () => {
     const user = userEvent.setup();
     const data = makeAccountData({ externalAccounts: [], provisioningRequests: [] });
 
@@ -476,7 +484,6 @@ describe('AccountPage', () => {
           ok: true,
           json: () => Promise.resolve([
             { id: 30, requestedType: 'workspace', status: 'pending', createdAt: '2024-06-01T00:00:00.000Z', decidedAt: null },
-            { id: 31, requestedType: 'claude', status: 'pending', createdAt: '2024-06-01T00:00:00.000Z', decidedAt: null },
           ]),
         });
       }
@@ -486,10 +493,10 @@ describe('AccountPage', () => {
     renderAccount(fetchMock);
 
     await waitFor(() =>
-      screen.getByRole('button', { name: /request league email \+ claude seat/i }),
+      screen.getByRole('button', { name: /^request league email$/i }),
     );
 
-    await user.click(screen.getByRole('button', { name: /request league email \+ claude seat/i }));
+    await user.click(screen.getByRole('button', { name: /^request league email$/i }));
 
     await waitFor(() => {
       const postCall = fetchMock.mock.calls.find(
@@ -498,7 +505,7 @@ describe('AccountPage', () => {
       );
       expect(postCall).toBeDefined();
       const bodyParsed = JSON.parse(postCall![1]!.body as string);
-      expect(bodyParsed.requestType).toBe('workspace_and_claude');
+      expect(bodyParsed.requestType).toBe('workspace');
     });
   });
 
@@ -523,10 +530,10 @@ describe('AccountPage', () => {
     renderAccount(fetchMock);
 
     await waitFor(() =>
-      screen.getByRole('button', { name: /request league email \+ claude seat/i }),
+      screen.getByRole('button', { name: /^request league email$/i }),
     );
 
-    await user.click(screen.getByRole('button', { name: /request league email \+ claude seat/i }));
+    await user.click(screen.getByRole('button', { name: /^request league email$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('A workspace request already exists');

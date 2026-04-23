@@ -441,55 +441,30 @@ describe('GoogleWorkspaceAdminClientImpl read-only methods bypass write gate', (
 });
 
 // ---------------------------------------------------------------------------
-// OOP fix: resolveCredentialsFileEnvVar — alias support
+// resolveCredentialsFileEnvVar — GOOGLE_CRED_FILE
 // ---------------------------------------------------------------------------
 
-describe('resolveCredentialsFileEnvVar — GOOGLE_CREDENTIALS_FILE alias', () => {
-  const savedEnv: Record<string, string | undefined> = {};
+describe('resolveCredentialsFileEnvVar — GOOGLE_CRED_FILE', () => {
+  const savedEnv: { value: string | undefined } = { value: undefined };
 
   beforeEach(() => {
-    savedEnv.GOOGLE_CREDENTIALS_FILE = process.env.GOOGLE_CREDENTIALS_FILE;
-    savedEnv.GOOGLE_SERVICE_ACCOUNT_FILE = process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
+    savedEnv.value = process.env.GOOGLE_CRED_FILE;
   });
 
   afterEach(() => {
-    for (const key of ['GOOGLE_CREDENTIALS_FILE', 'GOOGLE_SERVICE_ACCOUNT_FILE']) {
-      if (savedEnv[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = savedEnv[key];
-      }
+    if (savedEnv.value === undefined) {
+      delete process.env.GOOGLE_CRED_FILE;
+    } else {
+      process.env.GOOGLE_CRED_FILE = savedEnv.value;
     }
   });
 
-  it('returns empty string when neither var is set', () => {
-    delete process.env.GOOGLE_CREDENTIALS_FILE;
-    delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
+  it('reads GOOGLE_CRED_FILE; returns empty string when unset', () => {
+    delete process.env.GOOGLE_CRED_FILE;
     expect(resolveCredentialsFileEnvVar()).toBe('');
-  });
 
-  it('returns GOOGLE_CREDENTIALS_FILE when only the new name is set', () => {
-    process.env.GOOGLE_CREDENTIALS_FILE = 'new-creds.json';
-    delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
-    expect(resolveCredentialsFileEnvVar()).toBe('new-creds.json');
-  });
-
-  it('returns GOOGLE_SERVICE_ACCOUNT_FILE when only the legacy name is set', () => {
-    delete process.env.GOOGLE_CREDENTIALS_FILE;
-    process.env.GOOGLE_SERVICE_ACCOUNT_FILE = 'legacy-creds.json';
-    expect(resolveCredentialsFileEnvVar()).toBe('legacy-creds.json');
-  });
-
-  it('GOOGLE_CREDENTIALS_FILE wins when both are set', () => {
-    process.env.GOOGLE_CREDENTIALS_FILE = 'new-creds.json';
-    process.env.GOOGLE_SERVICE_ACCOUNT_FILE = 'legacy-creds.json';
-    expect(resolveCredentialsFileEnvVar()).toBe('new-creds.json');
-  });
-
-  it('falls back to GOOGLE_SERVICE_ACCOUNT_FILE when GOOGLE_CREDENTIALS_FILE is empty string', () => {
-    process.env.GOOGLE_CREDENTIALS_FILE = '';
-    process.env.GOOGLE_SERVICE_ACCOUNT_FILE = 'legacy-creds.json';
-    expect(resolveCredentialsFileEnvVar()).toBe('legacy-creds.json');
+    process.env.GOOGLE_CRED_FILE = 'service-account.json';
+    expect(resolveCredentialsFileEnvVar()).toBe('service-account.json');
   });
 });
 

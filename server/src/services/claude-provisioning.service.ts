@@ -32,7 +32,7 @@ import { createLogger } from './logger.js';
 
 import { ConflictError, UnprocessableError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
-import type { ClaudeTeamAdminClient } from './claude-team/claude-team-admin.client.js';
+import type { AnthropicAdminClient } from './anthropic/anthropic-admin.client.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import { UserRepository } from './repositories/user.repository.js';
 import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
@@ -41,7 +41,7 @@ const logger = createLogger('claude-provisioning');
 
 export class ClaudeProvisioningService {
   constructor(
-    private readonly claudeTeamClient: ClaudeTeamAdminClient,
+    private readonly claudeTeamClient: AnthropicAdminClient,
     private readonly externalAccountRepo: typeof ExternalAccountRepository,
     private readonly auditService: AuditService,
     private readonly userRepo: typeof UserRepository,
@@ -78,25 +78,34 @@ export class ClaudeProvisioningService {
       throw new UnprocessableError(`User ${userId} not found`);
     }
 
-    // --- 2. Verify active workspace ExternalAccount exists (hard gate) ---
+    // --- 2. Resolve the League email to invite ---
+    //
+    // Preferred source: an active workspace ExternalAccount whose external_id
+    // holds the League Workspace email. Workspace sync (Sprint 006) does NOT
+    // create ExternalAccount rows — only User rows — so for Google-imported
+    // students we fall back to User.primary_email when it's on a
+    // jointheleague.org domain (including subdomains like
+    // @students.jointheleague.org). That email is, by construction, the
+    // user's Google Workspace account.
     const workspaceAccount = await this.externalAccountRepo.findActiveByUserAndType(
       tx,
       userId,
       'workspace',
     );
-    if (!workspaceAccount) {
-      throw new UnprocessableError(
-        `User ${userId} does not have an active workspace ExternalAccount. ` +
-          `Provision a Workspace account before provisioning a Claude seat.`,
-      );
-    }
 
-    // The workspace account's external_id holds the League Workspace email.
-    const workspaceEmail = workspaceAccount.external_id;
+    const userEmail = (user.primary_email ?? '').toLowerCase();
+    const isLeagueEmail = /@([a-z0-9-]+\.)?jointheleague\.org$/.test(userEmail);
+
+    const workspaceEmail: string | null =
+      workspaceAccount?.external_id ??
+      (isLeagueEmail ? user.primary_email : null);
+
     if (!workspaceEmail) {
       throw new UnprocessableError(
-        `User ${userId} has a workspace ExternalAccount (id=${workspaceAccount.id}) ` +
-          `but its external_id (workspace email) is null. Cannot derive email for Claude invite.`,
+        `User ${userId} has no League Workspace account. Their primary email ` +
+          `(${user.primary_email ?? 'none'}) is not on jointheleague.org and ` +
+          `they have no active workspace ExternalAccount. Provision a ` +
+          `Workspace account before provisioning a Claude seat.`,
       );
     }
 
@@ -114,11 +123,11 @@ export class ClaudeProvisioningService {
 
     logger.info(
       { userId, actorId, workspaceEmail },
-      '[claude-provisioning] Calling ClaudeTeamAdminClient.inviteMember',
+      '[claude-provisioning] Calling AnthropicAdminClient.inviteToOrg',
     );
 
-    // --- 4. Call Claude Team API (may throw; caller's tx rolls back) ---
-    const member = await this.claudeTeamClient.inviteMember({ email: workspaceEmail });
+    // --- 4. Call Anthropic Admin API (may throw; caller's tx rolls back) ---
+    const member = await this.claudeTeamClient.inviteToOrg({ email: workspaceEmail });
 
     logger.info(
       { userId, memberId: member.id, email: member.email, status: member.status },
@@ -126,10 +135,12 @@ export class ClaudeProvisioningService {
     );
 
     // --- 5. Persist ExternalAccount inside the caller's transaction ---
+    // The invite creates a pending seat — status transitions to active once the
+    // invitee accepts (reconciled by AnthropicSyncService.reconcile).
     const newAccount = await this.externalAccountRepo.create(tx, {
       user_id: userId,
       type: 'claude',
-      status: 'active',
+      status: 'pending',
       external_id: member.id,
       status_changed_at: new Date(),
     });

@@ -118,6 +118,47 @@ export class WorkspaceProvisioningService {
       );
     }
 
+    // --- 4b. If the user previously had a League account that was later
+    //         suspended/removed, reactivate it instead of trying to create
+    //         a fresh Google user with the same primary email.
+    const prior = await (tx as any).externalAccount.findFirst({
+      where: {
+        user_id: userId,
+        type: 'workspace',
+        status: { in: ['suspended', 'removed'] },
+      },
+      orderBy: { status_changed_at: 'desc' },
+    });
+    if (prior?.external_id) {
+      const priorEmail: string = prior.external_id;
+      logger.info(
+        { userId, actorId, workspaceEmail: priorEmail, externalAccountId: prior.id },
+        '[workspace-provisioning] Prior suspended/removed workspace found — reactivating.',
+      );
+
+      await this.googleClient.unsuspendUser(priorEmail);
+
+      const reactivated = await this.externalAccountRepo.updateStatus(
+        tx,
+        prior.id,
+        'active',
+      );
+
+      await this.auditService.record(tx, {
+        actor_user_id: actorId,
+        action: 'reactivate_workspace',
+        target_user_id: userId,
+        target_entity_type: 'ExternalAccount',
+        target_entity_id: String(prior.id),
+        details: {
+          email: priorEmail,
+          previous_status: prior.status,
+        },
+      });
+
+      return reactivated;
+    }
+
     // --- 5. Derive workspace email ---
     const studentDomain = process.env.GOOGLE_STUDENT_DOMAIN;
     if (!studentDomain) {
@@ -137,12 +178,25 @@ export class WorkspaceProvisioningService {
     );
 
     // --- 6. Call Google Admin SDK (may throw; caller's tx rolls back) ---
+    //
+    // Pass the student's own primary_email as recoveryEmail so Google's
+    // welcome/password email lands in an inbox they can actually read.
+    // (They can't read the League inbox yet — it's the account being
+    // created.) We skip this when primary_email is itself a League
+    // address, which would just loop back.
+    const leagueDomainRx = /@([a-z0-9-]+\.)?jointheleague\.org$/i;
+    const recoveryEmail =
+      user.primary_email && !leagueDomainRx.test(user.primary_email)
+        ? user.primary_email
+        : null;
+
     const createdUser = await this.googleClient.createUser({
       primaryEmail: workspaceEmail,
       orgUnitPath: cohort.google_ou_path,
       givenName,
       familyName,
       sendNotificationEmail: true,
+      recoveryEmail,
     });
 
     logger.info(
@@ -151,11 +205,15 @@ export class WorkspaceProvisioningService {
     );
 
     // --- 7. Persist ExternalAccount inside the caller's transaction ---
+    //
+    // By convention, `external_id` on workspace rows is the user's League
+    // email — not the Google numeric user ID. The delete job, lifecycle
+    // service, and claude-provisioning all read it as an email.
     const newAccount = await this.externalAccountRepo.create(tx, {
       user_id: userId,
       type: 'workspace',
       status: 'active',
-      external_id: createdUser.id,
+      external_id: createdUser.primaryEmail,
       status_changed_at: new Date(),
     });
 

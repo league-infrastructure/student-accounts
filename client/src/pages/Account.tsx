@@ -7,6 +7,7 @@
  * Staff and admin users are redirected to /staff immediately without fetching.
  */
 
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -22,7 +23,11 @@ export interface AccountProfile {
   primaryEmail: string;
   cohort: { id: number; name: string } | null;
   role: string;
+  approvalStatus?: 'approved' | 'pending';
   createdAt: string;
+  /** Shared one-shot temp password for the League account (only set when
+   *  the user has a live workspace ExternalAccount). */
+  workspaceTempPassword?: string | null;
 }
 
 export interface AccountLogin {
@@ -77,6 +82,18 @@ async function deleteLogin(id: number): Promise<void> {
   }
 }
 
+async function patchDisplayName(displayName: string): Promise<void> {
+  const res = await fetch('/api/account/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+}
+
 async function postProvisioningRequest(requestType: string): Promise<AccountProvisioningRequest[]> {
   const res = await fetch('/api/account/provisioning-requests', {
     method: 'POST',
@@ -117,22 +134,94 @@ function hasWorkspaceBaseline(data: AccountData): boolean {
   return pendingWorkspaceRequest;
 }
 
+/** League emails are @jointheleague.org or any subdomain (e.g. students). */
+function isLeagueEmail(email: string): boolean {
+  return /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(email);
+}
+
 // ---------------------------------------------------------------------------
 // ProfileSection
 // ---------------------------------------------------------------------------
 
-function ProfileSection({ profile }: { profile: AccountProfile }) {
+function ProfileSection({
+  profile,
+  onRename,
+}: {
+  profile: AccountProfile;
+  onRename: (newName: string) => Promise<void>;
+}) {
+  const roleLabel =
+    profile.role === 'admin' ? 'Admin' : profile.role === 'staff' ? 'Staff' : 'Student';
+  const subtitle = profile.cohort
+    ? `${roleLabel} · ${profile.cohort.name}`
+    : roleLabel;
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const displayed = profile.displayName ?? profile.primaryEmail;
+
+  function startEdit() {
+    setDraft(profile.displayName ?? '');
+    setError(null);
+    setEditing(true);
+  }
+
+  async function commit() {
+    const trimmed = draft.trim();
+    if (trimmed.length === 0) {
+      setError('Name cannot be empty.');
+      return;
+    }
+    if (trimmed === profile.displayName) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onRename(trimmed);
+      setEditing(false);
+    } catch (err: any) {
+      setError(err.message ?? 'Could not save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div style={styles.card}>
-      <h2 style={styles.sectionTitle}>Profile</h2>
-      <div style={styles.fieldList}>
-        <FieldRow label="Name">{profile.displayName ?? 'Not set'}</FieldRow>
-        <FieldRow label="Email">{profile.primaryEmail}</FieldRow>
-        <FieldRow label="Cohort">
-          {profile.cohort ? profile.cohort.name : 'No cohort assigned'}
-        </FieldRow>
-      </div>
-    </div>
+    <header style={styles.profileHeader}>
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void commit();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          disabled={saving}
+          style={styles.profileNameInput}
+          aria-label="Edit display name"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={startEdit}
+          style={styles.profileNameButton}
+          title="Click to edit your name"
+          aria-label={`Edit name (currently ${displayed})`}
+        >
+          {displayed}
+        </button>
+      )}
+      {error && <div style={styles.profileNameError} role="alert">{error}</div>}
+      <div style={styles.profileMeta}>{profile.primaryEmail}</div>
+      <div style={styles.profileMeta}>{subtitle}</div>
+    </header>
   );
 }
 
@@ -236,36 +325,103 @@ interface ServicesSectionProps {
 }
 
 function ServicesSection({ data, onRequest, requesting, requestError }: ServicesSectionProps) {
+  // Pending users see a banner instead of the services table — no services
+  // can be requested until an admin approves the account.
+  if (data.profile.approvalStatus === 'pending') {
+    return (
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>Services</h2>
+        <div style={styles.pendingBanner} role="status">
+          <strong>Your account is pending approval.</strong>
+          <span>
+            {' '}An admin will review your sign-in shortly. Once approved you'll be
+            able to request a League email and Claude seat here.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   const workspaceBaseline = hasWorkspaceBaseline(data);
 
-  // Derive workspace state.
-  const workspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
-  const workspaceRequest = data.provisioningRequests.find(
+  const liveStatuses = (s: string) => s === 'active' || s === 'pending';
+  const deadStatuses = (s: string) => s === 'suspended' || s === 'removed';
+
+  // Derive workspace state. We distinguish three cases per account type:
+  //   1. "live"  — active/pending: already provisioned, nothing to request.
+  //   2. "dead"  — suspended/removed: existed, admin turned it off, the
+  //                student can ask for it back.
+  //   3. "none"  — never provisioned: student can request.
+  const anyWorkspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
+  const liveWorkspaceAccount =
+    anyWorkspaceAccount && liveStatuses(anyWorkspaceAccount.status) ? anyWorkspaceAccount : null;
+  const deadWorkspaceAccount =
+    anyWorkspaceAccount && deadStatuses(anyWorkspaceAccount.status) ? anyWorkspaceAccount : null;
+  // Only *pending* requests block re-requesting. Rejected requests still
+  // show up in the status column so the student knows what happened, but
+  // they don't lock the button forever. A *rejected_permanent* request
+  // blocks forever (admin decision).
+  const pendingWorkspaceRequest = data.provisioningRequests.find(
+    (r) =>
+      (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
+      r.status === 'pending',
+  );
+  const permaRejectedWorkspace = data.provisioningRequests.some(
+    (r) =>
+      (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
+      r.status === 'rejected_permanent',
+  );
+  const latestWorkspaceRequest = data.provisioningRequests.find(
     (r) => r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude',
   );
 
   // Derive claude state.
-  const claudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
-  const claudeRequest = data.provisioningRequests.find(
+  const anyClaudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
+  const liveClaudeAccount =
+    anyClaudeAccount && liveStatuses(anyClaudeAccount.status) ? anyClaudeAccount : null;
+  const deadClaudeAccount =
+    anyClaudeAccount && deadStatuses(anyClaudeAccount.status) ? anyClaudeAccount : null;
+  const pendingClaudeRequest = data.provisioningRequests.find(
+    (r) =>
+      (r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude') &&
+      r.status === 'pending',
+  );
+  const permaRejectedClaude = data.provisioningRequests.some(
+    (r) =>
+      (r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude') &&
+      r.status === 'rejected_permanent',
+  );
+  const latestClaudeRequest = data.provisioningRequests.find(
     (r) => r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude',
   );
 
   // Derive pike13 state.
   const pike13Account = data.externalAccounts.find((a) => a.type === 'pike13');
 
-  const hasActiveOrPendingWorkspace =
-    workspaceAccount != null || workspaceRequest != null;
-  const hasActiveOrPendingClaude =
-    claudeAccount != null || claudeRequest != null;
+  // Request-button visibility. "Request League Email" is shown when the
+  // account is absent, and "Request re-activation" is shown when it's
+  // suspended/removed — in either case blocked by a pending request or
+  // a permanent reject.
+  const showWorkspaceButton =
+    !liveWorkspaceAccount && !pendingWorkspaceRequest && !permaRejectedWorkspace;
+  const workspaceReactivation = !!deadWorkspaceAccount;
 
-  // Button visibility logic:
-  // - "Request League Email": shown if no active/pending workspace account or request
-  // - "Request Claude Seat": shown if no active/pending claude
-  // - "Request Email + Claude Seat": shown when neither workspace nor claude exists/pending
-  //   (replaces both individual buttons in that case)
-  const showCombinedButton = !hasActiveOrPendingWorkspace && !hasActiveOrPendingClaude;
-  const showWorkspaceButton = !hasActiveOrPendingWorkspace && !showCombinedButton;
-  const showClaudeButton = !hasActiveOrPendingClaude && !showCombinedButton;
+  const showClaudeButton =
+    !liveClaudeAccount && !pendingClaudeRequest && !permaRejectedClaude && workspaceBaseline;
+  const claudeReactivation = !!deadClaudeAccount;
+  const claudeBlockedOnWorkspace =
+    !liveClaudeAccount &&
+    !deadClaudeAccount &&
+    !pendingClaudeRequest &&
+    !permaRejectedClaude &&
+    !workspaceBaseline;
+
+  // Display the League email next to the League Email row. Prefer the
+  // workspace ExternalAccount's external_id (set by workspace provisioning);
+  // fall back to primaryEmail when it's already a League address.
+  const leagueEmailDisplay: string | null =
+    anyWorkspaceAccount?.externalId ??
+    (isLeagueEmail(data.profile.primaryEmail) ? data.profile.primaryEmail : null);
 
   return (
     <div style={styles.card}>
@@ -284,31 +440,36 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
           <tr style={styles.tr}>
             <td style={styles.td}>League Email</td>
             <td style={styles.td}>
-              {workspaceAccount
-                ? workspaceAccount.status
-                : workspaceRequest
-                  ? `Request ${workspaceRequest.status}`
-                  : 'None'}
+              {pendingWorkspaceRequest
+                ? 'Request pending'
+                : anyWorkspaceAccount
+                  ? anyWorkspaceAccount.status
+                  : latestWorkspaceRequest
+                    ? `Request ${latestWorkspaceRequest.status}`
+                    : 'None'}
             </td>
             <td style={styles.td}>
-              {showCombinedButton ? (
-                <button
-                  onClick={() => onRequest('workspace_and_claude')}
-                  disabled={requesting}
-                  style={styles.requestButton}
-                  aria-label="Request League Email + Claude Seat"
-                >
-                  Request League Email + Claude Seat
-                </button>
-              ) : showWorkspaceButton ? (
+              {showWorkspaceButton ? (
                 <button
                   onClick={() => onRequest('workspace')}
                   disabled={requesting}
                   style={styles.requestButton}
-                  aria-label="Request League Email"
+                  aria-label={workspaceReactivation ? 'Request re-activation' : 'Request League Email'}
                 >
-                  Request League Email
+                  {workspaceReactivation ? 'Request re-activation' : 'Request League Email'}
                 </button>
+              ) : liveWorkspaceAccount && leagueEmailDisplay ? (
+                <div style={styles.emailColumn}>
+                  <span style={styles.emailValue}>{leagueEmailDisplay}</span>
+                  {data.profile.workspaceTempPassword && (
+                    <span
+                      style={styles.tempPasswordHint}
+                      title="Shared temp password — you'll be asked to change it on first sign-in"
+                    >
+                      password: <code style={styles.emailValue}>{data.profile.workspaceTempPassword}</code>
+                    </span>
+                  )}
+                </div>
               ) : null}
             </td>
           </tr>
@@ -317,33 +478,25 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
           <tr style={styles.tr}>
             <td style={styles.td}>Claude Seat</td>
             <td style={styles.td}>
-              {claudeAccount
-                ? claudeAccount.status
-                : claudeRequest
-                  ? `Request ${claudeRequest.status}`
-                  : 'None'}
+              {pendingClaudeRequest
+                ? 'Request pending'
+                : anyClaudeAccount
+                  ? anyClaudeAccount.status
+                  : latestClaudeRequest
+                    ? `Request ${latestClaudeRequest.status}`
+                    : 'None'}
             </td>
             <td style={styles.td}>
-              {showCombinedButton ? null : showClaudeButton ? (
-                workspaceBaseline ? (
-                  <button
-                    onClick={() => onRequest('claude')}
-                    disabled={requesting}
-                    style={styles.requestButton}
-                    aria-label="Request Claude Seat"
-                  >
-                    Request Claude Seat
-                  </button>
-                ) : (
-                  <span
-                    style={styles.disabledHint}
-                    title="A League Email account is required before requesting a Claude seat"
-                    aria-label="Claude Seat requires a League Email account first"
-                  >
-                    Requires League Email
-                  </span>
-                )
-              ) : !showCombinedButton && !workspaceBaseline && claudeAccount == null ? (
+              {showClaudeButton ? (
+                <button
+                  onClick={() => onRequest('claude')}
+                  disabled={requesting}
+                  style={styles.requestButton}
+                  aria-label={claudeReactivation ? 'Request Claude re-activation' : 'Request Claude Seat'}
+                >
+                  {claudeReactivation ? 'Request re-activation' : 'Request Claude Seat'}
+                </button>
+              ) : claudeBlockedOnWorkspace ? (
                 <span
                   style={styles.disabledHint}
                   title="A League Email account is required before requesting a Claude seat"
@@ -370,6 +523,89 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
 
       {requestError && (
         <p role="alert" style={styles.inlineError}>{requestError}</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ClaudeCodeSection — onboarding instructions once the student's Claude
+// invite is active. Anthropic's Admin API doesn't let us mint API keys on
+// another member's behalf, so instead we point the student at Claude Code's
+// built-in OAuth flow — `claude auth login` — which authenticates against
+// their org membership without any key handling.
+// ---------------------------------------------------------------------------
+
+function ClaudeCodeSection({ data }: { data: AccountData }) {
+  const claudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
+  if (!claudeAccount) return null;
+
+  const active = claudeAccount.status === 'active';
+  const pending = claudeAccount.status === 'pending';
+
+  return (
+    <div style={styles.card}>
+      <h2 style={styles.sectionTitle}>Claude Code</h2>
+      {pending && (
+        <p style={styles.helpText}>
+          Your Claude invite is pending. Check your inbox for an email from
+          Anthropic and accept the invitation before continuing.
+        </p>
+      )}
+      {active && (
+        <>
+          <p style={styles.helpText}>
+            You can use <strong>Claude Code</strong> (the CLI) directly against
+            The League's Anthropic org — no API key needed. Usage is billed to
+            the school, not to you.
+          </p>
+          <ol style={styles.claudeSteps}>
+            <li>
+              <strong>Install Claude Code:</strong>{' '}
+              <code style={styles.code}>curl -fsSL https://claude.ai/install.sh | bash</code>{' '}
+              (or see{' '}
+              <a
+                href="https://docs.claude.com/claude-code"
+                target="_blank"
+                rel="noreferrer"
+                style={styles.helpLink}
+              >
+                the install guide
+              </a>
+              ).
+            </li>
+            <li>
+              <strong>Sign in:</strong>{' '}
+              <code style={styles.code}>claude auth login</code>
+              <div style={styles.claudeHint}>
+                A browser window opens. Sign in with your{' '}
+                <strong>{data.profile.primaryEmail}</strong> account — the one
+                invited into the League Anthropic org.
+              </div>
+            </li>
+            <li>
+              <strong>Verify:</strong>{' '}
+              <code style={styles.code}>claude "hello"</code>
+              <div style={styles.claudeHint}>
+                You should get a reply. If Claude Code asks for an API key,
+                you're signed into the wrong account — run{' '}
+                <code style={styles.codeInline}>claude auth logout</code> and
+                start over.
+              </div>
+            </li>
+          </ol>
+          <p style={styles.claudeFooter}>
+            Your tokens refresh automatically — you won't need to log in again
+            unless you switch machines.
+          </p>
+        </>
+      )}
+      {!active && !pending && (
+        <p style={styles.helpText}>
+          Claude access is not currently available on your account
+          ({claudeAccount.status}). Contact the League admin if this looks
+          wrong.
+        </p>
       )}
     </div>
   );
@@ -420,6 +656,10 @@ export default function Account() {
     queryFn: fetchAccount,
     // Skip fetching if the user is not a student — they will be redirected.
     enabled: !isNonStudent,
+    // While the account is pending, poll so the banner clears as soon as an
+    // admin approves the account. After approval, rely on normal refetching.
+    refetchInterval: (query) =>
+      query.state.data?.profile.approvalStatus === 'pending' ? 5000 : false,
   });
 
   const removeLoginMutation = useMutation({
@@ -439,7 +679,7 @@ export default function Account() {
   // Admin redirect — to the provisioning-requests page (has actual admin UI).
   // Staff falls through and renders the account page (empty but won't 404).
   if (role === 'admin') {
-    return <Navigate to="/admin/provisioning-requests" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (isLoading) {
@@ -479,7 +719,13 @@ export default function Account() {
     <div style={styles.container}>
       <h1 style={styles.pageTitle}>My Account</h1>
 
-      <ProfileSection profile={data.profile} />
+      <ProfileSection
+        profile={data.profile}
+        onRename={async (newName) => {
+          await patchDisplayName(newName);
+          await queryClient.invalidateQueries({ queryKey: ['account'] });
+        }}
+      />
 
       <div style={styles.spacer} />
 
@@ -513,20 +759,11 @@ export default function Account() {
 
       <div style={styles.spacer} />
 
+      <ClaudeCodeSection data={data} />
+
+      <div style={styles.spacer} />
+
       <HelpSection />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shared sub-components
-// ---------------------------------------------------------------------------
-
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={styles.fieldRow}>
-      <span style={styles.fieldLabel}>{label}</span>
-      <span style={styles.fieldValue}>{children}</span>
     </div>
   );
 }
@@ -604,23 +841,58 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '1rem',
     marginTop: 0,
   },
-  fieldList: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 10,
+  profileHeader: {
+    marginBottom: '1.5rem',
   },
-  fieldRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    fontSize: '0.9rem',
-  },
-  fieldLabel: {
-    color: '#64748b',
-  },
-  fieldValue: {
+  profileName: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
     color: '#1e293b',
-    fontWeight: 500,
+    marginBottom: 4,
+  },
+  profileNameButton: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    color: '#1e293b',
+    marginBottom: 4,
+    background: 'transparent',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    textAlign: 'left',
+    font: 'inherit',
+  },
+  profileNameInput: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    color: '#1e293b',
+    marginBottom: 4,
+    padding: '2px 6px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 4,
+    background: '#fff',
+    width: '100%',
+    maxWidth: 420,
+    boxSizing: 'border-box',
+  },
+  profileNameError: {
+    color: '#dc2626',
+    fontSize: '0.8rem',
+    marginBottom: 4,
+  },
+  profileMeta: {
+    fontSize: '0.9rem',
+    color: '#64748b',
+    lineHeight: 1.5,
+  },
+  pendingBanner: {
+    padding: '14px 16px',
+    borderRadius: 8,
+    border: '1px solid #fcd34d',
+    background: '#fef3c7',
+    color: '#78350f',
+    fontSize: '0.9rem',
+    lineHeight: 1.5,
   },
   table: {
     width: '100%',
@@ -710,6 +982,20 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#94a3b8',
     fontStyle: 'italic' as const,
   },
+  emailValue: {
+    fontSize: '0.85rem',
+    color: '#1e293b',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  },
+  emailColumn: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+  },
+  tempPasswordHint: {
+    fontSize: '0.78rem',
+    color: '#64748b',
+  },
   readOnlyHint: {
     fontSize: '0.82rem',
     color: '#94a3b8',
@@ -732,5 +1018,41 @@ const styles: Record<string, React.CSSProperties> = {
   },
   helpLink: {
     color: '#4f46e5',
+  },
+  claudeSteps: {
+    fontSize: '0.9rem',
+    color: '#374151',
+    lineHeight: 1.8,
+    paddingLeft: '1.25rem',
+  } as const,
+  code: {
+    display: 'inline-block',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    padding: '3px 8px',
+    borderRadius: 4,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '0.82rem',
+    userSelect: 'all' as const,
+  },
+  codeInline: {
+    background: '#f1f5f9',
+    color: '#0f172a',
+    padding: '1px 5px',
+    borderRadius: 3,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '0.82rem',
+  },
+  claudeHint: {
+    fontSize: '0.8rem',
+    color: '#64748b',
+    marginTop: 4,
+    marginLeft: 2,
+  },
+  claudeFooter: {
+    fontSize: '0.82rem',
+    color: '#64748b',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 };

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../services/prisma.js';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { AppError } from '../../errors.js';
+import { adminBus } from '../../services/change-bus.js';
 
 export const adminUsersRouter = Router();
 
@@ -87,9 +88,9 @@ adminUsersRouter.get('/users', async (req, res, next) => {
       where: { is_active: true },
       orderBy: { created_at: 'desc' },
       include: {
-        logins: { select: { provider: true, provider_username: true } },
+        logins: { select: { provider: true, provider_username: true, provider_email: true } },
         cohort: { select: { id: true, name: true } },
-        external_accounts: { select: { type: true } },
+        external_accounts: { select: { type: true, external_id: true, status: true } },
       },
     });
     res.json(users.map(serializeUser));
@@ -213,6 +214,110 @@ adminUsersRouter.post('/stop-impersonating', requireAuth, async (req, res, next)
 });
 
 // ---------------------------------------------------------------------------
+// GET /admin/pending-users — list users with approval_status='pending'
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.get('/pending-users', async (_req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { is_active: true, approval_status: 'pending' },
+      orderBy: { created_at: 'asc' },
+      include: {
+        logins: { select: { provider: true, provider_email: true, provider_username: true } },
+      },
+    });
+    res.json(
+      users.map((u) => ({
+        id: u.id,
+        email: u.primary_email,
+        displayName: u.display_name,
+        createdAt: u.created_at,
+        logins: u.logins.map((l) => ({
+          provider: l.provider,
+          email: l.provider_email,
+          username: l.provider_username,
+        })),
+      })),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/users/:id/approve — flip approval_status to 'approved'
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+    const actorId = (req.session as any).userId as number;
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.approval_status === 'approved') {
+      return res.status(409).json({ error: 'User is already approved' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { approval_status: 'approved' } });
+      await tx.auditEvent.create({
+        data: {
+          action: 'approve_user',
+          actor_user_id: actorId,
+          target_user_id: id,
+          target_entity_type: 'User',
+          target_entity_id: String(id),
+        },
+      });
+    });
+
+    adminBus.notify('pending-users');
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/users/:id/deny-approval — soft-delete a pending user. No
+// "permanently rejected" state needed: deactivation is terminal unless an
+// admin manually flips is_active back.
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+    const actorId = (req.session as any).userId as number;
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { is_active: false } });
+      await tx.auditEvent.create({
+        data: {
+          action: 'deny_user_approval',
+          actor_user_id: actorId,
+          target_user_id: id,
+          target_entity_type: 'User',
+          target_entity_id: String(id),
+        },
+      });
+    });
+
+    adminBus.notify('pending-users');
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /admin/users/:id/provision-claude
 // Calls ClaudeProvisioningService.provision(userId, actorId, tx) inside a
 // prisma.$transaction. Returns 201 with the new ExternalAccount on success.
@@ -245,6 +350,18 @@ adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
     if (err instanceof AppError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
+    // Recognize Anthropic/Claude client errors without importing the class
+    // (avoids a dependency cycle between routes/ and services/anthropic/).
+    const name = err?.constructor?.name ?? err?.name ?? '';
+    if (name === 'AnthropicAdminWriteDisabledError' || name === 'ClaudeTeamWriteDisabledError') {
+      return res.status(422).json({
+        error:
+          'Anthropic write operations are disabled. Set CLAUDE_TEAM_WRITE_ENABLED=1 in the server environment and restart.',
+      });
+    }
+    if (name === 'AnthropicAdminApiError' || name === 'ClaudeTeamApiError') {
+      return res.status(502).json({ error: `Anthropic API error: ${err.message}` });
+    }
     next(err);
   }
 });
@@ -264,11 +381,19 @@ function serializeUser(user: any) {
       ? user.logins.map((l: any) => ({
           provider: l.provider,
           username: l.provider_username ?? null,
+          email: l.provider_email ?? null,
         }))
       : [],
     cohort: user.cohort ? { id: user.cohort.id, name: user.cohort.name } : null,
     externalAccountTypes: Array.isArray(user.external_accounts)
       ? [...new Set(user.external_accounts.map((a: any) => a.type))]
+      : [],
+    externalAccounts: Array.isArray(user.external_accounts)
+      ? user.external_accounts.map((a: any) => ({
+          type: a.type,
+          externalId: a.external_id ?? null,
+          status: a.status,
+        }))
       : [],
     createdAt: user.created_at,
     updatedAt: user.updated_at,

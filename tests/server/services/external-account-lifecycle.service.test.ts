@@ -162,7 +162,59 @@ describe('ExternalAccountLifecycleService.suspend — workspace', () => {
 // ---------------------------------------------------------------------------
 
 describe('ExternalAccountLifecycleService.suspend — claude', () => {
-  it('calls suspendMember with the account external_id', async () => {
+  it('calls removeUserFromWorkspace with the configured workspace id and member id when CLAUDE_STUDENT_WORKSPACE is set', async () => {
+    const savedEnv = process.env.CLAUDE_STUDENT_WORKSPACE;
+    process.env.CLAUDE_STUDENT_WORKSPACE = 'Students';
+    try {
+      fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
+      const user = await makeUser();
+      const admin = await makeUser({ role: 'admin' });
+      const account = await makeExternalAccount(user, {
+        type: 'claude',
+        status: 'active',
+        external_id: 'claude-member-abc',
+      });
+
+      const svc = makeService(fakeGoogle, fakeClaude);
+      await runInTransaction((tx) => svc.suspend(account.id, admin.id, tx));
+
+      expect(fakeClaude.calls.removeUserFromWorkspace).toHaveLength(1);
+      expect(fakeClaude.calls.removeUserFromWorkspace[0]).toMatchObject({
+        workspaceId: 'ws-students-001',
+        userId: 'claude-member-abc',
+      });
+    } finally {
+      if (savedEnv === undefined) delete process.env.CLAUDE_STUDENT_WORKSPACE;
+      else process.env.CLAUDE_STUDENT_WORKSPACE = savedEnv;
+    }
+  });
+
+  it('skips removeUserFromWorkspace but still updates local status when CLAUDE_STUDENT_WORKSPACE is unset', async () => {
+    const savedEnv = process.env.CLAUDE_STUDENT_WORKSPACE;
+    delete process.env.CLAUDE_STUDENT_WORKSPACE;
+    try {
+      const user = await makeUser();
+      const admin = await makeUser({ role: 'admin' });
+      const account = await makeExternalAccount(user, {
+        type: 'claude',
+        status: 'active',
+        external_id: 'claude-member-abc',
+      });
+
+      const svc = makeService(fakeGoogle, fakeClaude);
+      await runInTransaction((tx) => svc.suspend(account.id, admin.id, tx));
+
+      expect(fakeClaude.calls.removeUserFromWorkspace).toHaveLength(0);
+    } finally {
+      if (savedEnv === undefined) delete process.env.CLAUDE_STUDENT_WORKSPACE;
+      else process.env.CLAUDE_STUDENT_WORKSPACE = savedEnv;
+    }
+  });
+
+  it('does not call deleteOrgUser for claude suspend', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
     const user = await makeUser();
     const admin = await makeUser({ role: 'admin' });
     const account = await makeExternalAccount(user, {
@@ -174,11 +226,12 @@ describe('ExternalAccountLifecycleService.suspend — claude', () => {
     const svc = makeService(fakeGoogle, fakeClaude);
     await runInTransaction((tx) => svc.suspend(account.id, admin.id, tx));
 
-    expect(fakeClaude.calls.suspendMember).toHaveLength(1);
-    expect(fakeClaude.calls.suspendMember[0]).toBe('claude-member-abc');
+    expect(fakeClaude.calls.deleteOrgUser).toHaveLength(0);
   });
 
   it('sets status=suspended', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
     const user = await makeUser();
     const admin = await makeUser({ role: 'admin' });
     const account = await makeExternalAccount(user, {
@@ -194,6 +247,8 @@ describe('ExternalAccountLifecycleService.suspend — claude', () => {
   });
 
   it('records a suspend_claude audit event', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
     const user = await makeUser();
     const admin = await makeUser({ role: 'admin' });
     const account = await makeExternalAccount(user, {
@@ -215,6 +270,8 @@ describe('ExternalAccountLifecycleService.suspend — claude', () => {
   });
 
   it('does not call suspendUser for a claude account', async () => {
+    fakeClaude.configure('listWorkspaces', [{ id: 'ws-students-001', name: 'Students' }]);
+
     const user = await makeUser();
     const admin = await makeUser({ role: 'admin' });
     const account = await makeExternalAccount(user, {

@@ -27,6 +27,7 @@ import type { User } from '../../generated/prisma/client.js';
 import type { UserService } from '../user.service.js';
 import type { LoginService } from '../login.service.js';
 import { AuditService } from '../audit.service.js';
+import { adminBus } from '../change-bus.js';
 import { mergeScan } from './merge-scan.stub.js';
 import {
   type GoogleWorkspaceAdminClient,
@@ -204,15 +205,34 @@ export async function signInHandler(
     if (existingUser) {
       user = existingUser;
     } else {
+      // Sign-ins from non-League identities are created as pending — they
+      // see a "Your account is pending" screen until an admin approves.
+      // @*.jointheleague.org users are auto-approved because their presence
+      // in Google Workspace already proves membership.
+      const isLeagueIdentity = /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(
+        resolvedEmail,
+      );
       user = await userService.createWithAudit(
         {
           display_name: displayName || providerEmail || providerUserId,
           primary_email: resolvedEmail,
           role: 'student',
           created_via: 'social_login',
+          approval_status: isLeagueIdentity ? 'approved' : 'pending',
+          // League identities (whose presence in Workspace is the
+          // approval) skip onboarding. External sign-ins have to confirm
+          // their display name in the Onboarding page before entering
+          // the app.
+          onboarding_completed: isLeagueIdentity,
         },
         null, // system action; no acting user
       );
+
+      // Notify admin dashboards: a new pending-approval row may have
+      // just appeared.
+      if (!isLeagueIdentity) {
+        adminBus.notify('pending-users');
+      }
     }
 
     // 3b. Create Login with audit event (pass provider_username for GitHub)

@@ -1,5 +1,19 @@
 ---
-status: pending
+status: done
+sprint: '010'
+tickets:
+- 010-003
+- 010-004
+- 010-005
+- 010-006
+- 010-007
+- 010-008
+- 010-009
+- 010-010
+- 010-011
+- 010-012
+- 010-013
+- 010-014
 ---
 
 # Plan — Admin UX overhaul: dashboard, route split, user-detail account lifecycle

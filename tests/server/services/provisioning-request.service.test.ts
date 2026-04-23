@@ -158,13 +158,19 @@ describe('ProvisioningRequestService.create — workspace', () => {
     await expect(svc.create(user.id, 'workspace', user.id)).rejects.toThrow(ConflictError);
   });
 
-  it('throws ConflictError when user already has an approved workspace request', async () => {
+  it('allows a new workspace request when the prior approved request has no live ExternalAccount', async () => {
+    // Models the re-activation case: the student had a workspace account,
+    // the admin suspended/removed it, and the student wants it back. Only
+    // a pending request or an active/pending ExternalAccount should block
+    // a new request — not a stale 'approved' row on its own.
     const user = await makeUser();
     const svc = makeService();
 
     await makeProvisioningRequest(user, { requested_type: 'workspace', status: 'approved' });
 
-    await expect(svc.create(user.id, 'workspace', user.id)).rejects.toThrow(ConflictError);
+    const created = await svc.create(user.id, 'workspace', user.id);
+    expect(created).toHaveLength(1);
+    expect(created[0].status).toBe('pending');
   });
 
   it('throws ConflictError when user already has an active workspace ExternalAccount', async () => {
@@ -367,7 +373,8 @@ describe('ProvisioningRequestService.approve — workspace request', () => {
     });
     expect(accounts).toHaveLength(1);
     expect(accounts[0].status).toBe('active');
-    expect(accounts[0].external_id).toBe('fake-gws-user-id');
+    // external_id on workspace rows is the League email, not the Google user id.
+    expect(accounts[0].external_id).toMatch(/@students\.jointheleague\.org$/);
   });
 
   it('records an approve_provisioning_request audit event', async () => {
@@ -493,7 +500,8 @@ describe('ProvisioningRequestService.approve — claude request', () => {
       where: { user_id: user.id, type: 'claude' },
     });
     expect(accounts).toHaveLength(1);
-    expect(accounts[0].status).toBe('active');
+    // Invite creates a pending seat; transitions to active once invite is accepted
+    expect(accounts[0].status).toBe('pending');
     expect(accounts[0].external_id).toBe('fake-claude-member-id');
   });
 
@@ -611,6 +619,76 @@ describe('ProvisioningRequestService.approve — claude request', () => {
       where: { id: req.id },
     });
     expect(stillPending.status).toBe('pending');
+  });
+
+  it('auto-chains workspace then claude when student has no active workspace ExternalAccount', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/AutoChain' });
+    const user = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const admin = await makeUser({ role: 'staff' });
+    // No workspace ExternalAccount — this is the auto-chain scenario.
+    const svc = makeService(
+      undefined,
+      makeWorkspaceProvisioningService(fakeClient),
+      makeClaudeProvisioningService(fakeClaudeClient),
+    );
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+
+    const updated = await svc.approve(req.id, admin.id);
+
+    expect(updated.status).toBe('approved');
+
+    // Both a workspace and a claude ExternalAccount should have been created.
+    const workspaceAccounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'workspace' },
+    });
+    expect(workspaceAccounts).toHaveLength(1);
+    expect(workspaceAccounts[0].status).toBe('active');
+
+    const claudeAccounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'claude' },
+    });
+    expect(claudeAccounts).toHaveLength(1);
+    // Invite creates a pending seat; transitions to active once invite is accepted
+    expect(claudeAccounts[0].status).toBe('pending');
+
+    // The audit event should carry auto_chained: true.
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'approve_provisioning_request', target_entity_id: String(req.id) },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].details).toMatchObject({ auto_chained: true, requestedType: 'claude' });
+  });
+
+  it('does NOT auto-chain when student already has an active workspace ExternalAccount', async () => {
+    const user = await makeUser({ role: 'student' });
+    const admin = await makeUser({ role: 'staff' });
+    await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+    const svc = makeService(
+      undefined,
+      makeWorkspaceProvisioningService(fakeClient),
+      makeClaudeProvisioningService(fakeClaudeClient),
+    );
+
+    const req = await makeProvisioningRequest(user, { requested_type: 'claude' });
+    await svc.approve(req.id, admin.id);
+
+    // Only one workspace account — no second one created by auto-chain.
+    const workspaceAccounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: user.id, type: 'workspace' },
+    });
+    expect(workspaceAccounts).toHaveLength(1);
+
+    // Audit event should NOT have auto_chained.
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'approve_provisioning_request', target_entity_id: String(req.id) },
+    });
+    expect(events).toHaveLength(1);
+    expect((events[0].details as any).auto_chained).toBeUndefined();
   });
 });
 
