@@ -26,6 +26,7 @@ export type UpdateExternalAccountInput = {
   status?: 'pending' | 'active' | 'suspended' | 'removed';
   status_changed_at?: Date | null;
   scheduled_delete_at?: Date | null;
+  external_id?: string | null;
 };
 
 export class ExternalAccountRepository {

@@ -605,3 +605,193 @@ describe('ExternalAccountLifecycleService.remove — error cases', () => {
     expect(fakeClaude.calls.removeMember).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// unsuspend — workspace
+// ---------------------------------------------------------------------------
+
+describe('ExternalAccountLifecycleService.unsuspend — workspace', () => {
+  it('calls googleClient.unsuspendUser and flips status to active', async () => {
+    const user = await makeUser();
+    const admin = await makeUser({ role: 'admin' });
+    const account = await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'suspended',
+      external_id: 'alice@students.jointheleague.org',
+    });
+
+    const svc = makeService(fakeGoogle, fakeClaude);
+    const updated = await runInTransaction((tx) =>
+      svc.unsuspend(account.id, admin.id, tx),
+    );
+
+    expect(fakeGoogle.calls.unsuspendUser).toHaveLength(1);
+    expect(fakeGoogle.calls.unsuspendUser[0]).toBe('alice@students.jointheleague.org');
+    expect(updated.status).toBe('active');
+    expect(updated.status_changed_at).not.toBeNull();
+  });
+
+  it('records an unsuspend_workspace audit event', async () => {
+    const user = await makeUser();
+    const admin = await makeUser({ role: 'admin' });
+    const account = await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'suspended',
+      external_id: 'alice@students.jointheleague.org',
+    });
+
+    const svc = makeService(fakeGoogle, fakeClaude);
+    await runInTransaction((tx) => svc.unsuspend(account.id, admin.id, tx));
+
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'unsuspend_workspace', target_user_id: user.id },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].actor_user_id).toBe(admin.id);
+    expect(events[0].target_entity_id).toBe(String(account.id));
+  });
+
+  it('throws UnprocessableError when the account is not suspended', async () => {
+    const user = await makeUser();
+    const admin = await makeUser({ role: 'admin' });
+    const account = await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+
+    const svc = makeService(fakeGoogle, fakeClaude);
+    await expect(
+      runInTransaction((tx) => svc.unsuspend(account.id, admin.id, tx)),
+    ).rejects.toThrow(UnprocessableError);
+
+    expect(fakeGoogle.calls.unsuspendUser).toHaveLength(0);
+  });
+
+  it('throws NotFoundError when the account does not exist', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const svc = makeService(fakeGoogle, fakeClaude);
+    await expect(
+      runInTransaction((tx) => svc.unsuspend(999999, admin.id, tx)),
+    ).rejects.toThrow(NotFoundError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// unsuspend — claude
+// ---------------------------------------------------------------------------
+
+describe('ExternalAccountLifecycleService.unsuspend — claude', () => {
+  it('cancels the old invite and issues a new one for an invite_* external_id', async () => {
+    const user = await makeUser({ primary_email: 'alice@example.com' });
+    const admin = await makeUser({ role: 'admin' });
+
+    // Workspace account gives us the League email to re-invite.
+    await makeExternalAccount(user, {
+      type: 'workspace',
+      status: 'active',
+      external_id: 'alice@students.jointheleague.org',
+    });
+
+    const account = await makeExternalAccount(user, {
+      type: 'claude',
+      status: 'suspended',
+      external_id: 'invite_old_123',
+    });
+
+    fakeClaude.configure('inviteToOrg', {
+      id: 'invite_new_456',
+      email: 'alice@students.jointheleague.org',
+      role: 'user',
+      status: 'pending',
+    });
+
+    const svc = makeService(fakeGoogle, fakeClaude);
+    const updated = await runInTransaction((tx) =>
+      svc.unsuspend(account.id, admin.id, tx),
+    );
+
+    expect(fakeClaude.calls.cancelInvite).toContain('invite_old_123');
+    expect(fakeClaude.calls.inviteToOrg).toHaveLength(1);
+    expect(fakeClaude.calls.inviteToOrg[0].email).toBe(
+      'alice@students.jointheleague.org',
+    );
+
+    expect(updated.status).toBe('pending');
+    expect(updated.external_id).toBe('invite_new_456');
+
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'unsuspend_claude', target_user_id: user.id },
+    });
+    expect(events).toHaveLength(1);
+  });
+
+  it('falls back to primary_email when no workspace ExternalAccount exists', async () => {
+    const user = await makeUser({ primary_email: 'alice-fallback@example.com' });
+    const admin = await makeUser({ role: 'admin' });
+    const account = await makeExternalAccount(user, {
+      type: 'claude',
+      status: 'suspended',
+      external_id: 'invite_only',
+    });
+
+    fakeClaude.configure('inviteToOrg', {
+      id: 'invite_new',
+      email: 'alice-fallback@example.com',
+      role: 'user',
+      status: 'pending',
+    });
+
+    const svc = makeService(fakeGoogle, fakeClaude);
+    await runInTransaction((tx) => svc.unsuspend(account.id, admin.id, tx));
+
+    expect(fakeClaude.calls.inviteToOrg[0].email).toBe(
+      'alice-fallback@example.com',
+    );
+  });
+
+  it('continues when cancelInvite fails (best-effort)', async () => {
+    const user = await makeUser({ primary_email: 'alice@example.com' });
+    const admin = await makeUser({ role: 'admin' });
+    const account = await makeExternalAccount(user, {
+      type: 'claude',
+      status: 'suspended',
+      external_id: 'invite_stale',
+    });
+
+    fakeClaude.configureError('cancelInvite', new Error('invite already cancelled'));
+    fakeClaude.configure('inviteToOrg', {
+      id: 'invite_fresh',
+      email: 'alice@example.com',
+      role: 'user',
+      status: 'pending',
+    });
+
+    const svc = makeService(fakeGoogle, fakeClaude);
+    const updated = await runInTransaction((tx) =>
+      svc.unsuspend(account.id, admin.id, tx),
+    );
+
+    expect(updated.status).toBe('pending');
+    expect(updated.external_id).toBe('invite_fresh');
+    expect(fakeClaude.calls.inviteToOrg).toHaveLength(1);
+  });
+
+  it('throws UnprocessableError for a user_* external_id (irreversible)', async () => {
+    const user = await makeUser();
+    const admin = await makeUser({ role: 'admin' });
+    const account = await makeExternalAccount(user, {
+      type: 'claude',
+      status: 'suspended',
+      external_id: 'user_abc123',
+    });
+
+    const svc = makeService(fakeGoogle, fakeClaude);
+    await expect(
+      runInTransaction((tx) => svc.unsuspend(account.id, admin.id, tx)),
+    ).rejects.toThrow(UnprocessableError);
+
+    expect(fakeClaude.calls.cancelInvite).toHaveLength(0);
+    expect(fakeClaude.calls.inviteToOrg).toHaveLength(0);
+  });
+});

@@ -72,6 +72,48 @@ adminExternalAccountsRouter.post('/external-accounts/:id/suspend', async (req, r
 // Returns 502 if a provider API call fails.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// POST /admin/external-accounts/:id/unsuspend
+// Calls ExternalAccountLifecycleService.unsuspend(id, actorId, tx).
+// Returns 200 with the updated ExternalAccount on success.
+// Returns 404 if the account does not exist.
+// Returns 422 if the account is not suspended or cannot be un-suspended
+//   (e.g., claude user_* external_id — delete and re-provision instead).
+// Returns 502 if a provider API call fails.
+// ---------------------------------------------------------------------------
+
+adminExternalAccountsRouter.post('/external-accounts/:id/unsuspend', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid account id' });
+    }
+    const actorId = (req.session as any).userId as number;
+
+    const updated = await (prisma as any).$transaction(async (tx: any) => {
+      return req.services.externalAccountLifecycle.unsuspend(id, actorId, tx);
+    });
+
+    return res.status(200).json({
+      id: updated.id,
+      userId: updated.user_id,
+      type: updated.type,
+      status: updated.status,
+      externalId: updated.external_id,
+      statusChangedAt: updated.status_changed_at,
+      scheduledDeleteAt: updated.scheduled_delete_at ?? null,
+    });
+  } catch (err: any) {
+    if (err instanceof AppError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    if (err instanceof WorkspaceApiError) {
+      return res.status(502).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
 adminExternalAccountsRouter.post('/external-accounts/:id/remove', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);

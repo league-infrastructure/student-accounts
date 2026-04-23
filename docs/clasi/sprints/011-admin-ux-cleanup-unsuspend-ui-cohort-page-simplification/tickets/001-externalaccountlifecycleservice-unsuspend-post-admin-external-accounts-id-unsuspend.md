@@ -1,11 +1,12 @@
 ---
-id: "001"
-title: "ExternalAccountLifecycleService.unsuspend + POST /admin/external-accounts/:id/unsuspend"
-status: todo
-use-cases: ["SUC-011-001"]
+id: '001'
+title: ExternalAccountLifecycleService.unsuspend + POST /admin/external-accounts/:id/unsuspend
+status: in-progress
+use-cases:
+- SUC-011-001
 depends-on: []
-github-issue: ""
-todo: "admin-user-page-unsuspend-ui.md"
+github-issue: ''
+todo: admin-user-page-unsuspend-ui.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -37,15 +38,15 @@ The League email for the invite is derived from the user's workspace
 
 ## Acceptance Criteria
 
-- [ ] `ExternalAccountLifecycleService.unsuspend(accountId, actorId, tx)` exists and is exported.
-- [ ] Throws `NotFoundError` if the account does not exist.
-- [ ] Throws `UnprocessableError` if the account is not currently `suspended`.
-- [ ] Workspace case: calls `googleClient.unsuspendUser(email)`, sets `status='active'`, sets `status_changed_at=now`, emits `unsuspend_workspace` audit event with `previousStatus` and `externalId` in details.
-- [ ] Claude invite case: calls `cancelInvite(oldId)` (warn-and-continue on failure), then `inviteToOrg({ email })`, persists the new invite id in `external_id`, sets `status='pending'`, emits `unsuspend_claude` audit event.
-- [ ] Claude user-id case: throws `UnprocessableError` with the "cannot be un-suspended; delete and re-provision" message; no state change.
-- [ ] `POST /admin/external-accounts/:id/unsuspend` handler is added inside the existing `adminExternalAccountsRouter`, returning 200 with the updated row, 404 on missing, 422 on precondition failure, 502 on provider errors.
-- [ ] Unit tests for all three branches pass.
-- [ ] `npm run test:server` passes.
+- [x] `ExternalAccountLifecycleService.unsuspend(accountId, actorId, tx)` exists and is exported.
+- [x] Throws `NotFoundError` if the account does not exist.
+- [x] Throws `UnprocessableError` if the account is not currently `suspended`.
+- [x] Workspace case: calls `googleClient.unsuspendUser(email)`, sets `status='active'`, sets `status_changed_at=now`, emits `unsuspend_workspace` audit event with `previousStatus` and `externalId` in details.
+- [x] Claude invite case: calls `cancelInvite(oldId)` (warn-and-continue on failure), then `inviteToOrg({ email })`, persists the new invite id in `external_id`, sets `status='pending'`, emits `unsuspend_claude` audit event.
+- [x] Claude user-id case: throws `UnprocessableError` with the "cannot be un-suspended; delete and re-provision" message; no state change.
+- [x] `POST /admin/external-accounts/:id/unsuspend` handler is added inside the existing `adminExternalAccountsRouter`, returning 200 with the updated row, 404 on missing, 422 on precondition failure, 502 on provider errors.
+- [x] Unit tests for all three branches pass.
+- [x] `npm run test:server` passes.
 
 ## Plan
 
