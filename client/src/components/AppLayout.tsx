@@ -25,6 +25,7 @@ const ADMIN_WORKFLOW_NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/requests', label: 'Provisioning Requests' },
   { to: '/cohorts', label: 'Cohorts' },
+  { to: '/groups', label: 'Groups' },
   { to: '/users', label: 'Users' },
   { to: '/sync', label: 'Sync' },
   { to: '/merge-queue', label: 'Merge Queue' },
