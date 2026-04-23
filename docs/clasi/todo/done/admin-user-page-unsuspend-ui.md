@@ -1,5 +1,9 @@
 ---
-status: pending
+status: done
+sprint: '011'
+tickets:
+- '001'
+- '003'
 ---
 
 # Admin user page: show suspension state and an Unsuspend button

@@ -215,6 +215,194 @@ export class ExternalAccountLifecycleService {
   }
 
   // ---------------------------------------------------------------------------
+  // unsuspend
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Un-suspend an external account that is currently `status='suspended'`.
+   *
+   * For workspace: calls `googleClient.unsuspendUser(email)` (the same method
+   * used by WorkspaceProvisioningService.provision() when reactivating a
+   * prior-suspended workspace). On success the row flips to `status='active'`.
+   *
+   * For claude: branches on the external_id prefix.
+   *   - `invite_*`  — best-effort cancelInvite(oldId), then inviteToOrg({ email }),
+   *     persist the new invite id as external_id, flip status to `pending`.
+   *     The email is derived from the user's workspace ExternalAccount
+   *     `external_id` (which by convention on this project is the League
+   *     email), falling back to `user.primary_email`.
+   *   - `user_*` / anything else — throw UnprocessableError with the
+   *     "delete and re-provision" message. Anthropic's API does not expose
+   *     a clean re-activation for a suspended organization user.
+   *
+   * @throws NotFoundError      if accountId does not exist.
+   * @throws UnprocessableError if the account is not currently suspended,
+   *   or if claude un-suspend is attempted against a non-invite external_id,
+   *   or if no League email can be derived for a claude re-invite.
+   */
+  async unsuspend(
+    accountId: number,
+    actorId: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<ExternalAccount> {
+    // --- 1. Fetch and validate ---
+    const account = await this.externalAccountRepo.findById(tx, accountId);
+    if (!account) {
+      throw new NotFoundError(`ExternalAccount ${accountId} not found`);
+    }
+    if (account.status !== 'suspended') {
+      throw new UnprocessableError(
+        `ExternalAccount ${accountId} is not suspended (current status: ${account.status})`,
+      );
+    }
+
+    logger.info(
+      { accountId, actorId, type: account.type, currentStatus: account.status },
+      '[external-account-lifecycle] unsuspend: starting',
+    );
+
+    // --- 2. Dispatch by account type ---
+    const now = new Date();
+
+    if (account.type === 'workspace') {
+      const email = account.external_id;
+      if (!email) {
+        throw new UnprocessableError(
+          `ExternalAccount ${accountId} has no external_id (workspace email); cannot unsuspend`,
+        );
+      }
+      await this.googleClient.unsuspendUser(email);
+      logger.info(
+        { accountId, email },
+        '[external-account-lifecycle] unsuspend: workspace user reactivated',
+      );
+
+      const updated = await this.externalAccountRepo.update(tx, accountId, {
+        status: 'active',
+        status_changed_at: now,
+      });
+
+      await this.auditService.record(tx, {
+        actor_user_id: actorId,
+        action: 'unsuspend_workspace',
+        target_user_id: account.user_id,
+        target_entity_type: 'ExternalAccount',
+        target_entity_id: String(accountId),
+        details: {
+          previousStatus: account.status,
+          externalId: account.external_id,
+        },
+      });
+
+      logger.info(
+        { accountId, actorId, action: 'unsuspend_workspace' },
+        '[external-account-lifecycle] unsuspend: complete',
+      );
+
+      return updated;
+    }
+
+    if (account.type === 'claude') {
+      const memberId = account.external_id;
+      if (!memberId) {
+        throw new UnprocessableError(
+          `ExternalAccount ${accountId} has no external_id (Claude id); cannot unsuspend`,
+        );
+      }
+      if (!memberId.startsWith('invite_')) {
+        throw new UnprocessableError(
+          'Claude user accounts cannot be un-suspended; delete this account and ' +
+            're-provision a new Claude seat instead.',
+        );
+      }
+
+      // Derive the League email for the re-invite.
+      const leagueEmail = await this.resolveLeagueEmailForUser(tx, account.user_id);
+      if (!leagueEmail) {
+        throw new UnprocessableError(
+          `ExternalAccount ${accountId} user has no derivable League email; cannot re-invite`,
+        );
+      }
+
+      // Best-effort cancel of the old invite so the student can't accept the stale one.
+      try {
+        await this.claudeTeamClient.cancelInvite(memberId);
+        logger.info(
+          { accountId, oldInviteId: memberId },
+          '[external-account-lifecycle] unsuspend: cancelled previous Claude invite',
+        );
+      } catch (err) {
+        logger.warn(
+          { accountId, oldInviteId: memberId, err },
+          '[external-account-lifecycle] unsuspend: cancelInvite failed — continuing with fresh invite',
+        );
+      }
+
+      const fresh = await this.claudeTeamClient.inviteToOrg({ email: leagueEmail });
+      logger.info(
+        { accountId, newInviteId: fresh.id, email: leagueEmail },
+        '[external-account-lifecycle] unsuspend: new Claude invite sent',
+      );
+
+      const updated = await this.externalAccountRepo.update(tx, accountId, {
+        status: 'pending',
+        status_changed_at: now,
+        external_id: fresh.id,
+      });
+
+      await this.auditService.record(tx, {
+        actor_user_id: actorId,
+        action: 'unsuspend_claude',
+        target_user_id: account.user_id,
+        target_entity_type: 'ExternalAccount',
+        target_entity_id: String(accountId),
+        details: {
+          previousStatus: account.status,
+          previousExternalId: memberId,
+          newExternalId: fresh.id,
+          email: leagueEmail,
+        },
+      });
+
+      logger.info(
+        { accountId, actorId, action: 'unsuspend_claude' },
+        '[external-account-lifecycle] unsuspend: complete',
+      );
+
+      return updated;
+    }
+
+    throw new UnprocessableError(
+      `Unsupported account type "${account.type}" for unsuspend`,
+    );
+  }
+
+  /**
+   * Resolve the League email for a user when re-inviting a suspended Claude
+   * invite. Preference order:
+   *   1. The external_id of any workspace ExternalAccount belonging to the
+   *      user (regardless of status) — by project convention this field
+   *      holds the League email.
+   *   2. The user's primary_email.
+   * Returns null when neither is available.
+   */
+  private async resolveLeagueEmailForUser(
+    tx: Prisma.TransactionClient,
+    userId: number,
+  ): Promise<string | null> {
+    const workspace = await (tx as any).externalAccount.findFirst({
+      where: { user_id: userId, type: 'workspace' },
+      orderBy: { status_changed_at: 'desc' },
+    });
+    if (workspace?.external_id) return workspace.external_id;
+    const user = await (tx as any).user.findUnique({
+      where: { id: userId },
+      select: { primary_email: true },
+    });
+    return user?.primary_email ?? null;
+  }
+
+  // ---------------------------------------------------------------------------
   // remove
   // ---------------------------------------------------------------------------
 

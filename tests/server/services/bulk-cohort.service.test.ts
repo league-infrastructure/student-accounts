@@ -403,3 +403,119 @@ describe('BulkCohortService.previewCount', () => {
     expect(count).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// suspendAllInCohort
+// ---------------------------------------------------------------------------
+
+describe('BulkCohortService.suspendAllInCohort', () => {
+  it('suspends active workspace + claude accounts for all active students in the cohort', async () => {
+    const cohort = await makeCohort();
+    const alice = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const bob = await makeUser({ role: 'student', cohort_id: cohort.id });
+
+    const aWs = await makeExternalAccount(alice, { type: 'workspace', status: 'active' });
+    const aCl = await makeExternalAccount(alice, { type: 'claude', status: 'active' });
+    const bWs = await makeExternalAccount(bob, { type: 'workspace', status: 'active' });
+
+    const svc = makeService(fake);
+    const result = await svc.suspendAllInCohort(cohort.id, ACTOR_ID);
+
+    expect(result.succeeded).toHaveLength(3);
+    expect(result.failed).toHaveLength(0);
+    expect(result.succeeded.sort()).toEqual([aWs.id, aCl.id, bWs.id].sort());
+    expect(fake.suspendCalls.sort()).toEqual([aWs.id, aCl.id, bWs.id].sort());
+  });
+
+  it('ignores non-active accounts', async () => {
+    const cohort = await makeCohort();
+    const alice = await makeUser({ role: 'student', cohort_id: cohort.id });
+    await makeExternalAccount(alice, { type: 'workspace', status: 'suspended' });
+    await makeExternalAccount(alice, { type: 'claude', status: 'removed' });
+
+    const svc = makeService(fake);
+    const result = await svc.suspendAllInCohort(cohort.id, ACTOR_ID);
+
+    expect(result.succeeded).toHaveLength(0);
+    expect(result.failed).toHaveLength(0);
+    expect(fake.suspendCalls).toHaveLength(0);
+  });
+
+  it('fail-soft: one account fails, the others still succeed, failure carries type', async () => {
+    const cohort = await makeCohort();
+    const alice = await makeUser({ role: 'student', cohort_id: cohort.id, display_name: 'Alice' });
+    const aWs = await makeExternalAccount(alice, { type: 'workspace', status: 'active' });
+    const aCl = await makeExternalAccount(alice, { type: 'claude', status: 'active' });
+
+    // Ordering within a user is not guaranteed; fail whichever account is
+    // processed second so we get one success and one failure regardless.
+    fake.queueSuspendError(null);
+    fake.queueSuspendError(new Error('rate limited'));
+
+    const svc = makeService(fake);
+    const result = await svc.suspendAllInCohort(cohort.id, ACTOR_ID);
+
+    expect(result.succeeded).toHaveLength(1);
+    expect(result.failed).toHaveLength(1);
+
+    // The failing account must be one of the two created, with the right
+    // type attached, and the success + failure must cover the set.
+    const failed = result.failed[0];
+    expect([aWs.id, aCl.id]).toContain(failed.accountId);
+    expect(failed.userName).toBe('Alice');
+    expect(failed.error).toBe('rate limited');
+    expect(failed.type).toBe(failed.accountId === aWs.id ? 'workspace' : 'claude');
+
+    // Succeeded + failed together must be the full set we created.
+    const all = [...result.succeeded, failed.accountId].sort();
+    expect(all).toEqual([aWs.id, aCl.id].sort());
+  });
+
+  it('throws NotFoundError when cohort does not exist', async () => {
+    const svc = makeService(fake);
+    await expect(svc.suspendAllInCohort(999999, ACTOR_ID)).rejects.toThrow(NotFoundError);
+  });
+
+  it('zero-eligible cohort returns empty result', async () => {
+    const cohort = await makeCohort();
+    const svc = makeService(fake);
+    const result = await svc.suspendAllInCohort(cohort.id, ACTOR_ID);
+    expect(result).toEqual({ succeeded: [], failed: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// removeAllInCohort
+// ---------------------------------------------------------------------------
+
+describe('BulkCohortService.removeAllInCohort', () => {
+  it('removes active and suspended workspace + claude accounts', async () => {
+    const cohort = await makeCohort();
+    const alice = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const aWs = await makeExternalAccount(alice, { type: 'workspace', status: 'active' });
+    const aCl = await makeExternalAccount(alice, { type: 'claude', status: 'suspended' });
+
+    const svc = makeService(fake);
+    const result = await svc.removeAllInCohort(cohort.id, ACTOR_ID);
+
+    expect(result.succeeded.sort()).toEqual([aWs.id, aCl.id].sort());
+    expect(result.failed).toHaveLength(0);
+    expect(fake.removeCalls.sort()).toEqual([aWs.id, aCl.id].sort());
+  });
+
+  it('skips removed accounts', async () => {
+    const cohort = await makeCohort();
+    const alice = await makeUser({ role: 'student', cohort_id: cohort.id });
+    await makeExternalAccount(alice, { type: 'workspace', status: 'removed' });
+
+    const svc = makeService(fake);
+    const result = await svc.removeAllInCohort(cohort.id, ACTOR_ID);
+    expect(result.succeeded).toHaveLength(0);
+    expect(result.failed).toHaveLength(0);
+  });
+
+  it('throws NotFoundError when cohort does not exist', async () => {
+    const svc = makeService(fake);
+    await expect(svc.removeAllInCohort(999999, ACTOR_ID)).rejects.toThrow(NotFoundError);
+  });
+});

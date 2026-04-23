@@ -144,6 +144,61 @@ adminBulkCohortRouter.post('/cohorts/:id/bulk-remove', async (req, res, next) =>
 });
 
 // ---------------------------------------------------------------------------
+// POST /admin/cohorts/:id/bulk-suspend-all
+// No body. Suspends every active workspace + claude ExternalAccount for
+// every active student in the cohort. Fail-soft per account.
+// ---------------------------------------------------------------------------
+
+adminBulkCohortRouter.post('/cohorts/:id/bulk-suspend-all', async (req, res, next) => {
+  try {
+    const cohortId = parseInt(req.params.id, 10);
+    if (isNaN(cohortId)) {
+      return res.status(400).json({ error: 'Invalid cohort id' });
+    }
+
+    const actorId = (req.session as any).userId as number;
+
+    const result = await req.services.bulkCohort.suspendAllInCohort(cohortId, actorId);
+
+    const status = result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
+    return res.status(status).json(result);
+  } catch (err: any) {
+    if (err instanceof AppError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/cohorts/:id/bulk-remove-all
+// No body. Removes every active + suspended workspace + claude
+// ExternalAccount for every active student in the cohort. Fail-soft per
+// account.
+// ---------------------------------------------------------------------------
+
+adminBulkCohortRouter.post('/cohorts/:id/bulk-remove-all', async (req, res, next) => {
+  try {
+    const cohortId = parseInt(req.params.id, 10);
+    if (isNaN(cohortId)) {
+      return res.status(400).json({ error: 'Invalid cohort id' });
+    }
+
+    const actorId = (req.session as any).userId as number;
+
+    const result = await req.services.bulkCohort.removeAllInCohort(cohortId, actorId);
+
+    const status = result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
+    return res.status(status).json(result);
+  } catch (err: any) {
+    if (err instanceof AppError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /admin/cohorts/:id/bulk-provision
 //
 // Body: { accountType: 'workspace' | 'claude' }
