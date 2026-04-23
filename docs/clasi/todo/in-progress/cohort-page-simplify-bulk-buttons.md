@@ -1,5 +1,9 @@
 ---
-status: pending
+status: in-progress
+sprint: '011'
+tickets:
+- 011-002
+- 011-004
 ---
 
 # Cohort page: simplify bulk action buttons
