@@ -1,11 +1,15 @@
 ---
-id: "004"
-title: "llmProxyTokenAuth middleware + public /proxy/v1 router wiring"
-status: todo
-use-cases: ["SUC-013-003", "SUC-013-005"]
-depends-on: ["002", "003"]
-github-issue: ""
-todo: ""
+id: '004'
+title: llmProxyTokenAuth middleware + public /proxy/v1 router wiring
+status: done
+use-cases:
+- SUC-013-003
+- SUC-013-005
+depends-on:
+- '002'
+- '003'
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -61,21 +65,21 @@ document that session cookies received on `/proxy/v1` are ignored.
 
 ## Acceptance Criteria
 
-- [ ] `llmProxyTokenAuth` middleware responds 401 for missing /
+- [x] `llmProxyTokenAuth` middleware responds 401 for missing /
       invalid / revoked / expired tokens, 429 for quota exhausted,
       and attaches the token row on success.
-- [ ] `GET /proxy/v1/health` returns 200 with the documented body
+- [x] `GET /proxy/v1/health` returns 200 with the documented body
       and requires no auth.
-- [ ] `POST /proxy/v1/messages` with a valid bearer forwards to
+- [x] `POST /proxy/v1/messages` with a valid bearer forwards to
       Anthropic via `LlmProxyForwarderService`.
-- [ ] `POST /proxy/v1/messages` with no key configured returns
+- [x] `POST /proxy/v1/messages` with no key configured returns
       503.
-- [ ] `POST /proxy/v1/messages` with an invalid token returns 401.
-- [ ] `POST /proxy/v1/messages` with a quota-exhausted token
+- [x] `POST /proxy/v1/messages` with an invalid token returns 401.
+- [x] `POST /proxy/v1/messages` with a quota-exhausted token
       returns 429.
-- [ ] Non-`POST` methods on `/messages` return 405.
-- [ ] New tests pass.
-- [ ] `npm run test:server` and `npm run test:client` pass relative
+- [x] Non-`POST` methods on `/messages` return 405.
+- [x] New tests pass.
+- [x] `npm run test:server` and `npm run test:client` pass relative
       to the pre-existing drift.
 
 ## Testing

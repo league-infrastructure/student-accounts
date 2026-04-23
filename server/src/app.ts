@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
 import { accountRouter } from './routes/account';
 import { staffDirectoryRouter } from './routes/staff/directory';
+import { llmProxyRouter } from './routes/llm-proxy';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -66,6 +67,11 @@ app.use('/api', authRouter);
 app.use('/api', adminRouter);
 app.use('/api', accountRouter);
 app.use('/api', staffDirectoryRouter);
+
+// LLM proxy — mounted OUTSIDE /api so Anthropic-compatible clients
+// (Claude Code, VS Code extension) can set ANTHROPIC_BASE_URL to
+// <origin>/proxy and append /v1/messages themselves. See Sprint 013.
+app.use('/proxy/v1', llmProxyRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());
