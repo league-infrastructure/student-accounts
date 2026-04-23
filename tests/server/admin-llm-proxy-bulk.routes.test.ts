@@ -15,6 +15,7 @@ import { prisma } from '../../server/src/services/prisma';
 import { makeUser, makeCohort, makeGroup, makeMembership } from './helpers/factories';
 
 let adminAgent: ReturnType<typeof request.agent>;
+let adminUserId: number;
 
 beforeAll(async () => {
   adminAgent = request.agent(app);
@@ -26,15 +27,29 @@ beforeAll(async () => {
       role: 'ADMIN',
     })
     .expect(200);
+  const admin = await prisma.user.findFirst({
+    where: { primary_email: 'admin-bulk-llm@example.com' },
+  });
+  adminUserId = admin!.id;
 }, 30000);
 
-beforeEach(async () => {
+async function wipeExceptAdmin() {
   await (prisma as any).llmProxyToken.deleteMany();
+  await (prisma as any).auditEvent.deleteMany();
+  await (prisma as any).userGroup.deleteMany();
+  await (prisma as any).group.deleteMany();
+  await (prisma as any).externalAccount.deleteMany();
+  await (prisma as any).login.deleteMany({ where: { user_id: { not: adminUserId } } });
+  await (prisma as any).user.deleteMany({ where: { id: { not: adminUserId } } });
+  await (prisma as any).cohort.deleteMany();
+}
+
+beforeEach(async () => {
+  await wipeExceptAdmin();
 });
 
 afterEach(async () => {
-  await (prisma as any).llmProxyToken.deleteMany();
-  await (prisma as any).auditEvent.deleteMany();
+  await wipeExceptAdmin();
 });
 
 function futureIso(daysAhead = 30): string {
