@@ -34,6 +34,13 @@ export type BulkOperationFailure = {
   accountId: number;
   userId: number;
   userName: string;
+  /**
+   * Optional account type — populated by the *AllInCohort bulk methods
+   * that mix workspace and claude accounts in the same batch, so the UI
+   * can render "name (claude): reason". Omitted by the legacy per-type
+   * methods where type is implicit from the request.
+   */
+  type?: AccountType;
   error: string;
 };
 
@@ -176,6 +183,53 @@ export class BulkCohortService {
   }
 
   // ---------------------------------------------------------------------------
+  // suspendAllInCohort
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Suspend every active workspace + claude ExternalAccount for every
+   * active student in the cohort. Each per-account call runs inside its
+   * own prisma.$transaction. Fail-soft per account.
+   *
+   * Failure entries include `type` so the UI can render
+   * "${name} (claude): ${error}".
+   *
+   * @throws NotFoundError if cohortId does not exist.
+   */
+  async suspendAllInCohort(
+    cohortId: number,
+    actorId: number,
+  ): Promise<BulkOperationResult> {
+    await this._assertCohortExists(cohortId);
+
+    const accounts = await this._loadAllEligibleForSuspend(cohortId);
+    return this._processAccounts(accounts, actorId, 'suspend');
+  }
+
+  // ---------------------------------------------------------------------------
+  // removeAllInCohort
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Remove every active + suspended workspace + claude ExternalAccount for
+   * every active student in the cohort. Each per-account call runs inside
+   * its own prisma.$transaction. Fail-soft per account.
+   *
+   * Failure entries include `type`.
+   *
+   * @throws NotFoundError if cohortId does not exist.
+   */
+  async removeAllInCohort(
+    cohortId: number,
+    actorId: number,
+  ): Promise<BulkOperationResult> {
+    await this._assertCohortExists(cohortId);
+
+    const accounts = await this._loadAllEligibleForRemove(cohortId);
+    return this._processAccounts(accounts, actorId, 'remove');
+  }
+
+  // ---------------------------------------------------------------------------
   // previewCount
   // ---------------------------------------------------------------------------
 
@@ -273,11 +327,79 @@ export class BulkCohortService {
   }
 
   /**
+   * Load active workspace + claude ExternalAccounts for all active users
+   * in the cohort. Used by suspendAllInCohort. Carries `type` through so
+   * failure entries can render "name (type): reason".
+   */
+  private async _loadAllEligibleForSuspend(
+    cohortId: number,
+  ): Promise<Array<{ id: number; userId: number; userName: string; type: AccountType }>> {
+    const rows = await (this.prisma as any).externalAccount.findMany({
+      where: {
+        type: { in: ['workspace', 'claude'] },
+        status: 'active',
+        user: {
+          cohort_id: cohortId,
+          is_active: true,
+        },
+      },
+      include: {
+        user: {
+          select: { id: true, display_name: true },
+        },
+      },
+    });
+
+    return rows.map((r: any) => ({
+      id: r.id,
+      userId: r.user.id,
+      userName: r.user.display_name,
+      type: r.type as AccountType,
+    }));
+  }
+
+  /**
+   * Load active + suspended workspace + claude ExternalAccounts for all
+   * active users in the cohort. Used by removeAllInCohort.
+   */
+  private async _loadAllEligibleForRemove(
+    cohortId: number,
+  ): Promise<Array<{ id: number; userId: number; userName: string; type: AccountType }>> {
+    const rows = await (this.prisma as any).externalAccount.findMany({
+      where: {
+        type: { in: ['workspace', 'claude'] },
+        status: { in: ['active', 'suspended'] },
+        user: {
+          cohort_id: cohortId,
+          is_active: true,
+        },
+      },
+      include: {
+        user: {
+          select: { id: true, display_name: true },
+        },
+      },
+    });
+
+    return rows.map((r: any) => ({
+      id: r.id,
+      userId: r.user.id,
+      userName: r.user.display_name,
+      type: r.type as AccountType,
+    }));
+  }
+
+  /**
    * Iterate accounts, calling suspend or remove on each in its own
    * transaction. Collects results fail-soft.
+   *
+   * Each input row may carry an optional `type` field (populated by the
+   * *AllInCohort methods that mix workspace + claude in a single batch);
+   * when present, it is propagated to each BulkOperationFailure so the
+   * UI can render "name (type): reason".
    */
   private async _processAccounts(
-    accounts: Array<{ id: number; userId: number; userName: string }>,
+    accounts: Array<{ id: number; userId: number; userName: string; type?: AccountType }>,
     actorId: number,
     operation: 'suspend' | 'remove',
   ): Promise<BulkOperationResult> {
@@ -295,12 +417,14 @@ export class BulkCohortService {
         });
         succeeded.push(account.id);
       } catch (err: any) {
-        failed.push({
+        const entry: BulkOperationFailure = {
           accountId: account.id,
           userId: account.userId,
           userName: account.userName,
           error: err instanceof Error ? err.message : String(err),
-        });
+        };
+        if (account.type !== undefined) entry.type = account.type;
+        failed.push(entry);
       }
     }
 
