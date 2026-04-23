@@ -1,7 +1,7 @@
 ---
 id: '012'
 title: "App-level groups \u2014 multi-membership, search, bulk provisioning"
-status: active
+status: done
 branch: sprint/012-app-level-groups-multi-membership-search-bulk-provisioning
 use-cases: []
 ---
