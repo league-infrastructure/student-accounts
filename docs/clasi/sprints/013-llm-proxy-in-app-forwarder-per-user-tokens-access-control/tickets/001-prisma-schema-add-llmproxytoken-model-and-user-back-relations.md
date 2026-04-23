@@ -1,8 +1,12 @@
 ---
 id: '001'
 title: "Prisma schema \u2014 add LlmProxyToken model and User back-relations"
-status: todo
-use-cases: ["SUC-013-001", "SUC-013-002", "SUC-013-003", "SUC-013-005"]
+status: done
+use-cases:
+- SUC-013-001
+- SUC-013-002
+- SUC-013-003
+- SUC-013-005
 depends-on: []
 github-issue: ''
 todo: llm-proxy-integration.md
@@ -70,17 +74,17 @@ llm_proxy_tokens_granted LlmProxyToken[] @relation("LlmProxyGranter")
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma` contains the `LlmProxyToken`
+- [x] `server/prisma/schema.prisma` contains the `LlmProxyToken`
       model and the two `User` back-relations exactly as specified.
-- [ ] `npx prisma generate` completes with no errors and the
+- [x] `npx prisma generate` completes with no errors and the
       generated client exports `LlmProxyToken`.
-- [ ] `npx prisma db push` succeeds against the dev DB.
-- [ ] `DATABASE_URL="file:./data/test.db" npx prisma db push` (from
+- [x] `npx prisma db push` succeeds against the dev DB.
+- [x] `DATABASE_URL="file:./data/test.db" npx prisma db push` (from
       `server/`) succeeds against the test DB.
-- [ ] `ServiceRegistry.clearAll()` has `await (p as any).llmProxyToken.deleteMany()` placed before `user.deleteMany()`.
-- [ ] `npm run test:server` still runs; no tests regress from the
+- [x] `ServiceRegistry.clearAll()` has `await (p as any).llmProxyToken.deleteMany()` placed before `user.deleteMany()`.
+- [x] `npm run test:server` still runs; no tests regress from the
       schema change. Pre-existing flakes are acceptable.
-- [ ] `npm run test:client` still runs; pre-existing drift
+- [x] `npm run test:client` still runs; pre-existing drift
       (UserDetailPanel / Cohorts / LoginPage / UsersPanel) remains
       the only failures.
 

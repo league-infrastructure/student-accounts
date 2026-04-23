@@ -143,6 +143,8 @@ model User {
   merge_suggestions_a    MergeSuggestion[]     @relation("MergeUserA")
   merge_suggestions_b    MergeSuggestion[]     @relation("MergeUserB")
   merge_decisions        MergeSuggestion[]     @relation("MergeDecider")
+  llm_proxy_tokens          LlmProxyToken[]
+  llm_proxy_tokens_granted  LlmProxyToken[]     @relation("LlmProxyGranter")
 
   @@index([role])
   @@index([cohort_id])
@@ -267,4 +269,35 @@ model MergeSuggestion {
 
   @@unique([user_a_id, user_b_id])
   @@index([status, created_at])
+}
+
+// ---------------------------------------------------------------------------
+// LlmProxyToken — per-user bearer token for the in-app LLM proxy (Sprint 013).
+//
+// The app hosts a small forwarder at /proxy/v1 that relays requests to the
+// Anthropic Messages API on behalf of students. Each student who has been
+// granted access has exactly one active (non-revoked, non-expired) token.
+// Tokens are opaque random strings shown to the admin once at grant time;
+// the hash (SHA-256 hex) is persisted for validation on every request.
+// Quota is enforced via token_limit vs tokens_used with a hard cut-off.
+// ---------------------------------------------------------------------------
+model LlmProxyToken {
+  id            Int       @id @default(autoincrement())
+  user_id       Int
+  token_hash    String    @unique
+  expires_at    DateTime
+  token_limit   Int
+  tokens_used   Int       @default(0)
+  request_count Int       @default(0)
+  granted_by    Int?
+  granted_at    DateTime  @default(now())
+  revoked_at    DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  user    User  @relation(fields: [user_id],    references: [id], onDelete: Cascade)
+  granter User? @relation("LlmProxyGranter", fields: [granted_by], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([user_id, revoked_at, expires_at])
 }
