@@ -1,8 +1,13 @@
 ---
-status: in-progress
+status: done
 sprint: '012'
 tickets:
-- 012-001
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
 ---
 
 # App-level groups for bulk provisioning
