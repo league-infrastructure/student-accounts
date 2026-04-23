@@ -320,18 +320,25 @@ adminGroupsRouter.post('/groups/:id/bulk-provision', async (req, res, next) => {
     const id = parseIntParam(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Invalid group id' });
 
-    const { accountType } = req.body as { accountType?: string };
+    const { accountType, userIds } = req.body as { accountType?: string; userIds?: unknown };
     if (!accountType || !VALID_ACCOUNT_TYPES.includes(accountType as AccountType)) {
       return res.status(400).json({
         error: `Missing or invalid accountType; must be one of: ${VALID_ACCOUNT_TYPES.join(', ')}`,
       });
     }
 
+    // Validate userIds if provided
+    const parsedUserIds =
+      Array.isArray(userIds) && userIds.every((uid) => typeof uid === 'number')
+        ? (userIds as number[])
+        : undefined;
+
     const actorId = (req.session as any).userId as number;
     const result = await req.services.bulkGroup.provisionGroup(
       id,
       accountType as AccountType,
       actorId,
+      parsedUserIds,
     );
     const status =
       result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
@@ -349,8 +356,20 @@ adminGroupsRouter.post('/groups/:id/bulk-suspend-all', async (req, res, next) =>
   try {
     const id = parseIntParam(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Invalid group id' });
+
+    const { userIds } = req.body as { userIds?: unknown };
+    // Validate userIds if provided
+    const parsedUserIds =
+      Array.isArray(userIds) && userIds.every((uid) => typeof uid === 'number')
+        ? (userIds as number[])
+        : undefined;
+
     const actorId = (req.session as any).userId as number;
-    const result = await req.services.bulkGroup.suspendAllInGroup(id, actorId);
+    const result = await req.services.bulkGroup.suspendAllInGroup(
+      id,
+      actorId,
+      parsedUserIds,
+    );
     const status =
       result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
@@ -367,8 +386,20 @@ adminGroupsRouter.post('/groups/:id/bulk-remove-all', async (req, res, next) => 
   try {
     const id = parseIntParam(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Invalid group id' });
+
+    const { userIds } = req.body as { userIds?: unknown };
+    // Validate userIds if provided
+    const parsedUserIds =
+      Array.isArray(userIds) && userIds.every((uid) => typeof uid === 'number')
+        ? (userIds as number[])
+        : undefined;
+
     const actorId = (req.session as any).userId as number;
-    const result = await req.services.bulkGroup.removeAllInGroup(id, actorId);
+    const result = await req.services.bulkGroup.removeAllInGroup(
+      id,
+      actorId,
+      parsedUserIds,
+    );
     const status =
       result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
