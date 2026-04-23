@@ -29,13 +29,26 @@ beforeAll(async () => {
   adminUserId = admin!.id;
 }, 30000);
 
-beforeEach(async () => {
+// Clean users (and their dependent rows) between tests so the module-level
+// `_seq` counter in factories.ts doesn't collide with leftover rows from
+// other test files. Sparing only the persistent admin fixture we created
+// in beforeAll — without it the shared admin agent loses its backing user.
+async function wipeExceptAdmin() {
   await (prisma as any).llmProxyToken.deleteMany();
+  await (prisma as any).auditEvent.deleteMany();
+  await (prisma as any).userGroup.deleteMany();
+  await (prisma as any).group.deleteMany();
+  await (prisma as any).externalAccount.deleteMany();
+  await (prisma as any).login.deleteMany({ where: { user_id: { not: adminUserId } } });
+  await (prisma as any).user.deleteMany({ where: { id: { not: adminUserId } } });
+}
+
+beforeEach(async () => {
+  await wipeExceptAdmin();
 });
 
 afterEach(async () => {
-  await (prisma as any).llmProxyToken.deleteMany();
-  await (prisma as any).auditEvent.deleteMany();
+  await wipeExceptAdmin();
 });
 
 // Helpers -----------------------------------------------------------------

@@ -46,6 +46,17 @@ afterAll(async () => {
   (registry as any).llmProxyForwarder = originalForwarder;
 });
 
+async function wipeTestState() {
+  await (prisma as any).llmProxyToken.deleteMany();
+  await (prisma as any).auditEvent.deleteMany();
+  await (prisma as any).userGroup.deleteMany();
+  await (prisma as any).group.deleteMany();
+  await (prisma as any).externalAccount.deleteMany();
+  await (prisma as any).login.deleteMany();
+  await (prisma as any).user.deleteMany();
+  await (prisma as any).cohort.deleteMany();
+}
+
 beforeEach(async () => {
   forwarderState.configured = true;
   forwarderState.onForward = (_req, res, _opts) => {
@@ -53,13 +64,11 @@ beforeEach(async () => {
   };
   forwarderState.lastUsage = null;
   vi.clearAllMocks();
-  // Clean tokens so tests don't bleed.
-  await (prisma as any).llmProxyToken.deleteMany();
+  await wipeTestState();
 });
 
 afterEach(async () => {
-  await (prisma as any).llmProxyToken.deleteMany();
-  await (prisma as any).auditEvent.deleteMany();
+  await wipeTestState();
 });
 
 // ---------------------------------------------------------------------------

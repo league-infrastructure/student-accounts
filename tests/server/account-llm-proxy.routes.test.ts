@@ -30,13 +30,37 @@ beforeAll(async () => {
   studentId = student!.id;
 }, 30000);
 
-beforeEach(async () => {
+async function wipeExceptStudent() {
   await (prisma as any).llmProxyToken.deleteMany();
+  await (prisma as any).auditEvent.deleteMany();
+  await (prisma as any).userGroup.deleteMany();
+  await (prisma as any).group.deleteMany();
+  await (prisma as any).externalAccount.deleteMany();
+  await (prisma as any).login.deleteMany({ where: { user_id: { not: studentId } } });
+  // Keep the shared student and any sibling staff/admin we created here;
+  // wiping them breaks the session-based `studentAgent`. The factory seq
+  // counter is process-scoped, so re-running against a handful of leftover
+  // rows is safe.
+  await (prisma as any).user.deleteMany({
+    where: {
+      id: { not: studentId },
+      primary_email: {
+        notIn: [
+          'staff-llm-proxy@example.com',
+          'admin2-llm-proxy@example.com',
+        ],
+      },
+    },
+  });
+  await (prisma as any).cohort.deleteMany();
+}
+
+beforeEach(async () => {
+  await wipeExceptStudent();
 });
 
 afterEach(async () => {
-  await (prisma as any).llmProxyToken.deleteMany();
-  await (prisma as any).auditEvent.deleteMany();
+  await wipeExceptStudent();
 });
 
 // ---------------------------------------------------------------------------
