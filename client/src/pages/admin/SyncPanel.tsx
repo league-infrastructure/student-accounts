@@ -31,24 +31,6 @@ interface WorkspaceSyncReport {
   errors?: Array<{ operation: string; error: string }>;
 }
 
-interface AnthropicProbeResult {
-  ok: boolean;
-  org: { id: string; name: string } | null;
-  userCount: number | null;
-  workspaces: string[];
-  invitesCount: number | null;
-  writeEnabled: boolean;
-  error?: string;
-}
-
-interface AnthropicSyncReport {
-  created: number;
-  linked: number;
-  invitedAccepted: number;
-  removed: number;
-  unmatched: string[];
-}
-
 // ---------------------------------------------------------------------------
 // Spinner — injects a keyframe rule once and renders a spinning element
 // ---------------------------------------------------------------------------
@@ -87,13 +69,6 @@ export default function SyncPanel() {
   const [wsLoading, setWsLoading] = useState<string | null>(null); // which op is loading
   const [wsResult, setWsResult] = useState<WorkspaceSyncReport | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
-
-  // Anthropic state
-  const [anthropicProbe, setAnthropicProbe] = useState<AnthropicProbeResult | null>(null);
-  const [anthropicProbeLoading, setAnthropicProbeLoading] = useState(false);
-  const [anthropicSyncLoading, setAnthropicSyncLoading] = useState(false);
-  const [anthropicSyncResult, setAnthropicSyncResult] = useState<AnthropicSyncReport | null>(null);
-  const [anthropicSyncError, setAnthropicSyncError] = useState<string | null>(null);
 
   // -------------------------------------------------------------------------
   // Pike13 handlers
@@ -154,50 +129,6 @@ export default function SyncPanel() {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Anthropic handlers
-  // -------------------------------------------------------------------------
-
-  // Load probe data on mount
-  useEffect(() => {
-    async function loadProbe() {
-      setAnthropicProbeLoading(true);
-      try {
-        const res = await fetch('/api/admin/anthropic/probe', { credentials: 'include' });
-        const data: AnthropicProbeResult = await res.json();
-        setAnthropicProbe(data);
-      } catch {
-        setAnthropicProbe({ ok: false, org: null, userCount: null, workspaces: [], invitesCount: null, writeEnabled: false, error: 'Failed to reach probe endpoint' });
-      } finally {
-        setAnthropicProbeLoading(false);
-      }
-    }
-    void loadProbe();
-  }, []);
-
-  async function handleAnthropicSync() {
-    setAnthropicSyncLoading(true);
-    setAnyLoading(true);
-    setAnthropicSyncResult(null);
-    setAnthropicSyncError(null);
-    try {
-      const res = await fetch('/api/admin/sync/claude', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-      }
-      const data: AnthropicSyncReport = await res.json();
-      setAnthropicSyncResult(data);
-    } catch (err) {
-      setAnthropicSyncError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setAnthropicSyncLoading(false);
-      setAnyLoading(false);
-    }
-  }
 
   // -------------------------------------------------------------------------
   // Render helpers
@@ -287,90 +218,6 @@ export default function SyncPanel() {
                 </li>
               ))}
             </ul>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function renderAnthropicProbe(probe: AnthropicProbeResult) {
-    if (!probe.ok) {
-      return (
-        <div style={errorBannerStyle} role="alert" aria-label="Anthropic probe error">
-          {probe.error ?? 'Probe failed'}
-        </div>
-      );
-    }
-    return (
-      <div style={resultPanelStyle} role="region" aria-label="Anthropic probe result">
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
-          Snapshot of your Anthropic org — informational, not a filter. Sync
-          pulls every org member regardless of workspace.
-        </div>
-        <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {probe.org && (
-            <div><strong>Org:</strong> {probe.org.name} <span style={{ color: '#64748b' }}>({probe.org.id})</span></div>
-          )}
-          {probe.userCount !== null && (
-            <div>
-              <strong>Org members:</strong> {probe.userCount}{' '}
-              <span style={{ color: '#64748b', fontSize: 11 }}>(total accounts in the Anthropic org)</span>
-            </div>
-          )}
-          {probe.workspaces.length > 0 && (
-            <div>
-              <strong>Workspaces in org:</strong> {probe.workspaces.join(', ')}{' '}
-              <span style={{ color: '#64748b', fontSize: 11 }}>(sub-projects — not a sync filter)</span>
-            </div>
-          )}
-          {probe.invitesCount !== null && (
-            <div><strong>Pending invites:</strong> {probe.invitesCount}</div>
-          )}
-          <div>
-            <strong>Write enabled:</strong>{' '}
-            <span style={{ color: probe.writeEnabled ? '#16a34a' : '#dc2626' }}>
-              {probe.writeEnabled ? 'Yes' : 'No'}
-            </span>{' '}
-            <span style={{ color: '#64748b', fontSize: 11 }}>
-              (CLAUDE_TEAM_WRITE_ENABLED={probe.writeEnabled ? '1' : 'unset'})
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function renderAnthropicSyncResult(report: AnthropicSyncReport) {
-    return (
-      <div style={resultPanelStyle} role="region" aria-label="Anthropic sync result">
-        <div style={countRowStyle}>
-          <CountBadge label="Created" value={report.created} color="#16a34a" />
-          <CountBadge label="Linked" value={report.linked} color="#2563eb" />
-          <CountBadge label="Invite Accepted" value={report.invitedAccepted} color="#7c3aed" />
-          <CountBadge label="Removed" value={report.removed} color={report.removed > 0 ? '#d97706' : '#64748b'} />
-          <CountBadge label="Unmatched" value={report.unmatched.length} color={report.unmatched.length > 0 ? '#dc2626' : '#64748b'} />
-        </div>
-        {report.unmatched.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <strong style={{ fontSize: 13, color: '#92400e' }}>
-              Unmatched Anthropic users (create a local user first or invite via /users):
-            </strong>
-            <table style={{ ...tableStyle, marginTop: 6 }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Suggestion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.unmatched.map((email) => (
-                  <tr key={email}>
-                    <td style={tdStyle}>{email}</td>
-                    <td style={{ ...tdStyle, color: '#64748b' }}>Create a local user first or invite via /users</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
       </div>
@@ -467,41 +314,6 @@ export default function SyncPanel() {
 
       {/* ------------------------------------------------------------------ */}
       {/* Anthropic (Claude) Sync section                                     */}
-      {/* ------------------------------------------------------------------ */}
-
-      <section style={sectionStyle} aria-labelledby="anthropic-section-heading">
-        <h3 id="anthropic-section-heading" style={subheadingStyle}>Anthropic (Claude)</h3>
-        <p style={descStyle}>
-          Reconcile Anthropic org users against local accounts. Links existing org
-          users to local Users, transitions accepted invites, and flags stale accounts.
-        </p>
-
-        {/* Probe status */}
-        {anthropicProbeLoading && (
-          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 10 }}>
-            <Spinner /> Checking Anthropic API&hellip;
-          </div>
-        )}
-        {anthropicProbe && renderAnthropicProbe(anthropicProbe)}
-
-        <div style={{ ...buttonRowStyle, marginTop: 14 }}>
-          <button
-            style={primaryButtonStyle(anyLoading)}
-            disabled={anyLoading}
-            onClick={() => void handleAnthropicSync()}
-          >
-            {anthropicSyncLoading ? <><Spinner /> Syncing&hellip;</> : 'Sync Claude accounts'}
-          </button>
-        </div>
-
-        {anthropicSyncError && (
-          <div style={errorBannerStyle} role="alert">
-            {anthropicSyncError}
-          </div>
-        )}
-
-        {anthropicSyncResult && renderAnthropicSyncResult(anthropicSyncResult)}
-      </section>
     </div>
   );
 }
