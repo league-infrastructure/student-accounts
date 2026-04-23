@@ -1,11 +1,12 @@
 ---
-id: "003"
-title: "LlmProxyForwarderService (Anthropic Messages forwarder, streaming preserved)"
-status: todo
-use-cases: ["SUC-013-003"]
+id: '003'
+title: LlmProxyForwarderService (Anthropic Messages forwarder, streaming preserved)
+status: done
+use-cases:
+- SUC-013-003
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -73,23 +74,23 @@ Service registry wiring:
 
 ## Acceptance Criteria
 
-- [ ] `LlmProxyForwarderService` exists with the
+- [x] `LlmProxyForwarderService` exists with the
       `forwardMessages(req, res, { onUsage })` method.
-- [ ] Non-streaming forward mirrors status and JSON body;
+- [x] Non-streaming forward mirrors status and JSON body;
       `onUsage` receives the usage numbers from
       `body.usage.{input_tokens,output_tokens}`.
-- [ ] Streaming forward sets `content-type: text/event-stream`,
+- [x] Streaming forward sets `content-type: text/event-stream`,
       writes bytes as they arrive (no buffering of the full
       upstream body), and calls `onUsage` after the stream ends.
-- [ ] Accumulated `usage.output_tokens` from `message_delta` events
+- [x] Accumulated `usage.output_tokens` from `message_delta` events
       is captured.
-- [ ] Client `res.on('close')` aborts the upstream request.
-- [ ] Missing/empty API key throws `LlmProxyNotConfiguredError`
+- [x] Client `res.on('close')` aborts the upstream request.
+- [x] Missing/empty API key throws `LlmProxyNotConfiguredError`
       (statusCode 503).
-- [ ] Service registry exposes `llmProxyForwarder` and
+- [x] Service registry exposes `llmProxyForwarder` and
       `req.services.llmProxyForwarder` is typed.
-- [ ] New tests pass.
-- [ ] `npm run test:server` and `npm run test:client` pass relative
+- [x] New tests pass.
+- [x] `npm run test:server` and `npm run test:client` pass relative
       to the pre-existing drift.
 
 ## Testing
