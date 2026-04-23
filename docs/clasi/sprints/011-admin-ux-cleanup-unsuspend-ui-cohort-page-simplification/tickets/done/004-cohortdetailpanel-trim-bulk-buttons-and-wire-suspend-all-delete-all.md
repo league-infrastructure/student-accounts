@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: 'CohortDetailPanel: trim bulk buttons and wire Suspend All / Delete All'
-status: in-progress
+status: done
 use-cases:
 - SUC-011-002
 depends-on:

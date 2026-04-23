@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: 'UserDetailPanel: surface suspended status and render Unsuspend buttons'
-status: in-progress
+status: done
 use-cases:
 - SUC-011-001
 depends-on:

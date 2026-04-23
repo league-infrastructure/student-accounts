@@ -1,9 +1,9 @@
 ---
-status: in-progress
+status: done
 sprint: '011'
 tickets:
-- 011-002
-- 011-004
+- '002'
+- '004'
 ---
 
 # Cohort page: simplify bulk action buttons

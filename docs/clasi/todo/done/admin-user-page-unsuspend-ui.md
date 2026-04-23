@@ -1,9 +1,9 @@
 ---
-status: in-progress
+status: done
 sprint: '011'
 tickets:
-- 011-001
-- 011-003
+- '001'
+- '003'
 ---
 
 # Admin user page: show suspension state and an Unsuspend button
