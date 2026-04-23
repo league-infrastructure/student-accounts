@@ -160,6 +160,11 @@ export default function AccountLlmProxyCard() {
 {`# Claude Code
 export ANTHROPIC_BASE_URL="${status.endpoint}"
 export ANTHROPIC_API_KEY="${status.token ?? 'llmp_…'}"
+# The League API key only grants access to Haiku. Claude Code defaults
+# to Sonnet, so pin Haiku explicitly or you'll get "model not
+# available" from Anthropic.
+export ANTHROPIC_MODEL="claude-haiku-4-5-20251001"
+export ANTHROPIC_SMALL_FAST_MODEL="claude-haiku-4-5-20251001"
 claude
 
 # curl (SDK appends /v1/messages to ANTHROPIC_BASE_URL)

@@ -169,13 +169,29 @@ export class LlmProxyForwarderService {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'x-api-key': this.apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
+      // Prefer the client's version header when present — SDK versions
+      // get bumped as new models ship, and forcing our pinned default
+      // can downshift a request out of the model's required version.
+      'anthropic-version': req.header('anthropic-version') ?? ANTHROPIC_VERSION,
     };
     const beta = req.header('anthropic-beta');
     if (beta) headers['anthropic-beta'] = beta;
 
+    // Carry the client's query string across — e.g. `?beta=true`
+    // toggles the beta Messages endpoint for some SDK versions.
+    const qsIndex = (req.originalUrl ?? '').indexOf('?');
+    const queryString = qsIndex >= 0 ? req.originalUrl.slice(qsIndex) : '';
+    const upstreamUrl = `${ANTHROPIC_MESSAGES_URL}${queryString}`;
+
     logger.info(
-      { isStream, model: (body as any)?.model ?? null, hasMessages: Array.isArray((body as any)?.messages) },
+      {
+        isStream,
+        model: (body as any)?.model ?? null,
+        hasMessages: Array.isArray((body as any)?.messages),
+        queryString,
+        anthropicVersion: headers['anthropic-version'],
+        anthropicBeta: headers['anthropic-beta'] ?? null,
+      },
       '[llm-proxy-forwarder] forwarding request to Anthropic',
     );
 
@@ -191,7 +207,7 @@ export class LlmProxyForwarderService {
 
     let upstream: Response;
     try {
-      upstream = (await fetch(ANTHROPIC_MESSAGES_URL, {
+      upstream = (await fetch(upstreamUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
@@ -253,6 +269,13 @@ export class LlmProxyForwarderService {
   ): Promise<void> {
     const text = await upstream.text();
     const status = upstream.status;
+
+    if (status >= 400) {
+      logger.warn(
+        { status, body: text.slice(0, 1000) },
+        '[llm-proxy-forwarder] upstream returned non-2xx — forwarding to client',
+      );
+    }
 
     res.status(status);
     const ct = upstream.headers.get('content-type');
