@@ -1,11 +1,16 @@
 ---
-id: "001"
-title: "Data model — Group and UserGroup entities, repository"
-status: todo
-use-cases: ["SUC-012-001", "SUC-012-002", "SUC-012-003", "SUC-012-004", "SUC-012-005"]
+id: '001'
+title: "Data model \u2014 Group and UserGroup entities, repository"
+status: done
+use-cases:
+- SUC-012-001
+- SUC-012-002
+- SUC-012-003
+- SUC-012-004
+- SUC-012-005
 depends-on: []
-github-issue: ""
-todo: "app-level-groups-for-bulk-provisioning.md"
+github-issue: ''
+todo: app-level-groups-for-bulk-provisioning.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -25,19 +30,19 @@ required.
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma` defines a `Group` model with
+- [x] `server/prisma/schema.prisma` defines a `Group` model with
       `id`, `name` (`@unique`), `description` (nullable), `created_at`,
       `updated_at`, and `users: UserGroup[]` relation.
-- [ ] `server/prisma/schema.prisma` defines a `UserGroup` model with
+- [x] `server/prisma/schema.prisma` defines a `UserGroup` model with
       `user_id`, `group_id`, `created_at`, `@@id([user_id, group_id])`,
       `@@index([group_id])`, `@@index([user_id])`, FK to `User` and
       `Group` both with `onDelete: Cascade`.
-- [ ] `User` model gains `groups: UserGroup[]` back-relation.
-- [ ] `npx prisma generate` succeeds and the generated client types
+- [x] `User` model gains `groups: UserGroup[]` back-relation.
+- [x] `npx prisma generate` succeeds and the generated client types
       include `Group` and `UserGroup`.
-- [ ] `cd server && ./prisma/sqlite-push.sh` (or equivalent
+- [x] `cd server && ./prisma/sqlite-push.sh` (or equivalent
       `prisma db push` invocation) applies the schema to the dev DB.
-- [ ] `server/src/services/repositories/group.repository.ts` exists
+- [x] `server/src/services/repositories/group.repository.ts` exists
       and exports a `GroupRepository` class with static methods:
       - `create(db, { name, description? })`
       - `findById(db, id)` / `findByName(db, name)`
@@ -58,9 +63,9 @@ required.
       - `addMember(db, groupId, userId)` /
         `removeMember(db, groupId, userId)`.
       - `deleteMembershipsForGroup(db, groupId)`.
-- [ ] Repository is exported from
+- [x] Repository is exported from
       `server/src/services/repositories/index.ts`.
-- [ ] Unit-level tests live in
+- [x] Unit-level tests live in
       `tests/server/repositories/group.repository.test.ts` and cover
       create, findById, findByName, findAllWithMemberCount (including
       zero-member group), addMember (unique violation), removeMember

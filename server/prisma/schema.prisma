@@ -134,6 +134,7 @@ model User {
   cohort            Cohort?           @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
   logins            Login[]
   external_accounts ExternalAccount[]
+  groups            UserGroup[]
 
   audit_events_as_actor  AuditEvent[]          @relation("AuditActor")
   audit_events_as_target AuditEvent[]          @relation("AuditTarget")
@@ -145,6 +146,40 @@ model User {
 
   @@index([role])
   @@index([cohort_id])
+}
+
+// ---------------------------------------------------------------------------
+// Group — app-level group, independent of Google Workspace OUs (Sprint 012).
+//
+// Unlike Cohort (which is 1:1 with a Google OU and a required field on User),
+// Group is many-to-many via UserGroup. A user can belong to any number of
+// groups. Groups are the unit for bulk provisioning operations that cut
+// across arbitrary sets of users.
+// ---------------------------------------------------------------------------
+model Group {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  users       UserGroup[]
+}
+
+// Many-to-many join between User and Group. Composite PK on (user_id,
+// group_id) — no surrogate id is needed because callers always reference
+// memberships by the pair.
+model UserGroup {
+  user_id    Int
+  group_id   Int
+  created_at DateTime @default(now())
+
+  user       User     @relation(fields: [user_id],  references: [id], onDelete: Cascade)
+  group      Group    @relation(fields: [group_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, group_id])
+  @@index([group_id])
+  @@index([user_id])
 }
 
 model Login {
