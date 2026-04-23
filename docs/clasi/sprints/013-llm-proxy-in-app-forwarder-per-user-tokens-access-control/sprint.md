@@ -1,9 +1,16 @@
 ---
-id: "013"
-title: "LLM proxy in-app — forwarder + per-user tokens + access control"
-status: roadmap
+id: '013'
+title: "LLM proxy in-app \u2014 forwarder + per-user tokens + access control"
+status: active
 branch: sprint/013-llm-proxy-in-app-forwarder-per-user-tokens-access-control
-use-cases: []
+use-cases:
+- SUC-013-001
+- SUC-013-002
+- SUC-013-003
+- SUC-013-004
+- SUC-013-005
+- SUC-013-006
+- SUC-013-007
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
