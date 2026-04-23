@@ -32,6 +32,7 @@ adminCohortsRouter.get('/cohorts', async (_req, res, next) => {
   try {
     const cohorts = await (prisma as any).cohort.findMany({
       orderBy: { created_at: 'desc' },
+      include: { _count: { select: { users: true } } },
     });
 
     const result = cohorts.map((c: any) => ({
@@ -39,6 +40,7 @@ adminCohortsRouter.get('/cohorts', async (_req, res, next) => {
       name: c.name,
       google_ou_path: c.google_ou_path,
       createdAt: c.created_at,
+      memberCount: c._count.users,
     }));
 
     res.json(result);
