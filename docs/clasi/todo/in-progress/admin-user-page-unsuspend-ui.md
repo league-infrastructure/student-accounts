@@ -1,5 +1,9 @@
 ---
-status: pending
+status: in-progress
+sprint: '011'
+tickets:
+- 011-001
+- 011-003
 ---
 
 # Admin user page: show suspension state and an Unsuspend button

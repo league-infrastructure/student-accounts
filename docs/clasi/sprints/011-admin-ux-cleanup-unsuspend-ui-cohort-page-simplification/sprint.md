@@ -1,9 +1,11 @@
 ---
-id: "011"
-title: "Admin UX cleanup — unsuspend UI + cohort page simplification"
-status: roadmap
+id: '011'
+title: "Admin UX cleanup \u2014 unsuspend UI + cohort page simplification"
+status: active
 branch: sprint/011-admin-ux-cleanup-unsuspend-ui-cohort-page-simplification
-use-cases: []
+use-cases:
+- SUC-011-001
+- SUC-011-002
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -60,4 +62,13 @@ every time an admin touches a suspended account or a cohort.
 
 ## Tickets
 
-(To be populated during detail-phase planning.)
+| # | Title | depends-on | Group |
+|---|---|---|---|
+| 001 | ExternalAccountLifecycleService.unsuspend + POST /admin/external-accounts/:id/unsuspend | — | G1 (parallelizable) |
+| 002 | BulkCohortService suspend-all / remove-all + two POST routes | — | G1 (parallelizable) |
+| 003 | UserDetailPanel: surface suspended status and render Unsuspend buttons | 001 | G2 |
+| 004 | CohortDetailPanel: trim bulk buttons and wire Suspend All / Delete All | 002 | G2 |
+
+Group 1 (server tickets 001 and 002) can run in parallel. Group 2
+(client tickets 003 and 004) run after their respective server
+dependencies land.
