@@ -16,6 +16,7 @@ import type {
   AuditEvent,
   ProvisioningRequest,
   MergeSuggestion,
+  Group,
 } from '../../../server/src/generated/prisma/models.js';
 
 // ---------------------------------------------------------------------------
@@ -161,6 +162,32 @@ export async function makeProvisioningRequest(
       status: 'pending',
       ...overrides,
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Group — Sprint 012
+// ---------------------------------------------------------------------------
+
+export async function makeGroup(
+  overrides: Partial<{ name: string; description: string | null }> = {},
+): Promise<Group> {
+  const n = seq();
+  return (prisma as any).group.create({
+    data: {
+      name: `Test Group ${n}`,
+      description: null,
+      ...overrides,
+    },
+  });
+}
+
+export async function makeMembership(
+  group: Group,
+  user: User,
+): Promise<void> {
+  await (prisma as any).userGroup.create({
+    data: { group_id: group.id, user_id: user.id },
   });
 }
 
