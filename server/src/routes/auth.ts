@@ -17,6 +17,9 @@ import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { StaffOULookupError } from '../services/google-workspace/google-workspace-admin.client.js';
 import { AuditService } from '../services/audit.service.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('auth.routes');
 
 // Module-level AuditService instance for the logout route.
 // Shared across requests; stateless and safe to reuse.
@@ -213,21 +216,27 @@ authRouter.post('/auth/logout', (req: Request, res: Response, _next: NextFunctio
  * Sets session.link and session.linkReturnTo when ?link=1 and user is signed in.
  */
 authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction) => {
+  logger.info({ linkMode: req.query.link === '1' }, '[google] initiation route called');
   if (!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)) {
+    logger.error({}, '[google] Google credentials not configured');
     return res.status(501).json({
       error: 'Google OAuth not configured',
       docs: 'https://console.cloud.google.com/apis/credentials',
     });
   }
   if (req.query.link === '1') {
+    logger.info({ authenticated: !!req.user }, '[google] link mode requested');
     if (!req.user) {
+      logger.warn({}, '[google] link mode requested but not authenticated');
       return res.status(401).json({ error: 'Authentication required to link an account' });
     }
     // Mark the session so the verify callback (via passReqToCallback) can
     // detect link mode and call linkHandler instead of signInHandler.
     (req.session as any).link = true;
     (req.session as any).linkReturnTo = '/account';
+    logger.info({}, '[google] link mode flagged in session');
   }
+  logger.info({}, '[google] redirecting to Google OAuth');
   passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
 });
 
@@ -245,60 +254,99 @@ authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction)
 authRouter.get(
   '/auth/google/callback',
   (req: Request, res: Response, next: NextFunction) => {
+    logger.info({}, '[google-callback] route handler called');
     if (!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)) {
+      logger.error({}, '[google-callback] Google credentials not configured, rejecting');
       return res.redirect('/?error=oauth_denied');
     }
     // Use a custom callback to intercept authentication failures and redirect
     // instead of letting Passport return a default 401.
+    logger.info({}, '[google-callback] calling passport.authenticate');
     passport.authenticate(
       'google',
       { session: false },
       (err: unknown, user: Express.User | false | null, info: unknown) => {
-        console.log('[google-callback] err=', err, 'user=', !!user, 'info=', info);
+        logger.info(
+          { hasErr: !!err, hasUser: !!user, info },
+          '[google-callback] passport.authenticate callback fired'
+        );
         if (err) {
-          console.error('[google-callback] error:', err);
+          logger.error({ err }, '[google-callback] authentication error');
           if (err instanceof StaffOULookupError) {
+            logger.error(
+              { code: err.code, email: err.email },
+              '[google-callback] StaffOULookupError, redirecting'
+            );
             return res.redirect('/?error=staff_lookup_failed');
           }
+          logger.error({}, '[google-callback] generic error, redirecting');
           return res.redirect('/?error=oauth_denied');
         }
         if (!user) {
-          console.error('[google-callback] no user returned by passport. info=', info);
+          logger.error({ info }, '[google-callback] no user returned by passport');
           return res.redirect('/?error=oauth_denied');
         }
+
+        logger.info(
+          { userId: (user as any).id, email: (user as any).email },
+          '[google-callback] user object received from passport'
+        );
 
         // Link mode: the verify callback in passport.config.ts detected
         // session.link and ran linkHandler, encoding the result as a sentinel
         // object { _linkResult: 'linked' | 'already_linked' | 'conflict' }.
         const linkResult = (user as any)._linkResult;
         if (linkResult) {
+          logger.info(
+            { linkResult },
+            '[google-callback] link mode detected'
+          );
           // Clear link-mode flags regardless of outcome.
           delete (req.session as any).link;
           delete (req.session as any).linkReturnTo;
 
           if (linkResult === 'conflict') {
+            logger.info({}, '[google-callback] link conflict, redirecting with error');
             return res.redirect('/account?error=already_linked');
           }
           // 'linked' or 'already_linked' → success / idempotent.
+          logger.info({}, '[google-callback] link succeeded, redirecting to /account');
           return res.redirect('/account');
         }
 
         // Normal sign-in path.
+        logger.info(
+          { userId: (user as any).id, role: (user as any).role },
+          '[google-callback] normal sign-in, calling req.login'
+        );
         req.login(user, (loginErr) => {
           if (loginErr) {
-            console.error('[oauth-callback] req.login error:', loginErr);
+            logger.error({ loginErr }, '[google-callback] req.login failed');
             return next(loginErr);
           }
+          logger.info(
+            { userId: (user as any).id },
+            '[google-callback] req.login succeeded, setting session'
+          );
           (req.session as any).userId = (user as any).id;
           (req.session as any).role = (user as any).role;
-          console.log('[oauth-callback] session set userId=', (user as any).id, 'role=', (user as any).role);
+          logger.info(
+            { userId: (user as any).id, role: (user as any).role, sessionId: req.sessionID },
+            '[google-callback] session fields set, calling session.save'
+          );
           req.session.save((saveErr) => {
             if (saveErr) {
-              console.error('[oauth-callback] session.save error:', saveErr);
+              logger.error(
+                { saveErr, sessionId: req.sessionID },
+                '[google-callback] session.save failed'
+              );
               return res.redirect('/?error=oauth_denied');
             }
             const dest = postLoginRedirect((user as any).role);
-            console.log('[oauth-callback] session saved, redirecting to', dest);
+            logger.info(
+              { userId: (user as any).id, sessionId: req.sessionID, dest },
+              '[google-callback] session saved successfully, redirecting'
+            );
             res.redirect(dest);
           });
         });
@@ -319,20 +367,26 @@ authRouter.get(
  * Sets session.link and session.linkReturnTo when ?link=1 and user is signed in.
  */
 authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction) => {
+  logger.info({ linkMode: req.query.link === '1' }, '[github] initiation route called');
   if (!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)) {
+    logger.error({}, '[github] GitHub credentials not configured');
     return res.status(501).json({
       error: 'GitHub OAuth not configured',
       docs: 'https://github.com/settings/developers',
     });
   }
   if (req.query.link === '1') {
+    logger.info({ authenticated: !!req.user }, '[github] link mode requested');
     if (!req.user) {
+      logger.warn({}, '[github] link mode requested but not authenticated');
       return res.status(401).json({ error: 'Authentication required to link an account' });
     }
     // Mark the session so the verify callback can detect link mode.
     (req.session as any).link = true;
     (req.session as any).linkReturnTo = '/account';
+    logger.info({}, '[github] link mode flagged in session');
   }
+  logger.info({}, '[github] redirecting to GitHub OAuth');
   passport.authenticate('github', { scope: ['read:user', 'user:email'] })(req, res, next);
 });
 
@@ -347,47 +401,86 @@ authRouter.get('/auth/github', (req: Request, res: Response, next: NextFunction)
 authRouter.get(
   '/auth/github/callback',
   (req: Request, res: Response, next: NextFunction) => {
+    logger.info({}, '[github-callback] route handler called');
     if (!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)) {
+      logger.error({}, '[github-callback] GitHub credentials not configured, rejecting');
       return res.redirect('/?error=oauth_denied');
     }
+    logger.info({}, '[github-callback] calling passport.authenticate');
     passport.authenticate(
       'github',
       { session: false },
       (err: unknown, user: Express.User | false | null) => {
+        logger.info(
+          { hasErr: !!err, hasUser: !!user },
+          '[github-callback] passport.authenticate callback fired'
+        );
         if (err || !user) {
+          logger.error(
+            { hasErr: !!err, hasUser: !!user },
+            '[github-callback] authentication failed'
+          );
           return res.redirect('/?error=oauth_denied');
         }
+
+        logger.info(
+          { userId: (user as any).id, email: (user as any).email },
+          '[github-callback] user object received from passport'
+        );
 
         // Link mode: verify callback returned a _linkResult sentinel.
         const linkResult = (user as any)._linkResult;
         if (linkResult) {
+          logger.info(
+            { linkResult },
+            '[github-callback] link mode detected'
+          );
           // Clear link-mode flags regardless of outcome.
           delete (req.session as any).link;
           delete (req.session as any).linkReturnTo;
 
           if (linkResult === 'conflict') {
+            logger.info({}, '[github-callback] link conflict, redirecting with error');
             return res.redirect('/account?error=already_linked');
           }
           // 'linked' or 'already_linked' → success / idempotent.
+          logger.info({}, '[github-callback] link succeeded, redirecting to /account');
           return res.redirect('/account');
         }
 
         // Normal sign-in path.
+        logger.info(
+          { userId: (user as any).id, role: (user as any).role },
+          '[github-callback] normal sign-in, calling req.login'
+        );
         req.login(user, (loginErr) => {
           if (loginErr) {
-            console.error('[oauth-callback] req.login error:', loginErr);
+            logger.error({ loginErr }, '[github-callback] req.login failed');
             return next(loginErr);
           }
+          logger.info(
+            { userId: (user as any).id },
+            '[github-callback] req.login succeeded, setting session'
+          );
           (req.session as any).userId = (user as any).id;
           (req.session as any).role = (user as any).role;
-          console.log('[oauth-callback] session set userId=', (user as any).id, 'role=', (user as any).role);
+          logger.info(
+            { userId: (user as any).id, role: (user as any).role, sessionId: req.sessionID },
+            '[github-callback] session fields set, calling session.save'
+          );
           req.session.save((saveErr) => {
             if (saveErr) {
-              console.error('[oauth-callback] session.save error:', saveErr);
+              logger.error(
+                { saveErr, sessionId: req.sessionID },
+                '[github-callback] session.save failed'
+              );
               return res.redirect('/?error=oauth_denied');
             }
             const dest = postLoginRedirect((user as any).role);
-            console.log('[oauth-callback] session saved, redirecting to', dest);
+            logger.info(
+              { userId: (user as any).id, sessionId: req.sessionID, dest },
+              '[github-callback] session saved successfully, redirecting'
+            );
             res.redirect(dest);
           });
         });

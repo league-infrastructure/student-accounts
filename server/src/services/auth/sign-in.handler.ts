@@ -167,17 +167,43 @@ export async function signInHandler(
 ): Promise<User> {
   const { providerUserId, providerEmail, displayName, providerUsername } = profile;
 
+  logger.info(
+    { provider, providerUserId, providerEmail, displayName },
+    '[sign-in.handler] signInHandler called'
+  );
+
   // --- Step 1: Look up existing Login ---
+  logger.info(
+    { provider, providerUserId },
+    '[sign-in.handler] Step 1: looking up existing login'
+  );
   const existingLogin = await loginService.findByProvider(provider, providerUserId);
+  logger.info(
+    { provider, providerUserId, found: !!existingLogin },
+    '[sign-in.handler] Step 1: login lookup result'
+  );
 
   let user: User;
 
   if (existingLogin) {
     // --- Step 2: Existing identity — load the User ---
+    logger.info(
+      { existingLoginId: existingLogin.id, userId: existingLogin.user_id },
+      '[sign-in.handler] Step 2: existing login found, loading user'
+    );
     user = await userService.findById(existingLogin.user_id);
+    logger.info(
+      { userId: user.id, email: user.primary_email },
+      '[sign-in.handler] Step 2: user loaded'
+    );
   } else {
     // --- Step 3: New identity — attach Login to an existing User (matched
     // by primary email) or create a new User.
+
+    logger.info(
+      { provider, providerUserId, providerEmail },
+      '[sign-in.handler] Step 3: new identity, resolving email'
+    );
 
     // Resolve the primary email. For GitHub, if no public email is available,
     // fall back to <username>@github.invalid (RD-002). The .invalid TLD is
@@ -195,14 +221,27 @@ export async function signInHandler(
       resolvedEmail = `${providerUserId}@provider.invalid`;
     }
 
+    logger.info(
+      { resolvedEmail },
+      '[sign-in.handler] Step 3a: resolved email, looking up existing user'
+    );
+
     // 3a. Look for an existing User by primary email. If one exists (e.g.
     // created by admin seeding or a different provider on the same address),
     // attach the new Login to it rather than attempting to create a duplicate
     // User — the unique constraint on User.primary_email would otherwise
     // throw and the caller would see a silent oauth_denied.
     const existingUser = await userService.findByEmail(resolvedEmail);
+    logger.info(
+      { resolvedEmail, found: !!existingUser },
+      '[sign-in.handler] Step 3a: user lookup result'
+    );
 
     if (existingUser) {
+      logger.info(
+        { userId: existingUser.id, email: existingUser.primary_email },
+        '[sign-in.handler] Step 3b: existing user found, attaching new login'
+      );
       user = existingUser;
     } else {
       // Sign-ins from non-League identities are created as pending — they
@@ -211,6 +250,10 @@ export async function signInHandler(
       // in Google Workspace already proves membership.
       const isLeagueIdentity = /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(
         resolvedEmail,
+      );
+      logger.info(
+        { resolvedEmail, isLeagueIdentity },
+        '[sign-in.handler] Step 3b: new user, creating with audit'
       );
       user = await userService.createWithAudit(
         {
@@ -227,15 +270,27 @@ export async function signInHandler(
         },
         null, // system action; no acting user
       );
+      logger.info(
+        { userId: user.id, email: user.primary_email, approvalStatus: user.approval_status },
+        '[sign-in.handler] Step 3b: user created'
+      );
 
       // Notify admin dashboards: a new pending-approval row may have
       // just appeared.
       if (!isLeagueIdentity) {
+        logger.info(
+          { email: resolvedEmail },
+          '[sign-in.handler] external user, notifying pending-users bus'
+        );
         adminBus.notify('pending-users');
       }
     }
 
     // 3b. Create Login with audit event (pass provider_username for GitHub)
+    logger.info(
+      { userId: user.id, provider, providerUserId },
+      '[sign-in.handler] Step 3c: creating login'
+    );
     await loginService.create(
       user.id,
       provider,
@@ -244,15 +299,26 @@ export async function signInHandler(
       null, // system action
       providerUsername ?? null,
     );
+    logger.info(
+      { userId: user.id, provider, providerUserId },
+      '[sign-in.handler] Step 3c: login created'
+    );
 
     // 3c. Merge-scan (Sprint 007) — only for freshly created users.
     // Fire-and-forget: must not block the sign-in path. Any errors are
     // logged inside mergeScan itself; failure here is non-fatal for auth.
     if (!existingUser) {
       const scanUser = user;
+      logger.info(
+        { userId: scanUser.id },
+        '[sign-in.handler] Step 3d: queueing merge-scan'
+      );
       setImmediate(() => {
         mergeScan(scanUser).catch((err) => {
-          console.error('[sign-in.handler] background mergeScan failed:', err);
+          logger.error(
+            { userId: scanUser.id, err },
+            '[sign-in.handler] background mergeScan failed'
+          );
         });
       });
     }
@@ -273,22 +339,31 @@ export async function signInHandler(
   //     log at ERROR, and re-throw so the caller denies sign-in (RD-001).
 
   if (provider === 'google' && providerEmail?.toLowerCase().endsWith('@jointheleague.org')) {
+    logger.info(
+      { email: providerEmail },
+      '[sign-in.handler] Step 4: @jointheleague.org account, checking staff OU'
+    );
     const adminDirClient = options?.adminDirClient;
     const staffOuPath = resolveStaffOuPath();
+
+    logger.info(
+      { staffOuPath: staffOuPath ?? 'UNSET', hasAdminClient: !!adminDirClient },
+      '[sign-in.handler] Step 4: staff OU config'
+    );
 
     // GOOGLE_STAFF_OU_PATH unset → skip the OU lookup entirely.
     // Role stays student (or gets elevated to admin below by ADMIN_EMAILS).
     if (staffOuPath === null) {
       logger.info(
         { email: providerEmail },
-        '[sign-in.handler] GOOGLE_STAFF_OU_PATH unset — skipping OU lookup.',
+        '[sign-in.handler] Step 4: GOOGLE_STAFF_OU_PATH unset — skipping OU lookup.',
       );
     } else if (!adminDirClient) {
       // No client injected — this is a coding error (passport.config.ts always
       // injects one). Log at ERROR and deny the sign-in as a fail-secure measure.
       logger.error(
         { email: providerEmail },
-        '[sign-in.handler] No adminDirClient provided for @jointheleague.org sign-in. ' +
+        '[sign-in.handler] Step 4: No adminDirClient provided for @jointheleague.org sign-in. ' +
           'Denying access (fail-secure). Check passport.config.ts wiring.',
       );
       await _writeAuthDeniedEvent(options, providerEmail, 'NO_ADMIN_CLIENT');
@@ -303,15 +378,22 @@ export async function signInHandler(
     // Admin role is treated as manually granted (via the Users panel or
     // ADMIN_EMAILS) and is never overwritten by OU-based role resolution.
     if (staffOuPath !== null && adminDirClient && user.role !== 'admin') {
+      logger.info(
+        { email: providerEmail },
+        '[sign-in.handler] Step 4: calling getUserOU'
+      );
       let ouPath: string;
       try {
         ouPath = await adminDirClient.getUserOU(providerEmail);
+        logger.info(
+          { email: providerEmail, ouPath },
+          '[sign-in.handler] Step 4: getUserOU succeeded'
+        );
       } catch (err) {
         if (err instanceof StaffOULookupError) {
           logger.error(
             { email: providerEmail, code: err.code, err },
-            '[sign-in.handler] StaffOULookupError during @jointheleague.org sign-in — ' +
-              'access denied (RD-001).',
+            '[sign-in.handler] Step 4: StaffOULookupError — access denied (RD-001).',
           );
           await _writeAuthDeniedEvent(options, providerEmail, err.code);
           throw err;
@@ -320,11 +402,29 @@ export async function signInHandler(
       }
 
       if (ouPath.startsWith(staffOuPath)) {
+        logger.info(
+          { email: providerEmail, ouPath, staffOuPath, currentRole: user.role },
+          '[sign-in.handler] Step 4: OU matches staff path'
+        );
         if (user.role !== 'staff') {
           user = await userService.updateRole(user.id, 'staff');
+          logger.info(
+            { userId: user.id, newRole: 'staff' },
+            '[sign-in.handler] Step 4: role updated to staff'
+          );
         }
-      } else if (user.role === 'staff') {
-        user = await userService.updateRole(user.id, 'student');
+      } else {
+        logger.info(
+          { email: providerEmail, ouPath, staffOuPath },
+          '[sign-in.handler] Step 4: OU does not match staff path'
+        );
+        if (user.role === 'staff') {
+          user = await userService.updateRole(user.id, 'student');
+          logger.info(
+            { userId: user.id, newRole: 'student' },
+            '[sign-in.handler] Step 4: role downgraded to student'
+          );
+        }
       }
     }
 
@@ -341,17 +441,48 @@ export async function signInHandler(
     // is now in ADMIN_EMAILS, the role is promoted and a role_changed audit
     // event is emitted. If the email is REMOVED from ADMIN_EMAILS, the role
     // reverts to the OU-based value determined in step 4.
+    logger.info(
+      { email: providerEmail, adminEmailsSize: _adminEmails.size },
+      '[sign-in.handler] Step 5: checking admin emails'
+    );
     const emailLower = providerEmail.toLowerCase();
     if (_adminEmails.has(emailLower)) {
+      logger.info(
+        { email: providerEmail },
+        '[sign-in.handler] Step 5: email in ADMIN_EMAILS'
+      );
       if (user.role !== 'admin') {
         const previousRole = user.role;
         user = await userService.updateRole(user.id, 'admin');
+        logger.info(
+          { userId: user.id, previousRole, newRole: 'admin' },
+          '[sign-in.handler] Step 5: role updated to admin'
+        );
         // Emit role_changed audit event (best-effort)
         await _writeRoleChangedEvent(options, user.id, previousRole, 'admin');
       }
+    } else {
+      logger.info(
+        { email: providerEmail },
+        '[sign-in.handler] Step 5: email NOT in ADMIN_EMAILS'
+      );
     }
+  } else if (provider === 'google') {
+    logger.info(
+      { email: providerEmail },
+      '[sign-in.handler] Step 4-5: non-@jointheleague.org Google account, skipping OU and admin checks'
+    );
+  } else {
+    logger.info(
+      { provider },
+      '[sign-in.handler] Step 4-5: non-Google provider, skipping OU and admin checks'
+    );
   }
 
+  logger.info(
+    { userId: user.id, email: user.primary_email, role: user.role },
+    '[sign-in.handler] signInHandler completed successfully'
+  );
   return user;
 }
 

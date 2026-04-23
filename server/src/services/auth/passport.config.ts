@@ -28,6 +28,9 @@ import {
   resolveCredentialsFileEnvVar,
   type GoogleWorkspaceAdminClient,
 } from '../google-workspace/google-workspace-admin.client.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('passport.config');
 
 // ---------------------------------------------------------------------------
 // Admin Directory client factory
@@ -164,6 +167,7 @@ export function configurePassport(
         // Verify callback — wired to sign-in handler (normal) or link handler (link mode).
         // req is passed first because passReqToCallback: true.
         (req: any, _accessToken: string, _refreshToken: string, profile: any, done: any) => {
+          logger.info({ profileId: profile.id }, '[google-verify] callback fired');
           const emails = profile.emails ?? [];
           const providerEmail = emails.find((e: any) => e.value)?.value ?? null;
           const displayName =
@@ -172,11 +176,20 @@ export function configurePassport(
             providerEmail ||
             profile.id;
 
+          logger.info(
+            { providerEmail, displayName, profileId: profile.id },
+            '[google-verify] parsed profile data'
+          );
+
           // Link mode: a signed-in user is adding a new provider identity.
           // session.userId is set from the earlier sign-in; session.link was
           // set by the initiation route when ?link=1 was present.
           const linkUserId: number | undefined = req.session?.userId;
           if (req.session?.link && linkUserId) {
+            logger.info(
+              { linkUserId, providerEmail },
+              '[google-verify] link mode detected, calling linkHandler'
+            );
             linkHandler(
               'google',
               {
@@ -189,15 +202,29 @@ export function configurePassport(
               loginService,
             )
               .then((result) => {
+                logger.info(
+                  { linkUserId, result: result.action },
+                  '[google-verify] linkHandler succeeded'
+                );
                 // Encode the link result in a sentinel object so the route
                 // callback can detect link mode and redirect appropriately.
                 done(null, { _linkResult: result.action });
               })
-              .catch((err) => done(err));
+              .catch((err) => {
+                logger.error(
+                  { linkUserId, err },
+                  '[google-verify] linkHandler failed'
+                );
+                done(err);
+              });
             return;
           }
 
           // Normal sign-in path.
+          logger.info(
+            { providerEmail, displayName, profileId: profile.id },
+            '[google-verify] calling signInHandler'
+          );
           signInHandler(
             'google',
             {
@@ -214,8 +241,20 @@ export function configurePassport(
               prisma: prismaClient,
             },
           )
-            .then((user) => done(null, user))
-            .catch((err) => done(err));
+            .then((user) => {
+              logger.info(
+                { userId: user.id, email: user.primary_email, role: user.role },
+                '[google-verify] signInHandler succeeded, calling done()'
+              );
+              done(null, user);
+            })
+            .catch((err) => {
+              logger.error(
+                { providerEmail, err },
+                '[google-verify] signInHandler failed, calling done(err)'
+              );
+              done(err);
+            });
         },
       ),
     );
@@ -241,6 +280,7 @@ export function configurePassport(
         // Verify callback — wired to sign-in handler (normal) or link handler (link mode).
         // req is passed first because passReqToCallback: true.
         (req: any, _accessToken: string, _refreshToken: string, profile: any, done: any) => {
+          logger.info({ profileId: profile.id }, '[github-verify] callback fired');
           // GitHub returns emails in profile.emails[] and username in profile.username.
           const emails = profile.emails ?? [];
           const providerEmail = emails.find((e: any) => e.value)?.value ?? null;
@@ -251,9 +291,18 @@ export function configurePassport(
             providerEmail ||
             profile.id;
 
+          logger.info(
+            { providerEmail, providerUsername, displayName, profileId: profile.id },
+            '[github-verify] parsed profile data'
+          );
+
           // Link mode: a signed-in user is adding a new provider identity.
           const linkUserId: number | undefined = req.session?.userId;
           if (req.session?.link && linkUserId) {
+            logger.info(
+              { linkUserId, providerEmail },
+              '[github-verify] link mode detected, calling linkHandler'
+            );
             linkHandler(
               'github',
               {
@@ -266,13 +315,27 @@ export function configurePassport(
               loginService,
             )
               .then((result) => {
+                logger.info(
+                  { linkUserId, result: result.action },
+                  '[github-verify] linkHandler succeeded'
+                );
                 done(null, { _linkResult: result.action });
               })
-              .catch((err) => done(err));
+              .catch((err) => {
+                logger.error(
+                  { linkUserId, err },
+                  '[github-verify] linkHandler failed'
+                );
+                done(err);
+              });
             return;
           }
 
           // Normal sign-in path.
+          logger.info(
+            { providerEmail, displayName, profileId: profile.id },
+            '[github-verify] calling signInHandler'
+          );
           signInHandler(
             'github',
             {
@@ -284,8 +347,20 @@ export function configurePassport(
             userService,
             loginService,
           )
-            .then((user) => done(null, user))
-            .catch((err) => done(err));
+            .then((user) => {
+              logger.info(
+                { userId: user.id, email: user.primary_email, role: user.role },
+                '[github-verify] signInHandler succeeded, calling done()'
+              );
+              done(null, user);
+            })
+            .catch((err) => {
+              logger.error(
+                { providerEmail, err },
+                '[github-verify] signInHandler failed, calling done(err)'
+              );
+              done(err);
+            });
         },
       ),
     );
