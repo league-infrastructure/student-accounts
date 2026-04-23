@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProviderStatus } from '../hooks/useProviderStatus';
+import AccountLlmProxyCard from './account/AccountLlmProxyCard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -760,6 +761,10 @@ export default function Account() {
       <div style={styles.spacer} />
 
       <ClaudeCodeSection data={data} />
+
+      <div style={styles.spacer} />
+
+      <AccountLlmProxyCard />
 
       <div style={styles.spacer} />
 

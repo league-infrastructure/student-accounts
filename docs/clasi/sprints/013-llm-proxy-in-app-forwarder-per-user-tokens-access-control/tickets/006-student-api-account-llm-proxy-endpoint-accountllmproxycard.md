@@ -1,11 +1,13 @@
 ---
-id: "006"
-title: "Student /api/account/llm-proxy endpoint + AccountLlmProxyCard"
-status: todo
-use-cases: ["SUC-013-004"]
-depends-on: ["002"]
-github-issue: ""
-todo: ""
+id: '006'
+title: Student /api/account/llm-proxy endpoint + AccountLlmProxyCard
+status: done
+use-cases:
+- SUC-013-004
+depends-on:
+- '002'
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -71,15 +73,15 @@ existing "Services" section.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/account/llm-proxy` returns 401 unauthenticated,
+- [x] `GET /api/account/llm-proxy` returns 401 unauthenticated,
       403 for non-students, 200 for students.
-- [ ] Disabled shape: `{enabled: false, endpoint}`.
-- [ ] Enabled shape: `{enabled: true, endpoint, tokensUsed,
+- [x] Disabled shape: `{enabled: false, endpoint}`.
+- [x] Enabled shape: `{enabled: true, endpoint, tokensUsed,
       tokenLimit, expiresAt, grantedAt}`; no plaintext, no hash.
-- [ ] `AccountLlmProxyCard.tsx` renders both states correctly.
-- [ ] `Account.tsx` renders the new card.
-- [ ] New server + client tests pass.
-- [ ] `npm run test:server` and `npm run test:client` pass relative
+- [x] `AccountLlmProxyCard.tsx` renders both states correctly.
+- [x] `Account.tsx` renders the new card.
+- [x] New server + client tests pass.
+- [x] `npm run test:server` and `npm run test:client` pass relative
       to pre-existing drift.
 
 ## Testing

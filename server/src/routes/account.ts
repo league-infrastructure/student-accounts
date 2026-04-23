@@ -330,3 +330,47 @@ accountRouter.get(
     res.json(body);
   },
 );
+
+// ---------------------------------------------------------------------------
+// GET /api/account/llm-proxy — student self-service view of LLM proxy access
+// ---------------------------------------------------------------------------
+//
+// Sprint 013 T006.
+//
+// Returns the student's current LLM-proxy status. Never returns plaintext.
+// The endpoint URL is derived from the request so dev and prod surfaces
+// match the origin the student actually signed in at.
+accountRouter.get(
+  '/account/llm-proxy',
+  requireAuth,
+  requireRole('student'),
+  async (req: Request, res: Response) => {
+    const userId: number = (req.session as any).userId;
+
+    // Derive the endpoint URL from the request (not from config) so any
+    // origin that serves the app also serves a working proxy URL.
+    const forwardedProto = req.header('x-forwarded-proto');
+    const scheme = forwardedProto
+      ? forwardedProto.split(',')[0].trim()
+      : req.secure
+        ? 'https'
+        : 'http';
+    const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
+    const endpoint = `${scheme}://${host}/proxy/v1`;
+
+    const active = await req.services.llmProxyTokens.getActiveForUser(userId);
+    if (!active) {
+      return res.json({ enabled: false, endpoint });
+    }
+
+    return res.json({
+      enabled: true,
+      endpoint,
+      tokensUsed: active.tokens_used,
+      tokenLimit: active.token_limit,
+      requestCount: active.request_count,
+      expiresAt: active.expires_at,
+      grantedAt: active.granted_at,
+    });
+  },
+);
