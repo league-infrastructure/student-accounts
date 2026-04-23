@@ -31,6 +31,22 @@ export const llmProxyRouter = Router();
 // GET /health — unauthenticated liveness probe
 // ---------------------------------------------------------------------------
 
+// Enable CORS for all /proxy routes — the LLM proxy is accessed from browser-based SDKs
+// like Claude Code, which need to make cross-origin requests.
+llmProxyRouter.use((_req: Request, res: Response, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, anthropic-version, anthropic-beta, x-api-key',
+  );
+  if (_req.method === 'OPTIONS') {
+    res.sendStatus(204);
+  } else {
+    next();
+  }
+});
+
 llmProxyRouter.get('/health', (_req: Request, res: Response) => {
   res.json({ ok: true, endpoint: '/proxy/v1/messages' });
 });

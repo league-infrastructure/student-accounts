@@ -160,19 +160,19 @@ export default function AccountLlmProxyCard() {
 {`# Claude Code
 export ANTHROPIC_BASE_URL="${status.endpoint}"
 export ANTHROPIC_API_KEY="${status.token ?? 'llmp_…'}"
-# The League API key only grants access to Haiku. Claude Code defaults
-# to Sonnet, so pin Haiku explicitly or you'll get "model not
-# available" from Anthropic.
-export ANTHROPIC_MODEL="claude-haiku-4-5-20251001"
+# Allowed models: Sonnet or Haiku (specified in the request model field)
+export ANTHROPIC_MODEL="claude-sonnet-4-6"
 export ANTHROPIC_SMALL_FAST_MODEL="claude-haiku-4-5-20251001"
 claude
 
-# curl (SDK appends /v1/messages to ANTHROPIC_BASE_URL)
+# curl — the proxy automatically maps model strings to allowed versions
+# Any string containing "Sonnet" → claude-sonnet-4-6
+# Any string containing "Haiku" → claude-haiku-4-5-20251001
 curl -X POST "${status.endpoint}/v1/messages" \\
   -H "x-api-key: ${status.token ?? 'llmp_…'}" \\
   -H "anthropic-version: 2023-06-01" \\
   -H "content-type: application/json" \\
-  -d '{"model":"claude-haiku-4-5-20251001","max_tokens":64,
+  -d '{"model":"claude-sonnet-4-6","max_tokens":1024,
        "messages":[{"role":"user","content":"hi"}]}'`}
       </pre>
     </section>

@@ -210,8 +210,9 @@ describe('LlmProxyForwarderService.forwardMessages — non-streaming', () => {
     expect(init.headers['x-api-key']).toBe('sk-fake');
     expect(init.headers['anthropic-version']).toBe('2023-06-01');
     expect(typeof init.body).toBe('string');
+    // Model is mapped: "haiku" in the string → claude-haiku-4-5-20251001
     expect(JSON.parse(init.body as string).model).toBe(
-      'claude-3-5-haiku-latest',
+      'claude-haiku-4-5-20251001',
     );
 
     expect(res.statusCode).toBe(200);
@@ -283,6 +284,68 @@ describe('LlmProxyForwarderService.forwardMessages — non-streaming', () => {
     });
     expect(res.statusCode).toBe(502);
     expect(reported).toEqual([0, 0]);
+  });
+
+  // Model mapping tests
+  it('maps any model string containing "sonnet" (case-insensitive) to claude-sonnet-4-6', async () => {
+    const svc = new LlmProxyForwarderService('sk-fake');
+    const req = makeFakeReq({
+      model: 'Claude-Sonnet-4-6',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    const res = new FakeResponse();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { usage: {} }));
+    globalThis.fetch = fetchMock as any;
+
+    await svc.forwardMessages(req as any, res as any, { onUsage: () => {} });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body as string).model).toBe('claude-sonnet-4-6');
+  });
+
+  it('maps any model string containing "haiku" (case-insensitive) to claude-haiku-4-5-20251001', async () => {
+    const svc = new LlmProxyForwarderService('sk-fake');
+    const req = makeFakeReq({
+      model: 'haiku-rumba-jumba',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    const res = new FakeResponse();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { usage: {} }));
+    globalThis.fetch = fetchMock as any;
+
+    await svc.forwardMessages(req as any, res as any, { onUsage: () => {} });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body as string).model).toBe(
+      'claude-haiku-4-5-20251001',
+    );
+  });
+
+  it('defaults unknown models to claude-sonnet-4-6', async () => {
+    const svc = new LlmProxyForwarderService('sk-fake');
+    const req = makeFakeReq({
+      model: 'claude-unknown-model',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    const res = new FakeResponse();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { usage: {} }));
+    globalThis.fetch = fetchMock as any;
+
+    await svc.forwardMessages(req as any, res as any, { onUsage: () => {} });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body as string).model).toBe('claude-sonnet-4-6');
+  });
+
+  it('defaults missing model to claude-sonnet-4-6', async () => {
+    const svc = new LlmProxyForwarderService('sk-fake');
+    const req = makeFakeReq({
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    const res = new FakeResponse();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { usage: {} }));
+    globalThis.fetch = fetchMock as any;
+
+    await svc.forwardMessages(req as any, res as any, { onUsage: () => {} });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body as string).model).toBe('claude-sonnet-4-6');
   });
 });
 

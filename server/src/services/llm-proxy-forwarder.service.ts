@@ -38,6 +38,8 @@ const logger = createLogger('llm-proxy-forwarder');
 
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
+const SONNET_MODEL = 'claude-sonnet-4-6';
+const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 
 // ---------------------------------------------------------------------------
 // Typed errors
@@ -91,6 +93,22 @@ export function resolveLlmProxyApiKey(): string {
   if (raw === 'your-anthropic-api-key') return '';
   if (raw.startsWith('sk-ant-admin')) return '';
   return raw;
+}
+
+/**
+ * Map a client-provided model string to an allowed model.
+ *
+ * Rules:
+ *  - If the string (case-insensitive) contains "Sonnet", use claude-sonnet-4-6
+ *  - If the string (case-insensitive) contains "Haiku", use claude-haiku-4-5-20251001
+ *  - Otherwise, default to claude-sonnet-4-6
+ */
+function mapModel(model: unknown): string {
+  if (typeof model !== 'string') return SONNET_MODEL;
+  const lower = model.toLowerCase();
+  if (lower.includes('sonnet')) return SONNET_MODEL;
+  if (lower.includes('haiku')) return HAIKU_MODEL;
+  return SONNET_MODEL;
 }
 
 /**
@@ -164,6 +182,11 @@ export class LlmProxyForwarderService {
 
     const body = req.body ?? {};
     const isStream = body && typeof body === 'object' && body.stream === true;
+
+    // Map the model to an allowed model. If not present, defaults to Sonnet.
+    if (body && typeof body === 'object') {
+      (body as any).model = mapModel((body as any).model);
+    }
 
     // Build upstream headers. Strip any client-supplied auth.
     const headers: Record<string, string> = {
