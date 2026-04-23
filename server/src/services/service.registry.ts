@@ -22,6 +22,7 @@ import { WorkspaceSyncService } from './workspace-sync.service';
 import { BulkCohortService } from './bulk-cohort.service';
 import { GroupService } from './group.service';
 import { BulkGroupService } from './bulk-group.service';
+import { LlmProxyTokenService } from './llm-proxy-token.service';
 import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
@@ -77,6 +78,8 @@ export class ServiceRegistry {
   readonly groups: GroupService;
   /** Bulk provisioning / lifecycle operations scoped to a Group (Sprint 012). */
   readonly bulkGroup: BulkGroupService;
+  /** Per-user LLM proxy tokens (Sprint 013). */
+  readonly llmProxyTokens: LlmProxyTokenService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -209,6 +212,9 @@ export class ServiceRegistry {
       this.workspaceProvisioning,
       this.claudeProvisioning,
     );
+
+    // LlmProxyTokenService — Sprint 013 T002.
+    this.llmProxyTokens = new LlmProxyTokenService(defaultPrisma, this.audit);
   }
 
   static create(
