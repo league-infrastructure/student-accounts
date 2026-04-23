@@ -150,19 +150,37 @@ export class ExternalAccountLifecycleService {
           `ExternalAccount ${accountId} has no external_id (Claude member id); cannot suspend`,
         );
       }
-      const studentsWsId = await this.resolveStudentsWorkspaceId();
-      if (studentsWsId) {
+      if (memberId.startsWith('invite_')) {
+        // The invite was never accepted, so there's nothing in any
+        // workspace to remove. Cancel the outstanding invite so the
+        // student can't accept it out of band.
         try {
-          await this.claudeTeamClient.removeUserFromWorkspace(studentsWsId, memberId);
+          await this.claudeTeamClient.cancelInvite(memberId);
           logger.info(
-            { accountId, memberId, studentsWsId },
-            '[external-account-lifecycle] suspend: claude user removed from Students workspace',
+            { accountId, memberId },
+            '[external-account-lifecycle] suspend: cancelled outstanding Claude invite',
           );
         } catch (err) {
           logger.warn(
-            { accountId, memberId, studentsWsId, err },
-            '[external-account-lifecycle] suspend: removeUserFromWorkspace failed — continuing with local status update',
+            { accountId, memberId, err },
+            '[external-account-lifecycle] suspend: cancelInvite failed — continuing with local status update',
           );
+        }
+      } else {
+        const studentsWsId = await this.resolveStudentsWorkspaceId();
+        if (studentsWsId) {
+          try {
+            await this.claudeTeamClient.removeUserFromWorkspace(studentsWsId, memberId);
+            logger.info(
+              { accountId, memberId, studentsWsId },
+              '[external-account-lifecycle] suspend: claude user removed from Students workspace',
+            );
+          } catch (err) {
+            logger.warn(
+              { accountId, memberId, studentsWsId, err },
+              '[external-account-lifecycle] suspend: removeUserFromWorkspace failed — continuing with local status update',
+            );
+          }
         }
       }
     }
@@ -267,8 +285,22 @@ export class ExternalAccountLifecycleService {
           `ExternalAccount ${accountId} has no external_id (Claude member id); cannot remove`,
         );
       }
-      await this.claudeTeamClient.deleteOrgUser(memberId);
-      logger.info({ accountId, memberId }, '[external-account-lifecycle] remove: claude org user deleted');
+      // External id may be an invite id (never accepted) or a user id
+      // (invite accepted, now an org member). The Admin API rejects
+      // cross-calls with "User id must have `user_` prefix."
+      if (memberId.startsWith('invite_')) {
+        await this.claudeTeamClient.cancelInvite(memberId);
+        logger.info(
+          { accountId, memberId },
+          '[external-account-lifecycle] remove: cancelled outstanding Claude invite',
+        );
+      } else {
+        await this.claudeTeamClient.deleteOrgUser(memberId);
+        logger.info(
+          { accountId, memberId },
+          '[external-account-lifecycle] remove: claude org user deleted',
+        );
+      }
     }
 
     // --- 3. Persist status change ---
