@@ -20,6 +20,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { prettifyName } from './utils/prettifyName';
 import UserGroupsCard from './UserGroupsCard';
+import UserLlmProxyCard from './UserLlmProxyCard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -315,6 +316,14 @@ export default function UserDetailPanel() {
       {/* 1b. Groups (Sprint 012 T006)                                         */}
       {/* ================================================================== */}
       <UserGroupsCard
+        userId={user.id}
+        userName={prettifyNameFromUser()}
+      />
+
+      {/* ================================================================== */}
+      {/* 1c. LLM Proxy access (Sprint 013 T005)                               */}
+      {/* ================================================================== */}
+      <UserLlmProxyCard
         userId={user.id}
         userName={prettifyNameFromUser()}
       />
