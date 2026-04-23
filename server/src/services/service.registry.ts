@@ -247,6 +247,9 @@ export class ServiceRegistry {
     // UserGroup has FK → User + Group (Cascade). Explicit delete keeps
     // teardown symmetry with other deleteMany calls.
     await (p as any).userGroup.deleteMany();
+    // LlmProxyToken has FK → User (Cascade) + granter User? (SetNull).
+    // Delete before User for the same teardown-symmetry reason.
+    await (p as any).llmProxyToken.deleteMany();
     // Login and ExternalAccount have FK → User with onDelete: Restrict,
     // so they must be deleted before User.
     await p.login.deleteMany();
