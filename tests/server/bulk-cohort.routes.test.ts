@@ -40,6 +40,14 @@ const fakeBulkCohort = {
     if (fakeState.throwNotFound) throw new NotFoundError('Cohort 999 not found');
     return fakeState.removeResult;
   }),
+  suspendAllInCohort: vi.fn(async (_cohortId: number, _actorId: number) => {
+    if (fakeState.throwNotFound) throw new NotFoundError('Cohort 999 not found');
+    return fakeState.suspendResult;
+  }),
+  removeAllInCohort: vi.fn(async (_cohortId: number, _actorId: number) => {
+    if (fakeState.throwNotFound) throw new NotFoundError('Cohort 999 not found');
+    return fakeState.removeResult;
+  }),
 };
 
 // =============================================================================
@@ -326,6 +334,115 @@ describe('POST /api/admin/cohorts/:id/bulk-remove', () => {
       .post('/api/admin/cohorts/20/bulk-remove')
       .send({ accountType: 'claude' });
 
+    expect(res.status).toBe(401);
+  });
+});
+
+// =============================================================================
+// POST /admin/cohorts/:id/bulk-suspend-all
+// =============================================================================
+
+describe('POST /api/admin/cohorts/:id/bulk-suspend-all', () => {
+  it('returns 200 with service result on success', async () => {
+    fakeState.suspendResult = {
+      succeeded: [10, 11, 12],
+      failed: [],
+    } as BulkOperationResult;
+
+    const res = await adminAgent.post('/api/admin/cohorts/5/bulk-suspend-all');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ succeeded: [10, 11, 12], failed: [] });
+    expect(fakeBulkCohort.suspendAllInCohort).toHaveBeenCalledWith(5, expect.any(Number));
+  });
+
+  it('returns 207 on partial failure', async () => {
+    fakeState.suspendResult = {
+      succeeded: [10],
+      failed: [
+        {
+          accountId: 11,
+          userId: 21,
+          userName: 'Bob',
+          type: 'claude',
+          error: 'rate limited',
+        },
+      ],
+    } as BulkOperationResult;
+
+    const res = await adminAgent.post('/api/admin/cohorts/5/bulk-suspend-all');
+
+    expect(res.status).toBe(207);
+    expect(res.body.failed[0].type).toBe('claude');
+  });
+
+  it('returns 404 when cohort does not exist', async () => {
+    fakeState.throwNotFound = true;
+    const res = await adminAgent.post('/api/admin/cohorts/999/bulk-suspend-all');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 for invalid cohort id', async () => {
+    const res = await adminAgent.post('/api/admin/cohorts/abc/bulk-suspend-all');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 for unauthenticated requests', async () => {
+    const res = await request(app).post('/api/admin/cohorts/5/bulk-suspend-all');
+    expect(res.status).toBe(401);
+  });
+});
+
+// =============================================================================
+// POST /admin/cohorts/:id/bulk-remove-all
+// =============================================================================
+
+describe('POST /api/admin/cohorts/:id/bulk-remove-all', () => {
+  it('returns 200 with service result on success', async () => {
+    fakeState.removeResult = {
+      succeeded: [20, 21],
+      failed: [],
+    } as BulkOperationResult;
+
+    const res = await adminAgent.post('/api/admin/cohorts/7/bulk-remove-all');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ succeeded: [20, 21], failed: [] });
+    expect(fakeBulkCohort.removeAllInCohort).toHaveBeenCalledWith(7, expect.any(Number));
+  });
+
+  it('returns 207 on partial failure', async () => {
+    fakeState.removeResult = {
+      succeeded: [20],
+      failed: [
+        {
+          accountId: 21,
+          userId: 42,
+          userName: 'Carol',
+          type: 'workspace',
+          error: 'upstream 502',
+        },
+      ],
+    } as BulkOperationResult;
+
+    const res = await adminAgent.post('/api/admin/cohorts/7/bulk-remove-all');
+    expect(res.status).toBe(207);
+    expect(res.body.failed[0].type).toBe('workspace');
+  });
+
+  it('returns 404 when cohort does not exist', async () => {
+    fakeState.throwNotFound = true;
+    const res = await adminAgent.post('/api/admin/cohorts/999/bulk-remove-all');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 for invalid cohort id', async () => {
+    const res = await adminAgent.post('/api/admin/cohorts/abc/bulk-remove-all');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 for unauthenticated requests', async () => {
+    const res = await request(app).post('/api/admin/cohorts/7/bulk-remove-all');
     expect(res.status).toBe(401);
   });
 });
