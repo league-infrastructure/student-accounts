@@ -1,11 +1,13 @@
 ---
-id: "004"
-title: "CohortDetailPanel: trim bulk buttons and wire Suspend All / Delete All"
-status: todo
-use-cases: ["SUC-011-002"]
-depends-on: ["002"]
-github-issue: ""
-todo: "cohort-page-simplify-bulk-buttons.md"
+id: '004'
+title: 'CohortDetailPanel: trim bulk buttons and wire Suspend All / Delete All'
+status: in-progress
+use-cases:
+- SUC-011-002
+depends-on:
+- '002'
+github-issue: ''
+todo: cohort-page-simplify-bulk-buttons.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -32,13 +34,13 @@ renders `${userName} (${type}): ${error}` for each failure.
 
 ## Acceptance Criteria
 
-- [ ] `/cohorts/:id` renders exactly three bulk-action buttons: Create Claude (N), Suspend All, Delete All.
-- [ ] Create League, Suspend League, Suspend Claude, Delete League, Delete Claude are not rendered.
-- [ ] Suspend All confirms, posts to `/api/admin/cohorts/:id/bulk-suspend-all`, and displays the succeeded/failed banner.
-- [ ] Delete All confirms, posts to `/api/admin/cohorts/:id/bulk-remove-all`, and displays the succeeded/failed banner.
-- [ ] Each failure in the banner shows `type` alongside the user name and error.
-- [ ] Create Claude seats continues to work unchanged.
-- [ ] `npm run test:client` passes.
+- [x] `/cohorts/:id` renders exactly three bulk-action buttons: Create Claude (N), Suspend All, Delete All.
+- [x] Create League, Suspend League, Suspend Claude, Delete League, Delete Claude are not rendered.
+- [x] Suspend All confirms, posts to `/api/admin/cohorts/:id/bulk-suspend-all`, and displays the succeeded/failed banner.
+- [x] Delete All confirms, posts to `/api/admin/cohorts/:id/bulk-remove-all`, and displays the succeeded/failed banner.
+- [x] Each failure in the banner shows `type` alongside the user name and error.
+- [x] Create Claude seats continues to work unchanged.
+- [x] `npm run test:client` passes.
 
 ## Plan
 

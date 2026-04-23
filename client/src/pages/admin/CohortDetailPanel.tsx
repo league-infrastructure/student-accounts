@@ -5,15 +5,20 @@
  * Claude account status. Bulk action buttons at the top perform the same
  * operation on every eligible member of the cohort:
  *
- *  - Create League accounts (POST /admin/cohorts/:id/bulk-provision workspace)
- *  - Create Claude seats    (POST /admin/cohorts/:id/bulk-provision claude)
- *  - Suspend League         (POST /admin/cohorts/:id/bulk-suspend workspace)
- *  - Suspend Claude         (POST /admin/cohorts/:id/bulk-suspend claude)
- *  - Delete League          (POST /admin/cohorts/:id/bulk-remove  workspace)
- *  - Delete Claude          (POST /admin/cohorts/:id/bulk-remove  claude)
+ *  - Create Claude seats (POST /admin/cohorts/:id/bulk-provision claude)
+ *    — League accounts cannot be bulk-created from here; cohort membership
+ *      already implies a League OU placement.
+ *  - Suspend All         (POST /admin/cohorts/:id/bulk-suspend-all)
+ *    — Suspends every active workspace + claude ExternalAccount for every
+ *      active cohort member.
+ *  - Delete All          (POST /admin/cohorts/:id/bulk-remove-all)
+ *    — Removes every active + suspended workspace + claude ExternalAccount
+ *      for every active cohort member.
  *
  * Each bulk action confirms, then re-fetches the member list and shows the
- * succeeded/failed counts.
+ * succeeded/failed counts. Failure entries from the *-all endpoints carry
+ * a `type` field (workspace | claude) so the banner can render
+ * "name (claude): reason".
  */
 
 import { useEffect, useState } from 'react';
@@ -40,10 +45,18 @@ interface CohortDetail {
 
 type AccountType = 'workspace' | 'claude';
 type Operation = 'provision' | 'suspend' | 'remove';
+type AllOperation = 'suspend' | 'remove';
 
 interface BulkResult {
   succeeded: number[];
-  failed: Array<{ accountId?: number; userId: number; userName: string; error: string }>;
+  failed: Array<{
+    accountId?: number;
+    userId: number;
+    userName: string;
+    /** Only populated by the *-all endpoints (suspend-all / remove-all). */
+    type?: AccountType;
+    error: string;
+  }>;
 }
 
 function hasAccount(m: Member, type: AccountType, statuses: string[]): boolean {
@@ -123,6 +136,55 @@ export default function CohortDetailPanel() {
     }
   }
 
+  /**
+   * Run a cohort-wide "suspend all" or "delete all" against every live
+   * workspace + claude ExternalAccount for every active member.
+   */
+  async function runBulkAll(op: AllOperation, label: string) {
+    const verb = op === 'suspend' ? 'Suspend' : 'Delete';
+    if (
+      !confirm(
+        `${verb} EVERY League and Claude account for every active student in this cohort?`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(`${op}-all`);
+    setBanner(null);
+    try {
+      const endpoint =
+        op === 'suspend'
+          ? `/api/admin/cohorts/${id}/bulk-suspend-all`
+          : `/api/admin/cohorts/${id}/bulk-remove-all`;
+      const res = await fetch(endpoint, { method: 'POST' });
+      const body = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
+      if (!res.ok && res.status !== 207) {
+        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      const r = body as BulkResult;
+      setBanner({
+        ok: r.failed.length === 0,
+        msg: `${label}: ${r.succeeded.length} succeeded, ${r.failed.length} failed.` +
+          (r.failed.length
+            ? ' ' +
+              r.failed
+                .map((f) => {
+                  const t = f.type ? ` (${f.type})` : '';
+                  return `${f.userName}${t}: ${f.error}`;
+                })
+                .join('; ')
+            : ''),
+      });
+      await load();
+    } catch (err: any) {
+      setBanner({ ok: false, msg: err.message || 'Bulk action failed' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (error) {
     return (
       <div>
@@ -133,14 +195,9 @@ export default function CohortDetailPanel() {
   }
   if (!data) return <p style={{ color: '#64748b' }}>Loading cohort…</p>;
 
-  const missingWorkspace = data.users.filter(
-    (m) => m.role === 'student' && !hasLeagueAccount(m),
-  ).length;
   const missingClaude = data.users.filter(
     (m) => m.role === 'student' && !hasAccount(m, 'claude', ['active', 'pending']),
   ).length;
-  const activeWorkspace = data.users.filter((m) => hasAccount(m, 'workspace', ['active'])).length;
-  const activeClaude = data.users.filter((m) => hasAccount(m, 'claude', ['active'])).length;
 
   return (
     <div>
@@ -169,13 +226,6 @@ export default function CohortDetailPanel() {
       {/* Bulk action buttons */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
         <BulkButton
-          label={`Create League (${missingWorkspace})`}
-          disabled={busy !== null || missingWorkspace === 0}
-          busy={busy === 'provision-workspace'}
-          kind="primary"
-          onClick={() => runBulk('provision', 'workspace', 'Create League accounts')}
-        />
-        <BulkButton
           label={`Create Claude (${missingClaude})`}
           disabled={busy !== null || missingClaude === 0}
           busy={busy === 'provision-claude'}
@@ -183,32 +233,18 @@ export default function CohortDetailPanel() {
           onClick={() => runBulk('provision', 'claude', 'Create Claude seats')}
         />
         <BulkButton
-          label={`Suspend League (${activeWorkspace})`}
-          disabled={busy !== null || activeWorkspace === 0}
-          busy={busy === 'suspend-workspace'}
+          label="Suspend All"
+          disabled={busy !== null || data.users.length === 0}
+          busy={busy === 'suspend-all'}
           kind="warn"
-          onClick={() => runBulk('suspend', 'workspace', 'Suspend League accounts')}
+          onClick={() => runBulkAll('suspend', 'Suspend all accounts')}
         />
         <BulkButton
-          label={`Suspend Claude (${activeClaude})`}
-          disabled={busy !== null || activeClaude === 0}
-          busy={busy === 'suspend-claude'}
-          kind="warn"
-          onClick={() => runBulk('suspend', 'claude', 'Suspend Claude seats')}
-        />
-        <BulkButton
-          label="Delete League"
-          disabled={busy !== null}
-          busy={busy === 'remove-workspace'}
+          label="Delete All"
+          disabled={busy !== null || data.users.length === 0}
+          busy={busy === 'remove-all'}
           kind="danger"
-          onClick={() => runBulk('remove', 'workspace', 'Delete League accounts')}
-        />
-        <BulkButton
-          label="Delete Claude"
-          disabled={busy !== null}
-          busy={busy === 'remove-claude'}
-          kind="danger"
-          onClick={() => runBulk('remove', 'claude', 'Delete Claude seats')}
+          onClick={() => runBulkAll('remove', 'Delete all accounts')}
         />
       </div>
 
