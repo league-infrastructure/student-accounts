@@ -1,11 +1,14 @@
 ---
-id: "007"
-title: "BulkLlmProxyService + cohort/group bulk endpoints + UI buttons"
-status: todo
-use-cases: ["SUC-013-006", "SUC-013-007"]
-depends-on: ["005"]
-github-issue: ""
-todo: ""
+id: '007'
+title: BulkLlmProxyService + cohort/group bulk endpoints + UI buttons
+status: done
+use-cases:
+- SUC-013-006
+- SUC-013-007
+depends-on:
+- '005'
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -77,23 +80,23 @@ Client:
 
 ## Acceptance Criteria
 
-- [ ] `BulkLlmProxyService.bulkGrant` returns `{succeeded, failed,
+- [x] `BulkLlmProxyService.bulkGrant` returns `{succeeded, failed,
       skipped, tokensByUser}`; each succeeded entry has a plaintext
       token in the map.
-- [ ] `bulkGrant` skips users that already have an active token
+- [x] `bulkGrant` skips users that already have an active token
       (no duplicate grants).
-- [ ] `bulkRevoke` skips users with no active token (no 404 per
+- [x] `bulkRevoke` skips users with no active token (no 404 per
       user).
-- [ ] Partial failures return 207 Multi-Status; zero failures
+- [x] Partial failures return 207 Multi-Status; zero failures
       return 200; zero-eligible returns 200 with empty arrays.
-- [ ] 404 returned when cohort / group id does not exist.
-- [ ] `ServiceRegistry` exposes `bulkLlmProxy`; `req.services.bulkLlmProxy`
+- [x] 404 returned when cohort / group id does not exist.
+- [x] `ServiceRegistry` exposes `bulkLlmProxy`; `req.services.bulkLlmProxy`
       is typed.
-- [ ] `CohortDetailPanel.tsx` and `GroupDetailPanel.tsx` render the
+- [x] `CohortDetailPanel.tsx` and `GroupDetailPanel.tsx` render the
       two new buttons and invoke the bulk endpoints; the plaintext
       tokens block is shown after a successful `bulkGrant`.
-- [ ] New server + client tests pass.
-- [ ] `npm run test:server` and `npm run test:client` pass relative
+- [x] New server + client tests pass.
+- [x] `npm run test:server` and `npm run test:client` pass relative
       to pre-existing drift.
 
 ## Testing

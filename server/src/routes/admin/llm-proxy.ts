@@ -179,3 +179,80 @@ adminLlmProxyRouter.delete(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// Bulk endpoints (Sprint 013 T007)
+// ---------------------------------------------------------------------------
+
+type Scope = 'cohort' | 'group';
+
+function bulkResultStatus(result: { succeeded: number[]; failed: { userId: number }[] }) {
+  if (result.failed.length > 0 && result.succeeded.length > 0) return 207;
+  if (result.failed.length > 0 && result.succeeded.length === 0) return 207;
+  return 200;
+}
+
+function registerBulkRoutes(scope: Scope, paramPrefix: string) {
+  // POST /admin/<scope>s/:id/llm-proxy/bulk-grant
+  adminLlmProxyRouter.post(
+    `/${paramPrefix}/:id/llm-proxy/bulk-grant`,
+    async (req, res, next) => {
+      try {
+        const id = parseIntParam(req.params.id);
+        if (id === null)
+          return res.status(400).json({ error: `Invalid ${scope} id` });
+
+        const body = (req.body ?? {}) as {
+          expiresAt?: unknown;
+          tokenLimit?: unknown;
+        };
+        const expiresAt = parseFutureDate(body.expiresAt);
+        if (!expiresAt) {
+          return res.status(400).json({
+            error: 'expiresAt must be an ISO 8601 date/time in the future.',
+          });
+        }
+        const tokenLimit = parsePositiveInt(body.tokenLimit);
+        if (!tokenLimit) {
+          return res
+            .status(400)
+            .json({ error: 'tokenLimit must be a positive integer.' });
+        }
+
+        const actorId = (req.session as any).userId as number;
+        const result = await req.services.bulkLlmProxy.bulkGrant(
+          { kind: scope, id },
+          { expiresAt, tokenLimit },
+          actorId,
+        );
+        return res.status(bulkResultStatus(result)).json(result);
+      } catch (err) {
+        handleError(err, res, next);
+      }
+    },
+  );
+
+  // POST /admin/<scope>s/:id/llm-proxy/bulk-revoke
+  adminLlmProxyRouter.post(
+    `/${paramPrefix}/:id/llm-proxy/bulk-revoke`,
+    async (req, res, next) => {
+      try {
+        const id = parseIntParam(req.params.id);
+        if (id === null)
+          return res.status(400).json({ error: `Invalid ${scope} id` });
+
+        const actorId = (req.session as any).userId as number;
+        const result = await req.services.bulkLlmProxy.bulkRevoke(
+          { kind: scope, id },
+          actorId,
+        );
+        return res.status(bulkResultStatus(result)).json(result);
+      } catch (err) {
+        handleError(err, res, next);
+      }
+    },
+  );
+}
+
+registerBulkRoutes('cohort', 'cohorts');
+registerBulkRoutes('group', 'groups');

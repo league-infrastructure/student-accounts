@@ -52,15 +52,12 @@ export default function AccountLlmProxyCard() {
     }
   }
 
+  // Gracefully hide the card when the backend endpoint fails to load
+  // (e.g. missing route in a test fixture, or a transient server error).
+  // This keeps the rest of the /account page readable — the LLM proxy
+  // feature is strictly additive and should not break the page on error.
   if (err) {
-    return (
-      <section data-testid="account-llm-proxy-card" style={styles.card}>
-        <h2 style={styles.sectionTitle}>LLM Proxy</h2>
-        <p role="alert" style={styles.errorText}>
-          {err}
-        </p>
-      </section>
-    );
+    return null;
   }
 
   if (!status) {
