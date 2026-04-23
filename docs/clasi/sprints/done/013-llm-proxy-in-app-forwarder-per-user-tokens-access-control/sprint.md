@@ -1,7 +1,7 @@
 ---
 id: '013'
 title: "LLM proxy in-app \u2014 forwarder + per-user tokens + access control"
-status: active
+status: done
 branch: sprint/013-llm-proxy-in-app-forwarder-per-user-tokens-access-control
 use-cases:
 - SUC-013-001
