@@ -21,6 +21,7 @@ import { ExternalAccountLifecycleService } from './external-account-lifecycle.se
 import { WorkspaceSyncService } from './workspace-sync.service';
 import { BulkCohortService } from './bulk-cohort.service';
 import { GroupService } from './group.service';
+import { BulkGroupService } from './bulk-group.service';
 import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
@@ -74,6 +75,8 @@ export class ServiceRegistry {
   readonly anthropicSync: AnthropicSyncService;
   /** App-level Group service (Sprint 012). */
   readonly groups: GroupService;
+  /** Bulk provisioning / lifecycle operations scoped to a Group (Sprint 012). */
+  readonly bulkGroup: BulkGroupService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -198,6 +201,14 @@ export class ServiceRegistry {
 
     // GroupService — Sprint 012 T002.
     this.groups = new GroupService(defaultPrisma, this.audit);
+
+    // BulkGroupService — Sprint 012 T003.
+    this.bulkGroup = new BulkGroupService(
+      defaultPrisma,
+      this.externalAccountLifecycle,
+      this.workspaceProvisioning,
+      this.claudeProvisioning,
+    );
   }
 
   static create(
