@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: BulkCohortService suspend-all / remove-all + two POST routes
-status: in-progress
+status: done
 use-cases:
 - SUC-011-002
 depends-on: []

@@ -1,7 +1,7 @@
 ---
 id: '001'
 title: ExternalAccountLifecycleService.unsuspend + POST /admin/external-accounts/:id/unsuspend
-status: in-progress
+status: done
 use-cases:
 - SUC-011-001
 depends-on: []
