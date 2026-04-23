@@ -23,12 +23,11 @@ const MAIN_NAV: NavItem[] = [
  */
 const ADMIN_WORKFLOW_NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', end: true },
-  { to: '/requests', label: 'Provisioning Requests' },
-  { to: '/cohorts', label: 'Cohorts' },
-  { to: '/groups', label: 'Groups' },
   { to: '/users', label: 'Users' },
+  { to: '/groups', label: 'Groups' },
+  { to: '/cohorts', label: 'Cohorts' },
   { to: '/sync', label: 'Sync' },
-  { to: '/merge-queue', label: 'Merge Queue' },
+  { to: '/requests', label: 'Provisioning Requests' },
 ];
 
 /**
