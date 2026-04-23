@@ -282,18 +282,23 @@ model MergeSuggestion {
 // Quota is enforced via token_limit vs tokens_used with a hard cut-off.
 // ---------------------------------------------------------------------------
 model LlmProxyToken {
-  id            Int       @id @default(autoincrement())
-  user_id       Int
-  token_hash    String    @unique
-  expires_at    DateTime
-  token_limit   Int
-  tokens_used   Int       @default(0)
-  request_count Int       @default(0)
-  granted_by    Int?
-  granted_at    DateTime  @default(now())
-  revoked_at    DateTime?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
+  id              Int       @id @default(autoincrement())
+  user_id         Int
+  token_hash      String    @unique
+  // Plaintext is stored so the student can see it on their Account page.
+  // These tokens are short-lived, quota-capped, and scoped to classroom
+  // demo use — the security bar is deliberately low. Nullable for rows
+  // created before the plaintext column existed.
+  token_plaintext String?
+  expires_at      DateTime
+  token_limit     Int
+  tokens_used     Int       @default(0)
+  request_count   Int       @default(0)
+  granted_by      Int?
+  granted_at      DateTime  @default(now())
+  revoked_at      DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
 
   user    User  @relation(fields: [user_id],    references: [id], onDelete: Cascade)
   granter User? @relation("LlmProxyGranter", fields: [granted_by], references: [id], onDelete: SetNull)

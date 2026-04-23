@@ -38,15 +38,17 @@ accountRouter.get(
   requireRole('student'),
   async (req: Request, res: Response) => {
     const userId: number = (req.session as any).userId;
-    const { users, cohorts, logins, externalAccounts, provisioningRequests } = req.services;
+    const { users, cohorts, logins, externalAccounts, provisioningRequests, llmProxyTokens } = req.services;
 
-    // Fetch all four data sources in parallel.
-    const [user, userLogins, userAccounts, userRequests] = await Promise.all([
+    // Fetch all five data sources in parallel.
+    const [user, userLogins, userAccounts, userRequests, llmActive] = await Promise.all([
       users.findById(userId),
       logins.findAllByUser(userId),
       externalAccounts.findAllByUser(userId),
       provisioningRequests.findByUser(userId),
+      llmProxyTokens.getActiveForUser(userId),
     ]);
+    const llmProxyEnabled = llmActive != null;
 
     // Resolve cohort: null when the user has not been assigned to one yet.
     let cohort: { id: number; name: string } | null = null;
@@ -75,6 +77,7 @@ accountRouter.get(
         approvalStatus: (user as any).approval_status ?? 'approved',
         createdAt: user.created_at,
         workspaceTempPassword,
+        llmProxyEnabled,
       },
       logins: userLogins.map((l) => ({
         id: l.id,
@@ -162,7 +165,7 @@ accountRouter.delete(
 // workspace-baseline constraint.
 // ---------------------------------------------------------------------------
 
-const VALID_REQUEST_TYPES: CreateRequestType[] = ['workspace', 'claude', 'workspace_and_claude'];
+const VALID_REQUEST_TYPES: CreateRequestType[] = ['workspace', 'claude', 'workspace_and_claude', 'llm_proxy'];
 
 // ---------------------------------------------------------------------------
 // POST /api/account/provisioning-requests — create a provisioning request
@@ -366,6 +369,7 @@ accountRouter.get(
     return res.json({
       enabled: true,
       endpoint,
+      token: (active as any).token_plaintext ?? null,
       tokensUsed: active.tokens_used,
       tokenLimit: active.token_limit,
       requestCount: active.request_count,

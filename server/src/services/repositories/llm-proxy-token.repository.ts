@@ -20,6 +20,9 @@ import type { DbClient } from './types.js';
 export type CreateLlmProxyTokenInput = {
   user_id: number;
   token_hash: string;
+  /** Shown to the student on their Account page. Optional for callers
+   *  that don't want to surface the value (none currently). */
+  token_plaintext?: string | null;
   expires_at: Date;
   token_limit: number;
   granted_by: number | null;

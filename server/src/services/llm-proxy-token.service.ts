@@ -139,6 +139,7 @@ export class LlmProxyTokenService {
       const created = await LlmProxyTokenRepository.create(tx, {
         user_id: userId,
         token_hash: tokenHash,
+        token_plaintext: plaintext,
         expires_at: params.expiresAt,
         token_limit: params.tokenLimit,
         granted_by: actorId,

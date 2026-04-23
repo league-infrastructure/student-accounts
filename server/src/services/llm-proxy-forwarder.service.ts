@@ -76,13 +76,21 @@ export type ForwardOptions = {
 /**
  * Resolve the API key from the same env var precedence used at construction.
  * Exported for the route layer's 503-check.
+ *
+ * Strips obvious non-keys: the placeholder shipped in secrets.env.example
+ * ("your-anthropic-api-key") and admin keys (`sk-ant-admin…`) — admin
+ * keys can't call /v1/messages, so accepting them here would route every
+ * student call into a guaranteed 401 at Anthropic.
  */
 export function resolveLlmProxyApiKey(): string {
-  return (
+  const raw =
     process.env.LLM_PROXY_ANTHROPIC_API_KEY ??
     process.env.ANTHROPIC_API_KEY ??
-    ''
-  );
+    '';
+  if (!raw) return '';
+  if (raw === 'your-anthropic-api-key') return '';
+  if (raw.startsWith('sk-ant-admin')) return '';
+  return raw;
 }
 
 /**

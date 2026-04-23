@@ -32,6 +32,7 @@ import type { AuditService } from './audit.service.js';
 import type { ExternalAccountService } from './external-account.service.js';
 import type { WorkspaceProvisioningService } from './workspace-provisioning.service.js';
 import type { ClaudeProvisioningService } from './claude-provisioning.service.js';
+import type { LlmProxyTokenService } from './llm-proxy-token.service.js';
 import { ProvisioningRequestRepository } from './repositories/provisioning-request.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { ProvisioningRequest } from '../generated/prisma/client.js';
@@ -39,7 +40,11 @@ import type { Prisma } from '../generated/prisma/client.js';
 
 const logger = createLogger('provisioning-request');
 
-export type CreateRequestType = 'workspace' | 'claude' | 'workspace_and_claude';
+export type CreateRequestType =
+  | 'workspace'
+  | 'claude'
+  | 'workspace_and_claude'
+  | 'llm_proxy';
 
 export class ProvisioningRequestService {
   constructor(
@@ -48,6 +53,7 @@ export class ProvisioningRequestService {
     private externalAccountService: ExternalAccountService,
     private workspaceProvisioningService?: WorkspaceProvisioningService,
     private claudeProvisioningService?: ClaudeProvisioningService,
+    private llmProxyTokenService?: LlmProxyTokenService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -90,6 +96,7 @@ export class ProvisioningRequestService {
   ): Promise<ProvisioningRequest[]> {
     const wantsWorkspace = requestType === 'workspace' || requestType === 'workspace_and_claude';
     const wantsClaude = requestType === 'claude' || requestType === 'workspace_and_claude';
+    const wantsLlmProxy = requestType === 'llm_proxy';
 
     const results = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created: ProvisioningRequest[] = [];
@@ -223,6 +230,63 @@ export class ProvisioningRequestService {
         created.push(claudeReq);
       }
 
+      // --- create llm_proxy row ---
+      if (wantsLlmProxy) {
+        const existingActive = await (tx as any).llmProxyToken.findFirst({
+          where: {
+            user_id: userId,
+            revoked_at: null,
+            expires_at: { gt: new Date() },
+          },
+        });
+        if (existingActive) {
+          throw new ConflictError(
+            `User ${userId} already has an active LLM proxy token`,
+          );
+        }
+        const existingPending = await (tx as any).provisioningRequest.findFirst({
+          where: {
+            user_id: userId,
+            requested_type: 'llm_proxy',
+            status: 'pending',
+          },
+        });
+        if (existingPending) {
+          throw new ConflictError(
+            `User ${userId} already has a pending LLM proxy request`,
+          );
+        }
+        const permaRejected = await (tx as any).provisioningRequest.findFirst({
+          where: {
+            user_id: userId,
+            requested_type: 'llm_proxy',
+            status: 'rejected_permanent',
+          },
+        });
+        if (permaRejected) {
+          throw new ConflictError(
+            `User ${userId} has been permanently denied LLM proxy access. Contact an admin.`,
+          );
+        }
+        const req = await ProvisioningRequestRepository.create(tx, {
+          user_id: userId,
+          requested_type: 'llm_proxy',
+          status: 'pending',
+        });
+        await this.audit.record(tx, {
+          actor_user_id: actorId,
+          action: 'create_provisioning_request',
+          target_user_id: userId,
+          target_entity_type: 'ProvisioningRequest',
+          target_entity_id: String(req.id),
+          details: {
+            requestedType: 'llm_proxy',
+            provisioningRequestId: req.id,
+          },
+        });
+        created.push(req);
+      }
+
       return created;
     });
 
@@ -305,6 +369,25 @@ export class ProvisioningRequestService {
           '[provisioning-request] Calling WorkspaceProvisioningService.provision for workspace request',
         );
         await this.workspaceProvisioningService.provision(existing.user_id, deciderId, tx);
+      } else if (existing.requested_type === 'llm_proxy') {
+        if (!this.llmProxyTokenService) {
+          throw new Error(
+            'ProvisioningRequestService: llmProxyTokenService is required to approve llm_proxy requests but was not injected',
+          );
+        }
+        // Default grant: 30 days, 1M tokens. Admin can revoke/re-grant
+        // with different caps from the user detail page.
+        const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+        logger.info(
+          { requestId, userId: existing.user_id, deciderId },
+          '[provisioning-request] Granting LLM proxy token for llm_proxy request',
+        );
+        await this.llmProxyTokenService.grant(
+          existing.user_id,
+          { expiresAt, tokenLimit: 1_000_000 },
+          deciderId,
+          { scope: 'single', scopeId: null },
+        );
       } else {
         // requested_type === 'claude'
         if (!this.claudeProvisioningService) {

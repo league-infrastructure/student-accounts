@@ -102,9 +102,10 @@ describe('UserLlmProxyCard — enabled state', () => {
 // ---------------------------------------------------------------------------
 
 describe('UserLlmProxyCard — grant flow', () => {
-  it('shows the plaintext token once after POST, hides on Dismiss', async () => {
-    // Sequence: initial GET (disabled), POST grant (plaintext),
-    // follow-up GET (enabled without plaintext).
+  it('does NOT display the plaintext token to the admin — only refreshes status', async () => {
+    // The plaintext lives on the student's Account page only. The admin
+    // grant flow submits, the form collapses, and the status refreshes
+    // to enabled. The token value is never surfaced in the admin UI.
     setFetch([
       () => jsonResponse(200, { enabled: false }),
       () =>
@@ -132,24 +133,20 @@ describe('UserLlmProxyCard — grant flow', () => {
       expect(screen.getByRole('button', { name: /grant access/i })).toBeTruthy();
     });
 
-    // Open the inline form.
+    // Open the inline form and submit.
     fireEvent.click(screen.getByRole('button', { name: /grant access/i }));
-    // Submit grant — the default inputs are fine for this test.
     fireEvent.click(
       screen.getAllByRole('button', { name: /grant access/i }).pop()!,
     );
 
-    // Plaintext appears.
+    // After the grant succeeds, the status refresh flips the card to
+    // enabled (Revoke access visible).
     await waitFor(() => {
-      expect(screen.getByTestId('llm-proxy-plaintext')).toBeTruthy();
+      expect(screen.getByRole('button', { name: /revoke access/i })).toBeTruthy();
     });
-    expect(screen.getByText('llmp_secretvalue')).toBeTruthy();
 
-    // Dismiss clears it.
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
-    await waitFor(() => {
-      expect(screen.queryByTestId('llm-proxy-plaintext')).toBeNull();
-    });
+    // Plaintext is NOT shown to the admin.
+    expect(screen.queryByTestId('llm-proxy-plaintext')).toBeNull();
     expect(screen.queryByText('llmp_secretvalue')).toBeNull();
   });
 });

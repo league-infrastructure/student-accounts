@@ -148,14 +148,21 @@ export class ServiceRegistry {
       this.audit,
     );
 
+    // LlmProxyTokenService — Sprint 013 T002. Built above
+    // ProvisioningRequestService so the latter can depend on it for the
+    // 'llm_proxy' approve branch.
+    this.llmProxyTokens = new LlmProxyTokenService(defaultPrisma, this.audit);
+
     // Sprint 004 T007: pass workspaceProvisioning so approve() can call provision().
     // Sprint 005 T007: also pass claudeProvisioning so approve() can provision Claude seats.
+    // + approve() also grants an LLM proxy token when requested_type === 'llm_proxy'.
     this.provisioningRequests = new ProvisioningRequestService(
       defaultPrisma,
       this.audit,
       this.externalAccounts,
       this.workspaceProvisioning,
       this.claudeProvisioning,
+      this.llmProxyTokens,
     );
 
     this.scheduler = new SchedulerService(defaultPrisma);
@@ -218,9 +225,6 @@ export class ServiceRegistry {
       this.workspaceProvisioning,
       this.claudeProvisioning,
     );
-
-    // LlmProxyTokenService — Sprint 013 T002.
-    this.llmProxyTokens = new LlmProxyTokenService(defaultPrisma, this.audit);
 
     // LlmProxyForwarderService — Sprint 013 T003.
     this.llmProxyForwarder = new LlmProxyForwarderService();

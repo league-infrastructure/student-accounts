@@ -15,6 +15,9 @@ import { useEffect, useState } from 'react';
 interface LlmProxyStatus {
   enabled: boolean;
   endpoint: string;
+  /** Plaintext bearer token. Shown directly on the page — these tokens
+   *  are short-lived, quota-capped, and scoped to demo use. */
+  token?: string | null;
   tokensUsed?: number;
   tokenLimit?: number;
   requestCount?: number;
@@ -47,6 +50,15 @@ export default function AccountLlmProxyCard() {
     if (!status?.endpoint) return;
     try {
       await navigator.clipboard.writeText(status.endpoint);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function copyToken() {
+    if (!status?.token) return;
+    try {
+      await navigator.clipboard.writeText(status.token);
     } catch {
       /* ignore */
     }
@@ -98,6 +110,19 @@ export default function AccountLlmProxyCard() {
             Copy
           </button>
         </dd>
+        {status.token && (
+          <>
+            <dt style={styles.dt}>Token</dt>
+            <dd style={styles.dd}>
+              <code data-testid="llm-proxy-token" style={styles.tokenValue}>
+                {status.token}
+              </code>{' '}
+              <button type="button" onClick={copyToken} style={styles.copyBtn}>
+                Copy
+              </button>
+            </dd>
+          </>
+        )}
         <dt style={styles.dt}>Usage</dt>
         <dd style={styles.dd}>
           <div style={styles.quotaBarBg}>
@@ -124,20 +149,22 @@ export default function AccountLlmProxyCard() {
       </dl>
 
       <h3 style={styles.subTitle}>Using your token</h3>
-      <p style={styles.muted}>
-        Your personal token was shown to you by an admin at grant time.
-        If you&apos;ve lost it, ask them to revoke and re-grant your
-        access.
-      </p>
+      {!status.token && (
+        <p style={styles.muted}>
+          Your token isn&apos;t showing because it was granted before
+          we stored the plaintext value. Ask an admin to revoke and
+          re-grant your access.
+        </p>
+      )}
       <pre style={styles.snippet}>
 {`# Claude Code
 export ANTHROPIC_BASE_URL="${status.endpoint}"
-export ANTHROPIC_API_KEY="llmp_…"   # token from your admin
+export ANTHROPIC_API_KEY="${status.token ?? 'llmp_…'}"
 claude
 
 # curl
 curl -X POST "${status.endpoint}/messages" \\
-  -H "authorization: Bearer llmp_…" \\
+  -H "authorization: Bearer ${status.token ?? 'llmp_…'}" \\
   -H "content-type: application/json" \\
   -d '{"model":"claude-3-5-haiku-latest","max_tokens":64,
        "messages":[{"role":"user","content":"hi"}]}'`}
@@ -195,6 +222,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     background: '#f8fafc',
     cursor: 'pointer',
+  },
+  tokenValue: {
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '0.82rem',
+    padding: '2px 6px',
+    background: '#f1f5f9',
+    borderRadius: 4,
+    userSelect: 'all',
+    wordBreak: 'break-all',
   },
   quotaBarBg: {
     width: '100%',

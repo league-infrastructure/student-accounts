@@ -19,6 +19,13 @@ export default defineConfig({
         // not directly to the backend (localhost:3000).
         changeOrigin: false,
       },
+      // LLM proxy forwarder is mounted at /proxy (outside /api) so
+      // `ANTHROPIC_BASE_URL=<origin>/proxy` works when the dev server
+      // is the student's origin too.
+      '/proxy': {
+        target: apiTarget,
+        changeOrigin: false,
+      },
     },
   },
 })

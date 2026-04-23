@@ -31,14 +31,6 @@ interface StatusResponse {
   revokedAt?: string | null;
 }
 
-interface GrantResponse {
-  token: string;
-  tokenId: number;
-  tokenLimit: number;
-  expiresAt: string;
-  grantedAt: string;
-}
-
 interface Props {
   userId: number;
   userName?: string;
@@ -58,7 +50,6 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
   const [showGrantForm, setShowGrantForm] = useState(false);
   const [expiresAtInput, setExpiresAtInput] = useState<string>(defaultExpiresAt());
   const [tokenLimitInput, setTokenLimitInput] = useState<number>(1_000_000);
-  const [plaintext, setPlaintext] = useState<GrantResponse | null>(null);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -91,8 +82,9 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
-      const body = (await res.json()) as GrantResponse;
-      setPlaintext(body);
+      // Plaintext deliberately ignored here — the token lives on the
+      // student's own Account page. Admins don't need to see it.
+      await res.json().catch(() => null);
       setShowGrantForm(false);
       await load();
     } catch (e: any) {
@@ -121,19 +113,6 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
     }
   }
 
-  async function copyPlaintext() {
-    if (!plaintext) return;
-    try {
-      await navigator.clipboard.writeText(plaintext.token);
-    } catch {
-      // Clipboard API unavailable in some test envs; silently ignore.
-    }
-  }
-
-  function dismissPlaintext() {
-    setPlaintext(null);
-  }
-
   return (
     <section data-testid="llm-proxy-card" style={cardStyle}>
       <h2 style={cardTitleStyle}>LLM Proxy</h2>
@@ -141,26 +120,6 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
       {err && (
         <div role="alert" style={errorStyle}>
           {err}
-        </div>
-      )}
-
-      {plaintext && (
-        <div data-testid="llm-proxy-plaintext" role="status" style={plaintextBannerStyle}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: '#78350f' }}>
-            New token — copy before leaving this page
-          </div>
-          <code style={plaintextCodeStyle}>{plaintext.token}</code>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button type="button" onClick={copyPlaintext} style={smallButtonStyle('primary')}>
-              Copy
-            </button>
-            <button type="button" onClick={dismissPlaintext} style={smallButtonStyle('neutral')}>
-              Dismiss
-            </button>
-          </div>
-          <div style={hintStyle}>
-            Share this with the student out-of-band. It will not be shown again.
-          </div>
         </div>
       )}
 
@@ -353,33 +312,6 @@ const errorStyle: React.CSSProperties = {
   padding: '8px 10px',
   borderRadius: 6,
   marginBottom: 10,
-};
-
-const plaintextBannerStyle: React.CSSProperties = {
-  background: '#fef3c7',
-  border: '1px solid #fcd34d',
-  borderRadius: 6,
-  padding: '12px 14px',
-  marginBottom: 12,
-};
-
-const plaintextCodeStyle: React.CSSProperties = {
-  display: 'block',
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 13,
-  padding: '8px 10px',
-  background: '#fffbeb',
-  color: '#78350f',
-  border: '1px solid #fde68a',
-  borderRadius: 4,
-  overflowX: 'auto',
-  userSelect: 'all',
-};
-
-const hintStyle: React.CSSProperties = {
-  marginTop: 8,
-  fontSize: 12,
-  color: '#92400e',
 };
 
 const formGridStyle: React.CSSProperties = {

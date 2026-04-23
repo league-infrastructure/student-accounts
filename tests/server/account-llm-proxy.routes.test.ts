@@ -117,9 +117,9 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     expect(res.body).not.toHaveProperty('tokenHash');
   });
 
-  it('returns the enabled shape when there is an active token, without plaintext or hash', async () => {
+  it('returns the enabled shape including the plaintext token, without the hash', async () => {
     const admin = await makeUser({ role: 'admin' });
-    await registry.llmProxyTokens.grant(
+    const { token: granted } = await registry.llmProxyTokens.grant(
       studentId,
       {
         expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000),
@@ -136,7 +136,8 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     expect(res.body.requestCount).toBe(0);
     expect(typeof res.body.endpoint).toBe('string');
     expect(res.body.endpoint).toMatch(/\/proxy\/v1$/);
-    expect(res.body).not.toHaveProperty('token');
+    // Plaintext token is surfaced so the student can see and use it.
+    expect(res.body.token).toBe(granted);
     expect(res.body).not.toHaveProperty('tokenHash');
     expect(res.body).not.toHaveProperty('token_hash');
   });
