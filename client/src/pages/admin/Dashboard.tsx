@@ -121,10 +121,9 @@ export default function Dashboard() {
   return (
     <div>
       <h2 style={pageHeadingStyle}>Dashboard</h2>
+      <UserCountsWidget />
       <PendingUsersWidget />
       <PendingRequestsWidget />
-      <CohortsWidget />
-      <UserCountsWidget />
     </div>
   );
 }
@@ -562,59 +561,6 @@ function PendingRequestsWidget() {
             </p>
           )}
         </>
-      )}
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// CohortsWidget
-// ---------------------------------------------------------------------------
-
-function CohortsWidget() {
-  const { data: cohorts, isLoading, error } = useQuery<Cohort[], Error>({
-    queryKey: ['admin', 'dashboard', 'cohorts'],
-    queryFn: fetchCohorts,
-  });
-
-  return (
-    <section style={widgetStyle} aria-labelledby="cohorts-heading">
-      <div style={widgetHeaderRowStyle}>
-        <h3 id="cohorts-heading" style={widgetHeadingStyle}>
-          Cohorts
-        </h3>
-        <Link to="/cohorts" style={manageLinkStyle}>
-          Manage &rarr;
-        </Link>
-      </div>
-
-      {isLoading && <p style={loadingStyle}>Loading cohorts...</p>}
-
-      {error && (
-        <p style={errorStyle} role="alert">
-          Failed to load cohorts: {error.message}
-        </p>
-      )}
-
-      {!isLoading && !error && cohorts && cohorts.length === 0 && (
-        <p style={emptyStyle}>No cohorts yet.</p>
-      )}
-
-      {!isLoading && !error && cohorts && cohorts.length > 0 && (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={thStyle}>Cohort Name</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cohorts.map((cohort) => (
-              <tr key={cohort.id}>
-                <td style={tdStyle}>{cohort.name}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       )}
     </section>
   );

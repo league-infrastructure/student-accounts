@@ -116,6 +116,8 @@ describe('GET /api/admin/cohorts — admin', () => {
     expect(item).toHaveProperty('name');
     expect(item).toHaveProperty('google_ou_path');
     expect(item).toHaveProperty('createdAt');
+    expect(item).toHaveProperty('memberCount');
+    expect(typeof item.memberCount).toBe('number');
   });
 
   it('returns empty array when no cohorts exist', async () => {

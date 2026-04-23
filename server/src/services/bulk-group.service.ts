@@ -46,11 +46,15 @@ export class BulkGroupService {
    * Create accounts of `accountType` for every active member of the
    * group that does not already have an active/pending account of that
    * type. Fail-soft per user.
+   *
+   * If userIds is provided, only operates on those users (must be members of the group).
+   * If userIds is omitted, operates on all members.
    */
   async provisionGroup(
     groupId: number,
     accountType: AccountType,
     actorId: number,
+    userIds?: number[],
   ): Promise<BulkOperationResult> {
     await this._assertGroupExists(groupId);
 
@@ -64,8 +68,11 @@ export class BulkGroupService {
       );
     }
 
+    const userIdFilter = userIds && userIds.length > 0 ? { in: userIds } : undefined;
+
     const users: any[] = await (this.prisma as any).user.findMany({
       where: {
+        ...(userIdFilter && { id: userIdFilter }),
         is_active: true,
         groups: { some: { group_id: groupId } },
         external_accounts: {
@@ -107,9 +114,10 @@ export class BulkGroupService {
   async suspendAllInGroup(
     groupId: number,
     actorId: number,
+    userIds?: number[],
   ): Promise<BulkOperationResult> {
     await this._assertGroupExists(groupId);
-    const accounts = await this._loadAllEligibleForSuspend(groupId);
+    const accounts = await this._loadAllEligibleForSuspend(groupId, userIds);
     return processAccounts(
       this.prisma,
       this.externalAccountLifecycle,
@@ -126,9 +134,10 @@ export class BulkGroupService {
   async removeAllInGroup(
     groupId: number,
     actorId: number,
+    userIds?: number[],
   ): Promise<BulkOperationResult> {
     await this._assertGroupExists(groupId);
-    const accounts = await this._loadAllEligibleForRemove(groupId);
+    const accounts = await this._loadAllEligibleForRemove(groupId, userIds);
     return processAccounts(
       this.prisma,
       this.externalAccountLifecycle,
@@ -178,12 +187,16 @@ export class BulkGroupService {
   /** Load active workspace + claude accounts for active members of the group. */
   private async _loadAllEligibleForSuspend(
     groupId: number,
+    userIds?: number[],
   ): Promise<AccountRow[]> {
+    const userIdFilter = userIds && userIds.length > 0 ? { in: userIds } : undefined;
+
     const rows = await (this.prisma as any).externalAccount.findMany({
       where: {
         type: { in: ['workspace', 'claude'] },
         status: 'active',
         user: {
+          ...(userIdFilter && { id: userIdFilter }),
           is_active: true,
           groups: { some: { group_id: groupId } },
         },
@@ -201,12 +214,16 @@ export class BulkGroupService {
   /** Load active + suspended workspace + claude accounts for active members. */
   private async _loadAllEligibleForRemove(
     groupId: number,
+    userIds?: number[],
   ): Promise<AccountRow[]> {
+    const userIdFilter = userIds && userIds.length > 0 ? { in: userIds } : undefined;
+
     const rows = await (this.prisma as any).externalAccount.findMany({
       where: {
         type: { in: ['workspace', 'claude'] },
         status: { in: ['active', 'suspended'] },
         user: {
+          ...(userIdFilter && { id: userIdFilter }),
           is_active: true,
           groups: { some: { group_id: groupId } },
         },

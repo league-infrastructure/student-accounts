@@ -205,6 +205,7 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
         const body = (req.body ?? {}) as {
           expiresAt?: unknown;
           tokenLimit?: unknown;
+          userIds?: unknown;
         };
         const expiresAt = parseFutureDate(body.expiresAt);
         if (!expiresAt) {
@@ -219,11 +220,19 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
             .json({ error: 'tokenLimit must be a positive integer.' });
         }
 
+        // Validate userIds if provided
+        const parsedUserIds =
+          Array.isArray(body.userIds) &&
+          body.userIds.every((uid) => typeof uid === 'number')
+            ? (body.userIds as number[])
+            : undefined;
+
         const actorId = (req.session as any).userId as number;
         const result = await req.services.bulkLlmProxy.bulkGrant(
           { kind: scope, id },
           { expiresAt, tokenLimit },
           actorId,
+          parsedUserIds,
         );
         return res.status(bulkResultStatus(result)).json(result);
       } catch (err) {
@@ -241,10 +250,20 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
         if (id === null)
           return res.status(400).json({ error: `Invalid ${scope} id` });
 
+        const body = (req.body ?? {}) as { userIds?: unknown };
+
+        // Validate userIds if provided
+        const parsedUserIds =
+          Array.isArray(body.userIds) &&
+          body.userIds.every((uid) => typeof uid === 'number')
+            ? (body.userIds as number[])
+            : undefined;
+
         const actorId = (req.session as any).userId as number;
         const result = await req.services.bulkLlmProxy.bulkRevoke(
           { kind: scope, id },
           actorId,
+          parsedUserIds,
         );
         return res.status(bulkResultStatus(result)).json(result);
       } catch (err) {

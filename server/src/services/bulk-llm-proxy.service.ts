@@ -81,12 +81,19 @@ export class BulkLlmProxyService {
 
   private async resolveMembers(
     scope: BulkLlmProxyScope,
+    userIds?: number[],
   ): Promise<MemberRow[]> {
+    const userIdFilter = userIds && userIds.length > 0 ? { in: userIds } : undefined;
+
     if (scope.kind === 'cohort') {
       const cohort = await CohortRepository.findById(this.prisma, scope.id);
       if (!cohort) throw new NotFoundError(`Cohort ${scope.id} not found`);
       const users = await (this.prisma as any).user.findMany({
-        where: { cohort_id: scope.id, is_active: true },
+        where: {
+          ...(userIdFilter && { id: userIdFilter }),
+          cohort_id: scope.id,
+          is_active: true,
+        },
         select: { id: true, display_name: true, primary_email: true },
         orderBy: { display_name: 'asc' },
       });
@@ -97,6 +104,7 @@ export class BulkLlmProxyService {
     if (!group) throw new NotFoundError(`Group ${scope.id} not found`);
     const users = await (this.prisma as any).user.findMany({
       where: {
+        ...(userIdFilter && { id: userIdFilter }),
         is_active: true,
         groups: { some: { group_id: scope.id } },
       },
@@ -114,8 +122,9 @@ export class BulkLlmProxyService {
     scope: BulkLlmProxyScope,
     params: BulkLlmProxyGrantParams,
     actorId: number,
+    userIds?: number[],
   ): Promise<BulkLlmProxyResult> {
-    const members = await this.resolveMembers(scope);
+    const members = await this.resolveMembers(scope, userIds);
     const succeeded: number[] = [];
     const failed: BulkLlmProxyFailure[] = [];
     const skipped: number[] = [];
@@ -159,8 +168,9 @@ export class BulkLlmProxyService {
   async bulkRevoke(
     scope: BulkLlmProxyScope,
     actorId: number,
+    userIds?: number[],
   ): Promise<BulkLlmProxyResult> {
-    const members = await this.resolveMembers(scope);
+    const members = await this.resolveMembers(scope, userIds);
     const succeeded: number[] = [];
     const failed: BulkLlmProxyFailure[] = [];
     const skipped: number[] = [];

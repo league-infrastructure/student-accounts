@@ -35,6 +35,7 @@ interface Cohort {
   name: string;
   google_ou_path: string | null;
   createdAt: string;
+  memberCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +211,7 @@ function CohortsTable({ cohorts, sortCol, sortDir, onSort }: CohortsTableProps) 
       <thead>
         <tr>
           <th style={thProps('name')} onClick={() => onSort('name')}>Name{arrow('name')}</th>
+          <th style={thStyle}>Students</th>
           <th style={thProps('google_ou_path')} onClick={() => onSort('google_ou_path')}>
             Google OU Path{arrow('google_ou_path')}
           </th>
@@ -226,6 +228,7 @@ function CohortsTable({ cohorts, sortCol, sortDir, onSort }: CohortsTableProps) 
                 {cohort.name}
               </Link>
             </td>
+            <td style={tdStyle}>{cohort.memberCount}</td>
             <td style={tdStyle}>{cohort.google_ou_path ?? '-'}</td>
             <td style={tdStyle}>{new Date(cohort.createdAt).toLocaleDateString()}</td>
           </tr>

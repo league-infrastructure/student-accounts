@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Button } from '../../components/ui/button';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,6 +27,9 @@ interface Member {
   email: string;
   role: string;
   externalAccounts: ExternalAccount[];
+  llmProxyToken: {
+    status: 'active' | 'pending' | 'none';
+  };
 }
 
 interface GroupInfo {
@@ -64,10 +68,6 @@ interface BulkResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function hasAccount(m: Member, type: AccountType, statuses: string[]): boolean {
-  return m.externalAccounts.some((a) => a.type === type && statuses.includes(a.status));
-}
-
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -90,9 +90,12 @@ export default function GroupDetailPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editDesc, setEditDesc] = useState('');
+  // Click-to-edit name (Ticket 007)
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editingNameValue, setEditingNameValue] = useState('');
+
+  // Row selection (Ticket 007)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedQuery = useDebounced(searchQuery, 300);
@@ -105,8 +108,6 @@ export default function GroupDetailPanel() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as GroupDetail;
       setData(body);
-      setEditName(body.group.name);
-      setEditDesc(body.group.description ?? '');
     } catch (err: any) {
       setError(err.message || 'Failed to load group');
     }
@@ -166,43 +167,28 @@ export default function GroupDetailPanel() {
     }
   }
 
-  async function removeMember(userId: number, userName: string) {
-    if (!confirm(`Remove ${userName} from this group?`)) return;
-    setBusy(`remove-${userId}`);
-    setBanner(null);
-    try {
-      const res = await fetch(`/api/admin/groups/${id}/members/${userId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok && res.status !== 204) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-      }
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'Remove failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
 
   async function runBulkProvision(accountType: AccountType, label: string) {
     const product = accountType === 'workspace' ? 'League accounts' : 'Claude seats';
-    if (!confirm(`Create ${product} for all eligible members of this group?`)) return;
+    if (!confirm(`Create ${product} for selected members?`)) return;
     setBusy(`provision-${accountType}`);
     setBanner(null);
     try {
+      const body: any = { accountType };
+      if (selectedIds.size > 0) {
+        body.userIds = Array.from(selectedIds);
+      }
       const res = await fetch(`/api/admin/groups/${id}/bulk-provision`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountType }),
+        body: JSON.stringify(body),
       });
-      const body = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
+      const responseBody = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
       if (!res.ok && res.status !== 207) {
-        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+        const msg = (responseBody as { error?: string }).error ?? `HTTP ${res.status}`;
         throw new Error(msg);
       }
-      const r = body as BulkResult;
+      const r = responseBody as BulkResult;
       setBanner({
         ok: r.failed.length === 0,
         msg:
@@ -238,25 +224,29 @@ export default function GroupDetailPanel() {
     setBusy('llm-proxy-grant');
     setBanner(null);
     try {
+      const body: any = { expiresAt: expiresAtStr, tokenLimit };
+      if (selectedIds.size > 0) {
+        body.userIds = Array.from(selectedIds);
+      }
       const res = await fetch(
         `/api/admin/groups/${id}/llm-proxy/bulk-grant`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresAt: expiresAtStr, tokenLimit }),
+          body: JSON.stringify(body),
         },
       );
-      const body = (await res.json().catch(() => ({}))) as any;
+      const responseBody = (await res.json().catch(() => ({}))) as any;
       if (!res.ok && res.status !== 207) {
-        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+        const msg = (responseBody as { error?: string }).error ?? `HTTP ${res.status}`;
         throw new Error(msg);
       }
-      const s = body.succeeded?.length ?? 0;
-      const f = body.failed?.length ?? 0;
-      const skip = body.skipped?.length ?? 0;
+      const s = responseBody.succeeded?.length ?? 0;
+      const f = responseBody.failed?.length ?? 0;
+      const skip = responseBody.skipped?.length ?? 0;
       let csv = '';
-      if (body.tokensByUser) {
-        csv = Object.entries(body.tokensByUser)
+      if (responseBody.tokensByUser) {
+        csv = Object.entries(responseBody.tokensByUser)
           .map(([uid, tok]) => `${uid},${tok}`)
           .join('\n');
       }
@@ -276,25 +266,33 @@ export default function GroupDetailPanel() {
   async function runBulkLlmProxyRevoke() {
     if (
       !confirm(
-        'Revoke LLM proxy access for every member of this group who has an active token?',
+        'Revoke LLM proxy access for selected members who have active tokens?',
       )
     )
       return;
     setBusy('llm-proxy-revoke');
     setBanner(null);
     try {
+      const body: any = {};
+      if (selectedIds.size > 0) {
+        body.userIds = Array.from(selectedIds);
+      }
       const res = await fetch(
         `/api/admin/groups/${id}/llm-proxy/bulk-revoke`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
       );
-      const body = (await res.json().catch(() => ({}))) as any;
+      const responseBody = (await res.json().catch(() => ({}))) as any;
       if (!res.ok && res.status !== 207) {
-        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+        const msg = (responseBody as { error?: string }).error ?? `HTTP ${res.status}`;
         throw new Error(msg);
       }
-      const s = body.succeeded?.length ?? 0;
-      const f = body.failed?.length ?? 0;
-      const skip = body.skipped?.length ?? 0;
+      const s = responseBody.succeeded?.length ?? 0;
+      const f = responseBody.failed?.length ?? 0;
+      const skip = responseBody.skipped?.length ?? 0;
       setBanner({
         ok: f === 0,
         msg: `LLM proxy revoke: ${s} succeeded, ${f} failed, ${skip} skipped.`,
@@ -310,7 +308,7 @@ export default function GroupDetailPanel() {
     const verb = op === 'suspend' ? 'Suspend' : 'Delete';
     if (
       !confirm(
-        `${verb} EVERY League and Claude account for every active member of this group?`,
+        `${verb} EVERY League and Claude account for selected members?`,
       )
     )
       return;
@@ -321,13 +319,21 @@ export default function GroupDetailPanel() {
         op === 'suspend'
           ? `/api/admin/groups/${id}/bulk-suspend-all`
           : `/api/admin/groups/${id}/bulk-remove-all`;
-      const res = await fetch(endpoint, { method: 'POST' });
-      const body = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
+      const body: any = {};
+      if (selectedIds.size > 0) {
+        body.userIds = Array.from(selectedIds);
+      }
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const responseBody = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
       if (!res.ok && res.status !== 207) {
-        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+        const msg = (responseBody as { error?: string }).error ?? `HTTP ${res.status}`;
         throw new Error(msg);
       }
-      const r = body as BulkResult;
+      const r = responseBody as BulkResult;
       setBanner({
         ok: r.failed.length === 0,
         msg:
@@ -350,30 +356,6 @@ export default function GroupDetailPanel() {
     }
   }
 
-  async function saveEdit() {
-    setBusy('edit');
-    setBanner(null);
-    try {
-      const res = await fetch(`/api/admin/groups/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editName.trim(),
-          description: editDesc.trim() || null,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-      }
-      setEditing(false);
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'Save failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
 
   async function deleteGroup() {
     if (!data) return;
@@ -398,6 +380,105 @@ export default function GroupDetailPanel() {
     }
   }
 
+  async function saveNameEdit() {
+    setBusy('edit-name');
+    setBanner(null);
+    try {
+      const trimmed = editingNameValue.trim();
+      if (!trimmed) {
+        setBanner({ ok: false, msg: 'Group name cannot be empty.' });
+        setBusy(null);
+        return;
+      }
+      const res = await fetch(`/api/admin/groups/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trimmed,
+          description: data?.group.description ?? null,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      setIsEditingName(false);
+      await load();
+    } catch (err: any) {
+      setBanner({ ok: false, msg: err.message || 'Save failed' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Ticket 007: Row selection helpers
+  function toggleRowSelection(userId: number) {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(userId)) {
+      newSelected.delete(userId);
+    } else {
+      newSelected.add(userId);
+    }
+    setSelectedIds(newSelected);
+  }
+
+  function toggleSelectAll() {
+    if (!data) return;
+    if (selectedIds.size === data.users.length) {
+      // All selected, deselect all
+      setSelectedIds(new Set());
+    } else {
+      // Select all
+      setSelectedIds(new Set(data.users.map((u) => u.id)));
+    }
+  }
+
+  function isSelectAllIndeterminate() {
+    if (!data || data.users.length === 0) return false;
+    return selectedIds.size > 0 && selectedIds.size < data.users.length;
+  }
+
+  // Ticket 008: Compute effective target members for button counts
+  function getEffectiveMembers(): Member[] {
+    if (!data) return [];
+    if (selectedIds.size > 0) {
+      return data.users.filter((m) => selectedIds.has(m.id));
+    }
+    return data.users;
+  }
+
+  // Ticket 008: Button count computations
+  function getCreateLeagueCount(): number {
+    return getEffectiveMembers().filter(
+      (m) => !m.externalAccounts.some((a) => a.type === 'workspace' && a.status === 'active'),
+    ).length;
+  }
+
+  function getRemoveLeagueCount(): number {
+    return getEffectiveMembers().filter(
+      (m) => m.externalAccounts.some((a) => a.type === 'workspace' && a.status === 'active'),
+    ).length;
+  }
+
+  function getSuspendCount(): number {
+    // Count non-suspended members
+    return getEffectiveMembers().filter(
+      (m) => !m.externalAccounts.some((a) => a.status === 'suspended'),
+    ).length;
+  }
+
+  function getGrantLlmProxyCount(): number {
+    return getEffectiveMembers().filter(
+      (m) => m.llmProxyToken.status !== 'active',
+    ).length;
+  }
+
+  function getRevokeLlmProxyCount(): number {
+    return getEffectiveMembers().filter(
+      (m) => m.llmProxyToken.status === 'active',
+    ).length;
+  }
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -414,56 +495,62 @@ export default function GroupDetailPanel() {
   }
   if (!data) return <p style={{ color: '#64748b' }}>Loading group…</p>;
 
-  const missingClaude = data.users.filter(
-    (m) => !hasAccount(m, 'claude', ['active', 'pending']),
-  ).length;
-
   return (
     <div>
       <button onClick={() => navigate('/groups')} style={backBtn}>
         ← Back to Groups
       </button>
 
-      {editing ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      {isEditingName ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
           <input
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
+            type="text"
+            value={editingNameValue}
+            onChange={(e) => setEditingNameValue(e.target.value)}
+            onBlur={saveNameEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                saveNameEdit();
+              } else if (e.key === 'Escape') {
+                setIsEditingName(false);
+              }
+            }}
+            autoFocus
             aria-label="Edit group name"
             style={editInput}
           />
-          <input
-            value={editDesc}
-            onChange={(e) => setEditDesc(e.target.value)}
-            aria-label="Edit group description"
-            placeholder="Description (optional)"
-            style={{ ...editInput, minWidth: 280 }}
-          />
-          <button onClick={saveEdit} disabled={busy === 'edit'} style={saveBtn}>
-            Save
-          </button>
-          <button
-            onClick={() => {
-              setEditing(false);
-              setEditName(data.group.name);
-              setEditDesc(data.group.description ?? '');
-            }}
-            style={cancelBtn}
-          >
-            Cancel
-          </button>
         </div>
       ) : (
         <>
-          <h2 style={{ margin: '0 0 4px', fontSize: 22 }}>{data.group.name}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <h2
+              onClick={() => {
+                setIsEditingName(true);
+                setEditingNameValue(data.group.name);
+              }}
+              style={{
+                margin: 0,
+                fontSize: 22,
+                cursor: 'pointer',
+                padding: '4px 8px',
+                borderRadius: 4,
+                transition: 'background-color 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = '#f1f5f9';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+              }}
+            >
+              {data.group.name}
+            </h2>
+          </div>
           <p style={{ color: '#64748b', marginTop: 0, fontSize: 13 }}>
             {data.group.description ? `${data.group.description} · ` : ''}
             {data.users.length} member{data.users.length === 1 ? '' : 's'}
           </p>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <button onClick={() => setEditing(true)} style={secondaryBtn}>
-              Edit
-            </button>
             <button onClick={deleteGroup} style={dangerSmallBtn}>
               Delete Group
             </button>
@@ -487,50 +574,45 @@ export default function GroupDetailPanel() {
         </div>
       )}
 
-      {/* Bulk action buttons */}
+      {/* Bulk action buttons (Ticket 008) */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        <BulkButton
-          label="Create League"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'provision-workspace'}
-          kind="primary"
+        <Button
+          variant="default"
+          disabled={busy !== null || getCreateLeagueCount() === 0}
           onClick={() => runBulkProvision('workspace', 'Create League accounts')}
-        />
-        <BulkButton
-          label={`Invite Claude (${missingClaude})`}
-          disabled={busy !== null || missingClaude === 0}
-          busy={busy === 'provision-claude'}
-          kind="primary"
-          onClick={() => runBulkProvision('claude', 'Invite to Claude')}
-        />
-        <BulkButton
-          label="Suspend All"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'suspend-all'}
-          kind="warn"
-          onClick={() => runBulkAll('suspend', 'Suspend all accounts')}
-        />
-        <BulkButton
-          label="Delete All"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'remove-all'}
-          kind="danger"
+        >
+          Create League ({getCreateLeagueCount()})
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={busy !== null || getRemoveLeagueCount() === 0}
           onClick={() => runBulkAll('remove', 'Delete all accounts')}
-        />
-        <BulkButton
-          label="Grant LLM Proxy"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'llm-proxy-grant'}
-          kind="primary"
+        >
+          Remove League ({getRemoveLeagueCount()})
+        </Button>
+        <Button
+          variant="outline"
+          disabled={busy !== null || getSuspendCount() === 0}
+          onClick={() => runBulkAll('suspend', 'Suspend all accounts')}
+        >
+          Suspend ({getSuspendCount()})
+        </Button>
+        <Button
+          variant="default"
+          disabled={busy !== null || getGrantLlmProxyCount() === 0}
           onClick={runBulkLlmProxyGrant}
-        />
-        <BulkButton
-          label="Revoke LLM Proxy"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'llm-proxy-revoke'}
-          kind="warn"
-          onClick={runBulkLlmProxyRevoke}
-        />
+        >
+          Grant LLM Proxy ({getGrantLlmProxyCount()})
+        </Button>
+        {getRevokeLlmProxyCount() > 0 && (
+          <Button
+            variant="outline"
+            disabled={busy !== null}
+            onClick={runBulkLlmProxyRevoke}
+          >
+            Revoke LLM Proxy ({getRevokeLlmProxyCount()})
+          </Button>
+        )}
       </div>
 
       {/* Add-member search */}
@@ -567,11 +649,25 @@ export default function GroupDetailPanel() {
       <table style={tableStyle}>
         <thead>
           <tr>
+            <th style={{ ...th, width: 40 }}>
+              <input
+                type="checkbox"
+                checked={data.users.length > 0 && selectedIds.size === data.users.length}
+                ref={(el) => {
+                  if (el) {
+                    el.indeterminate = isSelectAllIndeterminate();
+                  }
+                }}
+                onChange={toggleSelectAll}
+                aria-label="Select all members"
+                style={{ cursor: 'pointer' }}
+              />
+            </th>
             <th style={th}>Name</th>
             <th style={th}>Email</th>
             <th style={th}>League</th>
             <th style={th}>Claude</th>
-            <th style={th} />
+            <th style={th}>LLM Proxy</th>
           </tr>
         </thead>
         <tbody>
@@ -580,6 +676,15 @@ export default function GroupDetailPanel() {
             const cl = m.externalAccounts.find((a) => a.type === 'claude');
             return (
               <tr key={m.id}>
+                <td style={{ ...td, width: 40 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(m.id)}
+                    onChange={() => toggleRowSelection(m.id)}
+                    aria-label={`Select ${m.displayName || m.email}`}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </td>
                 <td style={td}>
                   <Link
                     to={`/users/${m.id}`}
@@ -596,20 +701,14 @@ export default function GroupDetailPanel() {
                   {cl ? <StatusPill status={cl.status} /> : <em style={{ color: '#94a3b8' }}>none</em>}
                 </td>
                 <td style={td}>
-                  <button
-                    onClick={() => removeMember(m.id, m.displayName || m.email)}
-                    disabled={busy !== null}
-                    style={removeBtnStyle}
-                  >
-                    Remove
-                  </button>
+                  <StatusPill status={m.llmProxyToken.status} />
                 </td>
               </tr>
             );
           })}
           {data.users.length === 0 && (
             <tr>
-              <td colSpan={5} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
+              <td colSpan={6} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
                 No members yet. Search above to add one.
               </td>
             </tr>
@@ -623,36 +722,6 @@ export default function GroupDetailPanel() {
 // ---------------------------------------------------------------------------
 // Subcomponents + styles
 // ---------------------------------------------------------------------------
-
-function BulkButton({
-  label,
-  disabled,
-  busy,
-  kind,
-  onClick,
-}: {
-  label: string;
-  disabled: boolean;
-  busy: boolean;
-  kind: 'primary' | 'warn' | 'danger';
-  onClick: () => void;
-}) {
-  const base: React.CSSProperties = {
-    padding: '8px 14px',
-    fontSize: 13,
-    fontWeight: 600,
-    borderRadius: 6,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    border: 'none',
-    opacity: disabled ? 0.5 : 1,
-  };
-  const color = kind === 'primary' ? '#2563eb' : kind === 'warn' ? '#d97706' : '#dc2626';
-  return (
-    <button disabled={disabled} onClick={onClick} style={{ ...base, background: color, color: '#fff' }}>
-      {busy ? 'Working…' : label}
-    </button>
-  );
-}
 
 function StatusPill({ status }: { status: string }) {
   const color =
@@ -698,35 +767,6 @@ const editInput: React.CSSProperties = {
   borderRadius: 4,
   minWidth: 240,
 };
-const saveBtn: React.CSSProperties = {
-  padding: '6px 14px',
-  fontSize: 14,
-  background: '#4f46e5',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-const cancelBtn: React.CSSProperties = {
-  padding: '6px 14px',
-  fontSize: 14,
-  background: 'transparent',
-  color: '#64748b',
-  border: '1px solid #cbd5e1',
-  borderRadius: 4,
-  cursor: 'pointer',
-};
-const secondaryBtn: React.CSSProperties = {
-  padding: '6px 12px',
-  fontSize: 13,
-  background: 'transparent',
-  color: '#2563eb',
-  border: '1px solid #cbd5e1',
-  borderRadius: 6,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
 const dangerSmallBtn: React.CSSProperties = {
   padding: '6px 12px',
   fontSize: 13,
@@ -736,15 +776,6 @@ const dangerSmallBtn: React.CSSProperties = {
   borderRadius: 6,
   cursor: 'pointer',
   fontWeight: 600,
-};
-const removeBtnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: 'transparent',
-  color: '#dc2626',
-  border: '1px solid #fecaca',
-  borderRadius: 4,
-  cursor: 'pointer',
 };
 const searchListStyle: React.CSSProperties = {
   marginTop: 4,
