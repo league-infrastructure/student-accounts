@@ -112,7 +112,7 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     expect(res.status).toBe(200);
     expect(res.body.enabled).toBe(false);
     expect(typeof res.body.endpoint).toBe('string');
-    expect(res.body.endpoint).toMatch(/\/proxy\/v1$/);
+    expect(res.body.endpoint).toMatch(/\/proxy$/);
     expect(res.body).not.toHaveProperty('token');
     expect(res.body).not.toHaveProperty('tokenHash');
   });
@@ -135,7 +135,7 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     expect(res.body.tokensUsed).toBe(0);
     expect(res.body.requestCount).toBe(0);
     expect(typeof res.body.endpoint).toBe('string');
-    expect(res.body.endpoint).toMatch(/\/proxy\/v1$/);
+    expect(res.body.endpoint).toMatch(/\/proxy$/);
     // Plaintext token is surfaced so the student can see and use it.
     expect(res.body.token).toBe(granted);
     expect(res.body).not.toHaveProperty('tokenHash');

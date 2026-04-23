@@ -352,6 +352,10 @@ accountRouter.get(
 
     // Derive the endpoint URL from the request (not from config) so any
     // origin that serves the app also serves a working proxy URL.
+    //
+    // We return the base *without* /v1 because Anthropic's SDK (and
+    // Claude Code by extension) always append `/v1/messages` to
+    // ANTHROPIC_BASE_URL. Including /v1 here yielded /proxy/v1/v1/messages.
     const forwardedProto = req.header('x-forwarded-proto');
     const scheme = forwardedProto
       ? forwardedProto.split(',')[0].trim()
@@ -359,7 +363,7 @@ accountRouter.get(
         ? 'https'
         : 'http';
     const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
-    const endpoint = `${scheme}://${host}/proxy/v1`;
+    const endpoint = `${scheme}://${host}/proxy`;
 
     const active = await req.services.llmProxyTokens.getActiveForUser(userId);
     if (!active) {

@@ -25,7 +25,14 @@ const app = express();
 // Trust first proxy (Caddy in production, Vite in dev)
 app.set('trust proxy', 1);
 
-app.use(express.json());
+// Global JSON parser for /api routes. Skip /proxy entirely — the LLM
+// proxy router installs its own parser with a generous limit so
+// large conversation payloads from Claude Code don't hit the 100KB
+// default ceiling.
+app.use((req, res, next) => {
+  if (req.path.startsWith('/proxy/')) return next();
+  return express.json()(req, res, next);
+});
 
 // Pino logger: shared multistream (stdout + in-memory ring buffer for
 // the admin Logs panel). See services/logger.ts for the factory.

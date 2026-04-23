@@ -162,9 +162,10 @@ export ANTHROPIC_BASE_URL="${status.endpoint}"
 export ANTHROPIC_API_KEY="${status.token ?? 'llmp_…'}"
 claude
 
-# curl
-curl -X POST "${status.endpoint}/messages" \\
-  -H "authorization: Bearer ${status.token ?? 'llmp_…'}" \\
+# curl (SDK appends /v1/messages to ANTHROPIC_BASE_URL)
+curl -X POST "${status.endpoint}/v1/messages" \\
+  -H "x-api-key: ${status.token ?? 'llmp_…'}" \\
+  -H "anthropic-version: 2023-06-01" \\
   -H "content-type: application/json" \\
   -d '{"model":"claude-haiku-4-5-20251001","max_tokens":64,
        "messages":[{"role":"user","content":"hi"}]}'`}
