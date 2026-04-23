@@ -24,6 +24,7 @@ import { GroupService } from './group.service';
 import { BulkGroupService } from './bulk-group.service';
 import { LlmProxyTokenService } from './llm-proxy-token.service';
 import { LlmProxyForwarderService } from './llm-proxy-forwarder.service';
+import { BulkLlmProxyService } from './bulk-llm-proxy.service';
 import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
@@ -83,6 +84,8 @@ export class ServiceRegistry {
   readonly llmProxyTokens: LlmProxyTokenService;
   /** Anthropic Messages forwarder used by the /proxy/v1/* routes (Sprint 013). */
   readonly llmProxyForwarder: LlmProxyForwarderService;
+  /** Bulk grant/revoke of LLM proxy access scoped to a cohort or group (Sprint 013). */
+  readonly bulkLlmProxy: BulkLlmProxyService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -221,6 +224,12 @@ export class ServiceRegistry {
 
     // LlmProxyForwarderService — Sprint 013 T003.
     this.llmProxyForwarder = new LlmProxyForwarderService();
+
+    // BulkLlmProxyService — Sprint 013 T007.
+    this.bulkLlmProxy = new BulkLlmProxyService(
+      defaultPrisma,
+      this.llmProxyTokens,
+    );
   }
 
   static create(

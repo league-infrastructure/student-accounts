@@ -185,6 +185,93 @@ export default function CohortDetailPanel() {
     }
   }
 
+  async function runBulkLlmProxyGrant() {
+    const expiresAtStr = window.prompt(
+      'Expiration date/time for the new tokens (ISO 8601, e.g. 2026-05-31T17:00:00Z)',
+      new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    );
+    if (!expiresAtStr) return;
+    const tokenLimitStr = window.prompt(
+      'Token limit per user (integer)',
+      '1000000',
+    );
+    if (!tokenLimitStr) return;
+    const tokenLimit = parseInt(tokenLimitStr, 10);
+    if (!Number.isFinite(tokenLimit) || tokenLimit <= 0) {
+      setBanner({ ok: false, msg: 'tokenLimit must be a positive integer.' });
+      return;
+    }
+    setBusy('llm-proxy-grant');
+    setBanner(null);
+    try {
+      const res = await fetch(
+        `/api/admin/cohorts/${id}/llm-proxy/bulk-grant`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expiresAt: expiresAtStr, tokenLimit }),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as any;
+      if (!res.ok && res.status !== 207) {
+        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      const s = body.succeeded?.length ?? 0;
+      const f = body.failed?.length ?? 0;
+      const skip = body.skipped?.length ?? 0;
+      let csv = '';
+      if (body.tokensByUser) {
+        csv = Object.entries(body.tokensByUser)
+          .map(([uid, tok]) => `${uid},${tok}`)
+          .join('\n');
+      }
+      setBanner({
+        ok: f === 0,
+        msg:
+          `LLM proxy grant: ${s} succeeded, ${f} failed, ${skip} skipped.` +
+          (csv ? `\nTokens (user_id,token):\n${csv}` : ''),
+      });
+    } catch (err: any) {
+      setBanner({ ok: false, msg: err.message || 'LLM proxy grant failed' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runBulkLlmProxyRevoke() {
+    if (
+      !confirm(
+        'Revoke LLM proxy access for every student in this cohort who has an active token?',
+      )
+    )
+      return;
+    setBusy('llm-proxy-revoke');
+    setBanner(null);
+    try {
+      const res = await fetch(
+        `/api/admin/cohorts/${id}/llm-proxy/bulk-revoke`,
+        { method: 'POST' },
+      );
+      const body = (await res.json().catch(() => ({}))) as any;
+      if (!res.ok && res.status !== 207) {
+        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      const s = body.succeeded?.length ?? 0;
+      const f = body.failed?.length ?? 0;
+      const skip = body.skipped?.length ?? 0;
+      setBanner({
+        ok: f === 0,
+        msg: `LLM proxy revoke: ${s} succeeded, ${f} failed, ${skip} skipped.`,
+      });
+    } catch (err: any) {
+      setBanner({ ok: false, msg: err.message || 'LLM proxy revoke failed' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (error) {
     return (
       <div>
@@ -245,6 +332,20 @@ export default function CohortDetailPanel() {
           busy={busy === 'remove-all'}
           kind="danger"
           onClick={() => runBulkAll('remove', 'Delete all accounts')}
+        />
+        <BulkButton
+          label="Grant LLM Proxy"
+          disabled={busy !== null || data.users.length === 0}
+          busy={busy === 'llm-proxy-grant'}
+          kind="primary"
+          onClick={runBulkLlmProxyGrant}
+        />
+        <BulkButton
+          label="Revoke LLM Proxy"
+          disabled={busy !== null || data.users.length === 0}
+          busy={busy === 'llm-proxy-revoke'}
+          kind="warn"
+          onClick={runBulkLlmProxyRevoke}
         />
       </div>
 
