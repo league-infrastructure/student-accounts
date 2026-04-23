@@ -174,6 +174,11 @@ export class LlmProxyForwarderService {
     const beta = req.header('anthropic-beta');
     if (beta) headers['anthropic-beta'] = beta;
 
+    logger.info(
+      { isStream, model: (body as any)?.model ?? null, hasMessages: Array.isArray((body as any)?.messages) },
+      '[llm-proxy-forwarder] forwarding request to Anthropic',
+    );
+
     const controller = new AbortController();
     // If the client hangs up, abort the upstream so we stop consuming
     // Anthropic tokens.
