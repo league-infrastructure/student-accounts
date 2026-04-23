@@ -1,11 +1,16 @@
 ---
-id: "002"
-title: "LlmProxyTokenService + repository (grant, revoke, validate, recordUsage)"
-status: todo
-use-cases: ["SUC-013-001", "SUC-013-002", "SUC-013-003", "SUC-013-005"]
-depends-on: ["001"]
-github-issue: ""
-todo: ""
+id: '002'
+title: LlmProxyTokenService + repository (grant, revoke, validate, recordUsage)
+status: done
+use-cases:
+- SUC-013-001
+- SUC-013-002
+- SUC-013-003
+- SUC-013-005
+depends-on:
+- '001'
+github-issue: ''
+todo: ''
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -86,26 +91,26 @@ LlmProxyTokenService`.
 
 ## Acceptance Criteria
 
-- [ ] `LlmProxyTokenRepository` exists and exports the methods
+- [x] `LlmProxyTokenRepository` exists and exports the methods
       listed above.
-- [ ] `LlmProxyTokenService` exists and enforces the
+- [x] `LlmProxyTokenService` exists and enforces the
       plaintext-never-persisted invariant.
-- [ ] `grant` throws `ConflictError` when an active token exists.
-- [ ] `grant` returns a plaintext token prefixed with `llmp_`.
-- [ ] `revoke` throws `NotFoundError` when no active token exists.
-- [ ] `validate` throws `LlmProxyTokenUnauthorizedError` for
+- [x] `grant` throws `ConflictError` when an active token exists.
+- [x] `grant` returns a plaintext token prefixed with `llmp_`.
+- [x] `revoke` throws `NotFoundError` when no active token exists.
+- [x] `validate` throws `LlmProxyTokenUnauthorizedError` for
       missing, revoked, and expired tokens.
-- [ ] `validate` throws `LlmProxyTokenQuotaExceededError` when
+- [x] `validate` throws `LlmProxyTokenQuotaExceededError` when
       `tokens_used >= token_limit`.
-- [ ] `recordUsage` atomically increments `tokens_used` and
+- [x] `recordUsage` atomically increments `tokens_used` and
       `request_count`.
-- [ ] Audit events `grant_llm_proxy_token` and
+- [x] Audit events `grant_llm_proxy_token` and
       `revoke_llm_proxy_token` are written in the same transaction
       as the mutation.
-- [ ] `ServiceRegistry` exposes `llmProxyTokens` and
+- [x] `ServiceRegistry` exposes `llmProxyTokens` and
       `req.services.llmProxyTokens` is typed.
-- [ ] New tests pass (see Testing).
-- [ ] `npm run test:server` and `npm run test:client` pass relative
+- [x] New tests pass (see Testing).
+- [x] `npm run test:server` and `npm run test:client` pass relative
       to the pre-existing drift list.
 
 ## Testing

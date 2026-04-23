@@ -34,3 +34,6 @@ export type {
   GroupWithMemberCount,
   MemberRow,
 } from './group.repository.js';
+
+export { LlmProxyTokenRepository } from './llm-proxy-token.repository.js';
+export type { CreateLlmProxyTokenInput } from './llm-proxy-token.repository.js';
