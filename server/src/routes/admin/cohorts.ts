@@ -89,3 +89,37 @@ adminCohortsRouter.post('/cohorts', async (req, res, next) => {
     next(err);
   }
 });
+
+// ---------------------------------------------------------------------------
+// POST /admin/cohorts/:id/sync-to-group
+//
+// Copies the cohort's active students into a Group whose name matches the
+// cohort name. Creates the group if it doesn't exist. Idempotent — only
+// adds users who aren't already members. Account management (workspace,
+// Claude, LLM proxy) happens on the resulting group page.
+// ---------------------------------------------------------------------------
+
+adminCohortsRouter.post('/cohorts/:id/sync-to-group', async (req, res, next) => {
+  try {
+    const cohortId = parseInt(req.params.id, 10);
+    if (isNaN(cohortId)) {
+      return res.status(400).json({ error: 'Invalid cohort id' });
+    }
+
+    const actorId = (req.session as any).userId as number;
+
+    const result = await req.services.cohorts.syncToGroup(cohortId, actorId);
+
+    adminBus.notify('groups');
+    // The new group's members show up in each student's user detail page,
+    // so notify 'users' too.
+    adminBus.notify('users');
+
+    return res.status(200).json(result);
+  } catch (err: any) {
+    if (err instanceof AppError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
