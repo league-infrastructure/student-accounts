@@ -20,7 +20,7 @@ import { Router } from 'express';
 import { prisma } from '../../services/prisma.js';
 import { AppError } from '../../errors.js';
 import { WorkspaceApiError } from '../../services/google-workspace/google-workspace-admin.client.js';
-import { adminBus } from '../../services/change-bus.js';
+import { adminBus, userBus } from '../../services/change-bus.js';
 
 export const adminProvisioningRequestsRouter = Router();
 
@@ -108,6 +108,7 @@ adminProvisioningRequestsRouter.post('/provisioning-requests/:id/approve', async
     const updated = await req.services.provisioningRequests.approve(id, deciderId, { cohortId });
 
     adminBus.notify('pending-requests');
+    userBus.notifyUser(updated.user_id);
 
     res.json({
       id: updated.id,
@@ -150,6 +151,7 @@ adminProvisioningRequestsRouter.post('/provisioning-requests/:id/reject', async 
       : await req.services.provisioningRequests.reject(id, deciderId);
 
     adminBus.notify('pending-requests');
+    userBus.notifyUser(updated.user_id);
 
     res.json({
       id: updated.id,

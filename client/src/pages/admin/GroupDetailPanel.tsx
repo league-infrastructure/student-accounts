@@ -170,6 +170,26 @@ export default function GroupDetailPanel() {
     }
   }
 
+  async function removeMember(userId: number) {
+    if (!confirm('Remove this member from the group?')) return;
+    setBusy(`remove-${userId}`);
+    setBanner(null);
+    try {
+      const res = await fetch(`/api/admin/groups/${id}/members/${userId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      await load();
+    } catch (err: any) {
+      setBanner({ ok: false, msg: err.message || 'Remove failed' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
 
   async function runBulkProvision(accountType: AccountType, label: string) {
     const product = accountType === 'workspace' ? 'League accounts' : 'Claude seats';
@@ -659,6 +679,7 @@ export default function GroupDetailPanel() {
             <th style={th}>League</th>
             <th style={th}>Claude</th>
             <th style={th}>LLM Proxy</th>
+            <th style={{ ...th, width: 80, textAlign: 'center' }}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -694,12 +715,30 @@ export default function GroupDetailPanel() {
                 <td style={td}>
                   <StatusPill status={m.llmProxyToken.status} />
                 </td>
+                <td style={{ ...td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => removeMember(m.id)}
+                    disabled={busy === `remove-${m.id}`}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: 12,
+                      background: '#fee2e2',
+                      color: '#dc2626',
+                      border: '1px solid #fecaca',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {busy === `remove-${m.id}` ? 'Removing…' : 'Remove'}
+                  </button>
+                </td>
               </tr>
             );
           })}
           {data.users.length === 0 && (
             <tr>
-              <td colSpan={6} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
+              <td colSpan={7} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
                 No members yet. Search above to add one.
               </td>
             </tr>
