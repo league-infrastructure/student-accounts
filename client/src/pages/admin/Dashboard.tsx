@@ -122,8 +122,7 @@ export default function Dashboard() {
     <div>
       <h2 style={pageHeadingStyle}>Dashboard</h2>
       <UserCountsWidget />
-      <PendingUsersWidget />
-      <PendingRequestsWidget />
+      <PendingActivityWidget />
     </div>
   );
 }
@@ -166,7 +165,7 @@ function useAdminEventStream() {
 }
 
 // ---------------------------------------------------------------------------
-// PendingUsersWidget — accounts awaiting first-sign-in approval
+// PendingActivityWidget — unified view of pending accounts and requests
 // ---------------------------------------------------------------------------
 
 interface PendingUser {
@@ -176,6 +175,10 @@ interface PendingUser {
   createdAt: string;
   logins: { provider: string; email: string | null; username: string | null }[];
 }
+
+type ActivityItem =
+  | { type: 'account'; id: number; email: string; displayName: string | null; createdAt: string; logins: { provider: string }[] }
+  | { type: 'request'; id: number; email: string; displayName: string | null; createdAt: string; requestedType: 'workspace' | 'claude' | 'workspace_and_claude' | 'llm_proxy'; userCohort: { id: number; name: string } | null };
 
 async function fetchPendingUsers(): Promise<PendingUser[]> {
   const res = await fetch('/api/admin/pending-users');
@@ -202,132 +205,25 @@ async function denyPendingUser(id: number): Promise<void> {
   }
 }
 
-function PendingUsersWidget() {
+// ---------------------------------------------------------------------------
+// PendingActivityWidget — unified view of pending accounts and requests
+// ---------------------------------------------------------------------------
+
+const DISPLAY_LIMIT = 10;
+
+function PendingActivityWidget() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  const [cohortPickerFor, setCohortPickerFor] = useState<Record<number, number>>({});
 
-  const { data: users, isLoading, error } = useQuery<PendingUser[], Error>({
+  const { data: users, isLoading: usersLoading, error: usersError } = useQuery<PendingUser[], Error>({
     queryKey: ['admin', 'dashboard', 'pending-users'],
     queryFn: fetchPendingUsers,
-    // SSE (see useAdminEventStream) drives near-realtime updates. This
-    // background interval is a safety net if the stream is dropped.
     refetchInterval: 60_000,
   });
 
-  const approve = useMutation<void, Error, number>({
-    mutationFn: approvePendingUser,
-    onSuccess: (_d, id) => {
-      const u = users?.find((x) => x.id === id);
-      showToast(`Approved ${u?.displayName ?? u?.email ?? `#${id}`}`, 'success');
-      setRowErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-users'] });
-    },
-    onError: (err, id) => {
-      setRowErrors((prev) => ({ ...prev, [id]: err.message }));
-      showToast(`Approve failed: ${err.message}`, 'error');
-    },
-  });
-
-  const deny = useMutation<void, Error, number>({
-    mutationFn: denyPendingUser,
-    onSuccess: (_d, id) => {
-      const u = users?.find((x) => x.id === id);
-      showToast(`Denied ${u?.displayName ?? u?.email ?? `#${id}`}`, 'info');
-      setRowErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-users'] });
-    },
-    onError: (err, id) => {
-      setRowErrors((prev) => ({ ...prev, [id]: err.message }));
-      showToast(`Deny failed: ${err.message}`, 'error');
-    },
-  });
-
-  const anyPending = approve.isPending || deny.isPending;
-
-  return (
-    <section style={widgetStyle} aria-labelledby="pending-users-heading">
-      <h3 id="pending-users-heading" style={widgetHeadingStyle}>
-        Pending Accounts
-      </h3>
-      {isLoading && <p style={loadingStyle}>Loading pending accounts...</p>}
-      {error && (
-        <p style={errorStyle} role="alert">
-          Failed to load pending accounts: {error.message}
-        </p>
-      )}
-      {!isLoading && !error && (!users || users.length === 0) && (
-        <p style={emptyStyle}>No pending accounts.</p>
-      )}
-      {!isLoading && !error && users && users.length > 0 && (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={thStyle}>Name</th>
-              <th style={thStyle}>Email</th>
-              <th style={thStyle}>Signed in via</th>
-              <th style={thStyle}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td style={tdStyle}>{u.displayName ?? '-'}</td>
-                <td style={tdStyle}>{u.email}</td>
-                <td style={tdStyle}>
-                  {u.logins.map((l) => l.provider).join(', ') || '-'}
-                </td>
-                <td style={tdStyle}>
-                  <div style={actionsCellStyle}>
-                    <button
-                      style={approveButtonStyle}
-                      disabled={anyPending}
-                      onClick={() => approve.mutate(u.id)}
-                      aria-label={`Approve account ${u.id}`}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      style={denyButtonStyle}
-                      disabled={anyPending}
-                      onClick={() => {
-                        if (window.confirm(`Deny account for ${u.email}? They will be deactivated.`)) {
-                          deny.mutate(u.id);
-                        }
-                      }}
-                      aria-label={`Deny account ${u.id}`}
-                    >
-                      Deny
-                    </button>
-                    {rowErrors[u.id] && (
-                      <span style={inlineErrorStyle} role="alert">
-                        {rowErrors[u.id]}
-                      </span>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// PendingRequestsWidget
-// ---------------------------------------------------------------------------
-
-const DISPLAY_LIMIT = 5;
-
-function PendingRequestsWidget() {
-  const queryClient = useQueryClient();
-  const { showToast } = useToast();
-  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
-  const [cohortPickerFor, setCohortPickerFor] = useState<Record<number, number>>({});
-
-  const { data: requests, isLoading, error } = useQuery<ProvisioningRequest[], Error>({
+  const { data: requests, isLoading: requestsLoading, error: requestsError } = useQuery<ProvisioningRequest[], Error>({
     queryKey: ['admin', 'dashboard', 'pending-requests'],
     queryFn: fetchPendingRequests,
     refetchInterval: 60_000,
@@ -338,16 +234,43 @@ function PendingRequestsWidget() {
     queryFn: fetchCohorts,
   });
 
-  const approveMutation = useMutation<void, Error, ApprovePayload>({
+  const approveUserMutation = useMutation<void, Error, number>({
+    mutationFn: approvePendingUser,
+    onSuccess: (_d, id) => {
+      const u = users?.find((x) => x.id === id);
+      showToast(`Approved account for ${u?.displayName ?? u?.email}`, 'success');
+      setRowErrors((prev) => { const n = { ...prev }; delete n[`user-${id}`]; return n; });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-users'] });
+    },
+    onError: (err, id) => {
+      setRowErrors((prev) => ({ ...prev, [`user-${id}`]: err.message }));
+      showToast(`Approve failed: ${err.message}`, 'error');
+    },
+  });
+
+  const denyUserMutation = useMutation<void, Error, number>({
+    mutationFn: denyPendingUser,
+    onSuccess: (_d, id) => {
+      const u = users?.find((x) => x.id === id);
+      showToast(`Denied account for ${u?.displayName ?? u?.email}`, 'info');
+      setRowErrors((prev) => { const n = { ...prev }; delete n[`user-${id}`]; return n; });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-users'] });
+    },
+    onError: (err, id) => {
+      setRowErrors((prev) => ({ ...prev, [`user-${id}`]: err.message }));
+      showToast(`Deny failed: ${err.message}`, 'error');
+    },
+  });
+
+  const approveReqMutation = useMutation<void, Error, ApprovePayload>({
     mutationFn: approveRequest,
     onSuccess: (_data, { id }) => {
       const req = requests?.find((r) => r.id === id);
       const who = req ? prettifyName({ email: req.userEmail, displayName: req.userName }) : `#${id}`;
-      const what = req?.requestedType ?? 'request';
-      showToast(`Approved ${what} for ${who}`, 'success');
+      showToast(`Approved ${req?.requestedType ?? 'request'} for ${who}`, 'success');
       setRowErrors((prev) => {
         const next = { ...prev };
-        delete next[id];
+        delete next[`req-${id}`];
         return next;
       });
       setCohortPickerFor((prev) => {
@@ -358,12 +281,12 @@ function PendingRequestsWidget() {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-requests'] });
     },
     onError: (err, { id }) => {
-      setRowErrors((prev) => ({ ...prev, [id]: err.message }));
+      setRowErrors((prev) => ({ ...prev, [`req-${id}`]: err.message }));
       showToast(`Approve failed: ${err.message}`, 'error');
     },
   });
 
-  const denyMutation = useMutation<void, Error, { id: number; permanent?: boolean }>({
+  const denyReqMutation = useMutation<void, Error, { id: number; permanent?: boolean }>({
     mutationFn: denyRequest,
     onSuccess: (_data, { id, permanent }) => {
       const req = requests?.find((r) => r.id === id);
@@ -374,37 +297,64 @@ function PendingRequestsWidget() {
       );
       setRowErrors((prev) => {
         const next = { ...prev };
-        delete next[id];
+        delete next[`req-${id}`];
         return next;
       });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-requests'] });
     },
     onError: (err, { id }) => {
-      setRowErrors((prev) => ({ ...prev, [id]: err.message }));
+      setRowErrors((prev) => ({ ...prev, [`req-${id}`]: err.message }));
       showToast(`Deny failed: ${err.message}`, 'error');
     },
   });
 
-  const total = requests?.length ?? 0;
-  const visible = requests?.slice(0, DISPLAY_LIMIT) ?? [];
-  const anyPending = approveMutation.isPending || denyMutation.isPending;
+  const isLoading = usersLoading || requestsLoading;
+  const error = usersError || requestsError;
+
+  const userItems: ActivityItem[] = (users ?? []).map(u => ({
+    type: 'account',
+    id: u.id,
+    email: u.email,
+    displayName: u.displayName,
+    createdAt: u.createdAt,
+    logins: u.logins,
+  }));
+
+  const reqItems: ActivityItem[] = (requests ?? []).map(r => ({
+    type: 'request',
+    id: r.id,
+    email: r.userEmail,
+    displayName: r.userName,
+    createdAt: r.createdAt,
+    requestedType: r.requestedType,
+    userCohort: r.userCohort,
+  }));
+
+  const allItems = [...userItems, ...reqItems].sort((a, b) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const total = allItems.length;
+  const visible = allItems.slice(0, DISPLAY_LIMIT);
+  const anyPending = approveUserMutation.isPending || denyUserMutation.isPending ||
+                     approveReqMutation.isPending || denyReqMutation.isPending;
 
   return (
-    <section style={widgetStyle} aria-labelledby="pending-requests-heading">
-      <h3 id="pending-requests-heading" style={widgetHeadingStyle}>
-        Pending Requests
+    <section style={widgetStyle} aria-labelledby="pending-activity-heading">
+      <h3 id="pending-activity-heading" style={widgetHeadingStyle}>
+        Pending Activity
       </h3>
 
-      {isLoading && <p style={loadingStyle}>Loading pending requests...</p>}
+      {isLoading && <p style={loadingStyle}>Loading pending activity...</p>}
 
       {error && (
         <p style={errorStyle} role="alert">
-          Failed to load pending requests: {error.message}
+          Failed to load pending activity: {error?.message}
         </p>
       )}
 
       {!isLoading && !error && total === 0 && (
-        <p style={emptyStyle}>No pending requests.</p>
+        <p style={emptyStyle}>No pending activity.</p>
       )}
 
       {!isLoading && !error && total > 0 && (
@@ -415,149 +365,183 @@ function PendingRequestsWidget() {
                 <th style={thStyle}>Name</th>
                 <th style={thStyle}>Email</th>
                 <th style={thStyle}>Type</th>
-                <th style={thStyle}>Submitted</th>
+                <th style={thStyle}>Date</th>
                 <th style={thStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {visible.map((req) => {
-                const displayName = prettifyName({
-                  email: req.userEmail,
-                  displayName: req.userName,
-                });
-                const rowError = rowErrors[req.id];
-                const needsCohort =
-                  req.requestedType === 'workspace' && req.userCohort == null;
-                const pickedCohortId = cohortPickerFor[req.id] ?? 0;
+              {visible.map((item) => {
+                if (item.type === 'account') {
+                  const rowError = rowErrors[`user-${item.id}`];
+                  return (
+                    <tr key={`user-${item.id}`}>
+                      <td style={tdStyle}>{item.displayName ?? '-'}</td>
+                      <td style={tdStyle}>{item.email}</td>
+                      <td style={tdStyle}>
+                        <span style={activityTypeBadgeStyle('account')}>Account</span>
+                      </td>
+                      <td style={tdStyle}>{new Date(item.createdAt).toLocaleDateString()}</td>
+                      <td style={tdStyle}>
+                        <div style={actionsCellStyle}>
+                          <button
+                            style={approveButtonStyle}
+                            disabled={anyPending}
+                            onClick={() => approveUserMutation.mutate(item.id)}
+                            aria-label={`Approve account ${item.id}`}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            style={denyButtonStyle}
+                            disabled={anyPending}
+                            onClick={() => {
+                              if (window.confirm(`Deny account for ${item.email}? They will be deactivated.`)) {
+                                denyUserMutation.mutate(item.id);
+                              }
+                            }}
+                            aria-label={`Deny account ${item.id}`}
+                          >
+                            Deny
+                          </button>
+                          {rowError && (
+                            <span style={inlineErrorStyle} role="alert">
+                              {rowError}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                } else {
+                  const rowError = rowErrors[`req-${item.id}`];
+                  const needsCohort = item.requestedType === 'workspace' && item.userCohort == null;
+                  const pickedCohortId = cohortPickerFor[item.id] ?? 0;
 
-                return (
-                  <tr key={req.id}>
-                    <td style={tdStyle}>{displayName}</td>
-                    <td style={tdStyle}>{req.userEmail}</td>
-                    <td style={tdStyle}>
-                      <span style={typeBadgeStyle(req.requestedType)}>
-                        {req.requestedType}
-                      </span>
-                    </td>
-                    <td style={tdStyle}>
-                      {new Date(req.createdAt).toLocaleDateString()}
-                    </td>
-                    <td style={tdStyle}>
-                      <div style={actionsCellStyle}>
-                        {needsCohort ? (
-                          <>
-                            <select
-                              style={selectStyle}
-                              value={pickedCohortId || ''}
-                              disabled={anyPending}
-                              onChange={(e) =>
-                                setCohortPickerFor((prev) => ({
-                                  ...prev,
-                                  [req.id]: parseInt(e.target.value, 10) || 0,
-                                }))
-                              }
-                              aria-label={`Select cohort for request ${req.id}`}
-                            >
-                              <option value="">Select a cohort…</option>
-                              {(cohorts ?? []).map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                  {c.google_ou_path ? '' : ' (no OU)'}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              style={approveButtonStyle}
-                              disabled={anyPending || !pickedCohortId}
-                              onClick={() =>
-                                approveMutation.mutate({
-                                  id: req.id,
-                                  cohortId: pickedCohortId,
-                                })
-                              }
-                              aria-label={`Approve request ${req.id} with selected cohort`}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              style={denyButtonStyle}
-                              disabled={anyPending}
-                              onClick={() => denyMutation.mutate({ id: req.id })}
-                              aria-label={`Deny request ${req.id}`}
-                            >
-                              Deny
-                            </button>
-                            <button
-                              style={permaDenyButtonStyle}
-                              disabled={anyPending}
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `Permanently deny this ${req.requestedType} request? The user will not be able to request again.`,
-                                  )
-                                ) {
-                                  denyMutation.mutate({ id: req.id, permanent: true });
+                  return (
+                    <tr key={`req-${item.id}`}>
+                      <td style={tdStyle}>{item.displayName ?? '-'}</td>
+                      <td style={tdStyle}>{item.email}</td>
+                      <td style={tdStyle}>
+                        <span style={typeBadgeStyle(item.requestedType)}>
+                          {item.requestedType}
+                        </span>
+                      </td>
+                      <td style={tdStyle}>{new Date(item.createdAt).toLocaleDateString()}</td>
+                      <td style={tdStyle}>
+                        <div style={actionsCellStyle}>
+                          {needsCohort ? (
+                            <>
+                              <select
+                                style={selectStyle}
+                                value={pickedCohortId || ''}
+                                disabled={anyPending}
+                                onChange={(e) =>
+                                  setCohortPickerFor((prev) => ({
+                                    ...prev,
+                                    [item.id]: parseInt(e.target.value, 10) || 0,
+                                  }))
                                 }
-                              }}
-                              aria-label={`Permanently deny request ${req.id}`}
-                            >
-                              Deny permanently
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              style={approveButtonStyle}
-                              disabled={anyPending}
-                              onClick={() => approveMutation.mutate({ id: req.id })}
-                              aria-label={`Approve request ${req.id}`}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              style={denyButtonStyle}
-                              disabled={anyPending}
-                              onClick={() => denyMutation.mutate({ id: req.id })}
-                              aria-label={`Deny request ${req.id}`}
-                            >
-                              Deny
-                            </button>
-                            <button
-                              style={permaDenyButtonStyle}
-                              disabled={anyPending}
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `Permanently deny this ${req.requestedType} request? The user will not be able to request again.`,
-                                  )
-                                ) {
-                                  denyMutation.mutate({ id: req.id, permanent: true });
+                                aria-label={`Select cohort for request ${item.id}`}
+                              >
+                                <option value="">Select a cohort…</option>
+                                {(cohorts ?? []).map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                    {c.google_ou_path ? '' : ' (no OU)'}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                style={approveButtonStyle}
+                                disabled={anyPending || !pickedCohortId}
+                                onClick={() =>
+                                  approveReqMutation.mutate({
+                                    id: item.id,
+                                    cohortId: pickedCohortId,
+                                  })
                                 }
-                              }}
-                              aria-label={`Permanently deny request ${req.id}`}
-                            >
-                              Deny permanently
-                            </button>
-                          </>
-                        )}
-                        {rowError && (
-                          <span style={inlineErrorStyle} role="alert">
-                            {rowError}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
+                                aria-label={`Approve request ${item.id}`}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                style={denyButtonStyle}
+                                disabled={anyPending}
+                                onClick={() => denyReqMutation.mutate({ id: item.id })}
+                                aria-label={`Deny request ${item.id}`}
+                              >
+                                Deny
+                              </button>
+                              <button
+                                style={permaDenyButtonStyle}
+                                disabled={anyPending}
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Permanently deny this ${item.requestedType} request? The user will not be able to request again.`,
+                                    )
+                                  ) {
+                                    denyReqMutation.mutate({ id: item.id, permanent: true });
+                                  }
+                                }}
+                                aria-label={`Permanently deny request ${item.id}`}
+                              >
+                                Deny permanently
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                style={approveButtonStyle}
+                                disabled={anyPending}
+                                onClick={() => approveReqMutation.mutate({ id: item.id })}
+                                aria-label={`Approve request ${item.id}`}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                style={denyButtonStyle}
+                                disabled={anyPending}
+                                onClick={() => denyReqMutation.mutate({ id: item.id })}
+                                aria-label={`Deny request ${item.id}`}
+                              >
+                                Deny
+                              </button>
+                              <button
+                                style={permaDenyButtonStyle}
+                                disabled={anyPending}
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Permanently deny this ${item.requestedType} request? The user will not be able to request again.`,
+                                    )
+                                  ) {
+                                    denyReqMutation.mutate({ id: item.id, permanent: true });
+                                  }
+                                }}
+                                aria-label={`Permanently deny request ${item.id}`}
+                              >
+                                Deny permanently
+                              </button>
+                            </>
+                          )}
+                          {rowError && (
+                            <span style={inlineErrorStyle} role="alert">
+                              {rowError}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
               })}
             </tbody>
           </table>
 
           {total > DISPLAY_LIMIT && (
             <p style={seeAllStyle}>
-              <Link to="/requests" style={linkStyle}>
-                See all {total} requests
-              </Link>
+              Showing {visible.length} of {total} items. Visit <Link to="/requests" style={linkStyle}>Pending Requests</Link> to see all.
             </p>
           )}
         </>
@@ -772,6 +756,7 @@ function typeBadgeStyle(type: string): React.CSSProperties {
     workspace: '#2563eb',
     claude: '#7c3aed',
     workspace_and_claude: '#d97706',
+    llm_proxy: '#ec4899',
   };
   return {
     display: 'inline-block',
@@ -780,6 +765,24 @@ function typeBadgeStyle(type: string): React.CSSProperties {
     fontWeight: 600,
     borderRadius: 10,
     background: colorMap[type] ?? '#64748b',
+    color: '#fff',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+  };
+}
+
+function activityTypeBadgeStyle(type: 'account' | 'request'): React.CSSProperties {
+  const colorMap: Record<string, string> = {
+    account: '#6366f1',
+    request: '#f59e0b',
+  };
+  return {
+    display: 'inline-block',
+    padding: '2px 8px',
+    fontSize: 11,
+    fontWeight: 600,
+    borderRadius: 10,
+    background: colorMap[type],
     color: '#fff',
     textTransform: 'uppercase',
     letterSpacing: '0.03em',
