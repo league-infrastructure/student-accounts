@@ -50,19 +50,10 @@ export interface AccountExternalAccount {
   createdAt: string;
 }
 
-export interface AccountProvisioningRequest {
-  id: number;
-  requestedType: string;
-  status: string;
-  createdAt: string;
-  decidedAt: string | null;
-}
-
 export interface AccountData {
   profile: AccountProfile;
   logins: AccountLogin[];
   externalAccounts: AccountExternalAccount[];
-  provisioningRequests: AccountProvisioningRequest[];
 }
 
 // ---------------------------------------------------------------------------
@@ -98,19 +89,6 @@ async function patchDisplayName(displayName: string): Promise<void> {
   }
 }
 
-async function postProvisioningRequest(requestType: string): Promise<AccountProvisioningRequest[]> {
-  const res = await fetch('/api/account/provisioning-requests', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requestType }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `Request failed (${res.status})`);
-  }
-  return res.json();
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -122,20 +100,6 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 function providerLabel(p: string): string {
   return PROVIDER_LABELS[p] ?? p.charAt(0).toUpperCase() + p.slice(1);
-}
-
-/** Returns true when the student has a pending or active workspace account or request. */
-function hasWorkspaceBaseline(data: AccountData): boolean {
-  const activeWorkspace = data.externalAccounts.some(
-    (a) => a.type === 'workspace' && (a.status === 'active'),
-  );
-  if (activeWorkspace) return true;
-  const pendingWorkspaceRequest = data.provisioningRequests.some(
-    (r) =>
-      (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
-      (r.status === 'pending' || r.status === 'approved'),
-  );
-  return pendingWorkspaceRequest;
 }
 
 /** League emails are @jointheleague.org or any subdomain (e.g. students). */
@@ -318,19 +282,12 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
 }
 
 // ---------------------------------------------------------------------------
-// ServicesSection
+// ServicesSection — read-only status of the account's services. Requests
+// are no longer student-initiated; admins grant workspace, Claude, and
+// LLM proxy directly from the admin UI.
 // ---------------------------------------------------------------------------
 
-interface ServicesSectionProps {
-  data: AccountData;
-  onRequest: (requestType: string) => void;
-  requesting: boolean;
-  requestError: string | null;
-}
-
-function ServicesSection({ data, onRequest, requesting, requestError }: ServicesSectionProps) {
-  // Pending users see a banner instead of the services table — no services
-  // can be requested until an admin approves the account.
+function ServicesSection({ data }: { data: AccountData }) {
   if (data.profile.approvalStatus === 'pending') {
     return (
       <div style={styles.card}>
@@ -338,131 +295,44 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
         <div style={styles.pendingBanner} role="status">
           <strong>Your account is pending approval.</strong>
           <span>
-            {' '}An admin will review your sign-in shortly. Once approved you'll be
-            able to request a League email and Claude seat here.
+            {' '}An admin will review your sign-in shortly. Once approved, any
+            services they grant you will show up here.
           </span>
         </div>
       </div>
     );
   }
 
-  const workspaceBaseline = hasWorkspaceBaseline(data);
-
-  const liveStatuses = (s: string) => s === 'active' || s === 'pending';
-  const deadStatuses = (s: string) => s === 'suspended' || s === 'removed';
-
-  // Derive workspace state. We distinguish three cases per account type:
-  //   1. "live"  — active/pending: already provisioned, nothing to request.
-  //   2. "dead"  — suspended/removed: existed, admin turned it off, the
-  //                student can ask for it back.
-  //   3. "none"  — never provisioned: student can request.
-  const anyWorkspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
-  const liveWorkspaceAccount =
-    anyWorkspaceAccount && liveStatuses(anyWorkspaceAccount.status) ? anyWorkspaceAccount : null;
-  const deadWorkspaceAccount =
-    anyWorkspaceAccount && deadStatuses(anyWorkspaceAccount.status) ? anyWorkspaceAccount : null;
-  // Only *pending* requests block re-requesting. Rejected requests still
-  // show up in the status column so the student knows what happened, but
-  // they don't lock the button forever. A *rejected_permanent* request
-  // blocks forever (admin decision).
-  const pendingWorkspaceRequest = data.provisioningRequests.find(
-    (r) =>
-      (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
-      r.status === 'pending',
-  );
-  const permaRejectedWorkspace = data.provisioningRequests.some(
-    (r) =>
-      (r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude') &&
-      r.status === 'rejected_permanent',
-  );
-  const latestWorkspaceRequest = data.provisioningRequests.find(
-    (r) => r.requestedType === 'workspace' || r.requestedType === 'workspace_and_claude',
-  );
-
-  // Derive claude state.
-  const anyClaudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
-  const liveClaudeAccount =
-    anyClaudeAccount && liveStatuses(anyClaudeAccount.status) ? anyClaudeAccount : null;
-  const deadClaudeAccount =
-    anyClaudeAccount && deadStatuses(anyClaudeAccount.status) ? anyClaudeAccount : null;
-  const pendingClaudeRequest = data.provisioningRequests.find(
-    (r) =>
-      (r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude') &&
-      r.status === 'pending',
-  );
-  const permaRejectedClaude = data.provisioningRequests.some(
-    (r) =>
-      (r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude') &&
-      r.status === 'rejected_permanent',
-  );
-  const latestClaudeRequest = data.provisioningRequests.find(
-    (r) => r.requestedType === 'claude' || r.requestedType === 'workspace_and_claude',
-  );
-
-  // Derive pike13 state.
+  const workspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
+  const claudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
   const pike13Account = data.externalAccounts.find((a) => a.type === 'pike13');
 
-  // Request-button visibility. "Request League Email" is shown when the
-  // account is absent, and "Request re-activation" is shown when it's
-  // suspended/removed — in either case blocked by a pending request or
-  // a permanent reject.
-  const showWorkspaceButton =
-    !liveWorkspaceAccount && !pendingWorkspaceRequest && !permaRejectedWorkspace;
-  const workspaceReactivation = !!deadWorkspaceAccount;
-
-  const showClaudeButton =
-    !liveClaudeAccount && !pendingClaudeRequest && !permaRejectedClaude && workspaceBaseline;
-  const claudeReactivation = !!deadClaudeAccount;
-  const claudeBlockedOnWorkspace =
-    !liveClaudeAccount &&
-    !deadClaudeAccount &&
-    !pendingClaudeRequest &&
-    !permaRejectedClaude &&
-    !workspaceBaseline;
-
-  // Display the League email next to the League Email row. Prefer the
-  // workspace ExternalAccount's external_id (set by workspace provisioning);
-  // fall back to primaryEmail when it's already a League address.
   const leagueEmailDisplay: string | null =
-    anyWorkspaceAccount?.externalId ??
+    workspaceAccount?.externalId ??
     (isLeagueEmail(data.profile.primaryEmail) ? data.profile.primaryEmail : null);
 
   return (
     <div style={styles.card}>
       <h2 style={styles.sectionTitle}>Services</h2>
+      <p style={styles.helpText}>
+        Accounts are granted by an admin. If something you expect is
+        missing, reach out to your instructor.
+      </p>
 
       <table style={styles.table}>
         <thead>
           <tr>
             <th style={styles.th}>Service</th>
             <th style={styles.th}>Status</th>
-            <th style={styles.th}>Action</th>
+            <th style={styles.th}>Details</th>
           </tr>
         </thead>
         <tbody>
-          {/* League Email (workspace) */}
           <tr style={styles.tr}>
             <td style={styles.td}>League Email</td>
+            <td style={styles.td}>{workspaceAccount?.status ?? 'None'}</td>
             <td style={styles.td}>
-              {pendingWorkspaceRequest
-                ? 'Request pending'
-                : anyWorkspaceAccount
-                  ? anyWorkspaceAccount.status
-                  : latestWorkspaceRequest
-                    ? `Request ${latestWorkspaceRequest.status}`
-                    : 'None'}
-            </td>
-            <td style={styles.td}>
-              {showWorkspaceButton ? (
-                <button
-                  onClick={() => onRequest('workspace')}
-                  disabled={requesting}
-                  style={styles.requestButton}
-                  aria-label={workspaceReactivation ? 'Request re-activation' : 'Request League Email'}
-                >
-                  {workspaceReactivation ? 'Request re-activation' : 'Request League Email'}
-                </button>
-              ) : liveWorkspaceAccount && leagueEmailDisplay ? (
+              {workspaceAccount && leagueEmailDisplay ? (
                 <div style={styles.emailColumn}>
                   <span style={styles.emailValue}>{leagueEmailDisplay}</span>
                   {data.profile.workspaceTempPassword && (
@@ -478,97 +348,29 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
             </td>
           </tr>
 
-          {/* Claude Seat */}
           <tr style={styles.tr}>
             <td style={styles.td}>Claude Seat</td>
-            <td style={styles.td}>
-              {pendingClaudeRequest
-                ? 'Request pending'
-                : anyClaudeAccount
-                  ? anyClaudeAccount.status
-                  : latestClaudeRequest
-                    ? `Request ${latestClaudeRequest.status}`
-                    : 'None'}
-            </td>
-            <td style={styles.td}>
-              {showClaudeButton ? (
-                <button
-                  onClick={() => onRequest('claude')}
-                  disabled={requesting}
-                  style={styles.requestButton}
-                  aria-label={claudeReactivation ? 'Request Claude re-activation' : 'Request Claude Seat'}
-                >
-                  {claudeReactivation ? 'Request re-activation' : 'Request Claude Seat'}
-                </button>
-              ) : claudeBlockedOnWorkspace ? (
-                <span
-                  style={styles.disabledHint}
-                  title="A League Email account is required before requesting a Claude seat"
-                  aria-label="Claude Seat requires a League Email account first"
-                >
-                  Requires League Email
-                </span>
-              ) : null}
-            </td>
+            <td style={styles.td}>{claudeAccount?.status ?? 'None'}</td>
+            <td style={styles.td}></td>
           </tr>
 
-          {/* LLM Proxy */}
-          {(() => {
-            const llmEnabled = data.profile.llmProxyEnabled === true;
-            const pendingLlm = data.provisioningRequests.find(
-              (r) => r.requestedType === 'llm_proxy' && r.status === 'pending',
-            );
-            const latestLlm = data.provisioningRequests.find(
-              (r) => r.requestedType === 'llm_proxy',
-            );
-            const permaRejectedLlm = data.provisioningRequests.some(
-              (r) => r.requestedType === 'llm_proxy' && r.status === 'rejected_permanent',
-            );
-            const statusCell = llmEnabled
-              ? 'active'
-              : pendingLlm
-                ? 'Request pending'
-                : latestLlm
-                  ? `Request ${latestLlm.status}`
-                  : 'None';
-            const showRequestButton =
-              !llmEnabled && !pendingLlm && !permaRejectedLlm;
-            return (
-              <tr style={styles.tr}>
-                <td style={styles.td}>LLM Proxy</td>
-                <td style={styles.td}>{statusCell}</td>
-                <td style={styles.td}>
-                  {showRequestButton ? (
-                    <button
-                      onClick={() => onRequest('llm_proxy')}
-                      disabled={requesting}
-                      style={styles.requestButton}
-                      aria-label="Request LLM Proxy"
-                    >
-                      Request LLM Proxy
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })()}
+          <tr style={styles.tr}>
+            <td style={styles.td}>LLM Proxy</td>
+            <td style={styles.td}>
+              {data.profile.llmProxyEnabled ? 'active' : 'None'}
+            </td>
+            <td style={styles.td}></td>
+          </tr>
 
-          {/* Pike13 */}
           <tr style={styles.tr}>
             <td style={styles.td}>Pike13</td>
-            <td style={styles.td}>
-              {pike13Account ? pike13Account.status : 'None'}
-            </td>
+            <td style={styles.td}>{pike13Account?.status ?? 'None'}</td>
             <td style={styles.td}>
               <span style={styles.readOnlyHint}>Managed by staff</span>
             </td>
           </tr>
         </tbody>
       </table>
-
-      {requestError && (
-        <p role="alert" style={styles.inlineError}>{requestError}</p>
-      )}
     </div>
   );
 }
@@ -717,14 +519,7 @@ export default function Account() {
     },
   });
 
-  const requestMutation = useMutation({
-    mutationFn: postProvisioningRequest,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['account'] });
-    },
-  });
-
-  // Admin redirect — to the provisioning-requests page (has actual admin UI).
+  // Admin redirect — to the admin dashboard (has actual admin UI).
   // Staff falls through and renders the account page (empty but won't 404).
   if (role === 'admin') {
     return <Navigate to="/" replace />;
@@ -792,18 +587,7 @@ export default function Account() {
 
       <div style={styles.spacer} />
 
-      <ServicesSection
-        data={data}
-        onRequest={(requestType) => requestMutation.mutate(requestType)}
-        requesting={requestMutation.isPending}
-        requestError={
-          requestMutation.isError
-            ? requestMutation.error instanceof Error
-              ? requestMutation.error.message
-              : 'Request failed'
-            : null
-        }
-      />
+      <ServicesSection data={data} />
 
       <div style={styles.spacer} />
 

@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isRecent, NEW_USER_BG } from '../../lib/recent-user';
 
 interface UserExternalAccount {
   type: string;
@@ -25,6 +26,7 @@ interface AdminUser {
   cohort: { id: number; name: string } | null;
   externalAccounts?: UserExternalAccount[];
   externalAccountTypes?: string[];
+  createdAt: string;
 }
 
 interface BulkSuspendResult {
@@ -85,10 +87,15 @@ export default function StudentAccountsPanel() {
     onError: (err) => setBanner({ ok: false, msg: err.message }),
   });
 
-  const studentUsers = useMemo(
-    () => (users ?? []).filter((u) => STUDENT_EMAIL_RE.test(u.email)),
-    [users],
-  );
+  // Newest students first — admins usually want to see the latest
+  // arrivals immediately. Rows inside the 24h window also get the
+  // `NEW_USER_BG` background.
+  const studentUsers = useMemo(() => {
+    const filtered = (users ?? []).filter((u) => STUDENT_EMAIL_RE.test(u.email));
+    return [...filtered].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [users]);
 
   const allSelected =
     studentUsers.length > 0 && studentUsers.every((u) => selected.has(u.id));
@@ -177,32 +184,40 @@ export default function StudentAccountsPanel() {
             <th style={th}>Email</th>
             <th style={th}>Cohort</th>
             <th style={th}>Accounts</th>
+            <th style={th}>Joined</th>
           </tr>
         </thead>
         <tbody>
-          {studentUsers.map((u) => (
-            <tr key={u.id}>
-              <td style={td}>
-                <input
-                  type="checkbox"
-                  aria-label={`Select ${u.displayName ?? u.email}`}
-                  checked={selected.has(u.id)}
-                  onChange={() => toggleOne(u.id)}
-                />
-              </td>
-              <td style={td}>
-                <Link to={`/users/${u.id}`} style={linkStyle}>
-                  {u.displayName || u.email}
-                </Link>
-              </td>
-              <td style={td}>{u.email}</td>
-              <td style={td}>{u.cohort?.name ?? <em style={{ color: '#94a3b8' }}>none</em>}</td>
-              <td style={td}>{summarizeAccounts(u)}</td>
-            </tr>
-          ))}
+          {studentUsers.map((u) => {
+            const highlight = isRecent(u.createdAt);
+            return (
+              <tr
+                key={u.id}
+                style={highlight ? { background: NEW_USER_BG } : undefined}
+              >
+                <td style={td}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${u.displayName ?? u.email}`}
+                    checked={selected.has(u.id)}
+                    onChange={() => toggleOne(u.id)}
+                  />
+                </td>
+                <td style={td}>
+                  <Link to={`/users/${u.id}`} style={linkStyle}>
+                    {u.displayName || u.email}
+                  </Link>
+                </td>
+                <td style={td}>{u.email}</td>
+                <td style={td}>{u.cohort?.name ?? <em style={{ color: '#94a3b8' }}>none</em>}</td>
+                <td style={td}>{summarizeAccounts(u)}</td>
+                <td style={td}>{new Date(u.createdAt).toLocaleDateString()}</td>
+              </tr>
+            );
+          })}
           {studentUsers.length === 0 && (
             <tr>
-              <td colSpan={5} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
+              <td colSpan={6} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
                 No students yet.
               </td>
             </tr>

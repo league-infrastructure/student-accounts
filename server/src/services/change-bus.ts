@@ -18,7 +18,6 @@ import { EventEmitter } from 'node:events';
  * starting with `['admin', 'users', ...]`.
  *
  *   pending-users      — /admin/pending-users list or user.approval_status changed
- *   pending-requests   — /admin/provisioning-requests pending list changed
  *   users              — any user row mutated (role, cohort, approval,
  *                        deletion, external accounts, LLM proxy token)
  *   cohorts            — cohort list or cohort membership changed
@@ -26,7 +25,6 @@ import { EventEmitter } from 'node:events';
  */
 export type AdminChangeTopic =
   | 'pending-users'
-  | 'pending-requests'
   | 'users'
   | 'cohorts'
   | 'groups';

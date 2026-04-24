@@ -11,36 +11,12 @@
  */
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { prettifyName } from './utils/prettifyName';
 import { useToast } from '../../context/ToastContext';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface ProvisioningRequest {
-  id: number;
-  userId: number;
-  userName: string | null;
-  userEmail: string;
-  userCohort: { id: number; name: string } | null;
-  requestedType: 'workspace' | 'claude' | 'workspace_and_claude';
-  createdAt: string;
-}
-
-interface ApprovePayload {
-  id: number;
-  cohortId?: number;
-}
-
-interface Cohort {
-  id: number;
-  name: string;
-  google_ou_path: string | null;
-  createdAt: string;
-}
 
 interface AdminStats {
   totalStudents: number;
@@ -54,54 +30,6 @@ interface AdminStats {
 // ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
-
-async function fetchPendingRequests(): Promise<ProvisioningRequest[]> {
-  const res = await fetch('/api/admin/provisioning-requests?status=pending');
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-async function approveRequest({ id, cohortId }: ApprovePayload): Promise<void> {
-  const res = await fetch(`/api/admin/provisioning-requests/${id}/approve`, {
-    method: 'POST',
-    headers: cohortId != null ? { 'Content-Type': 'application/json' } : undefined,
-    body: cohortId != null ? JSON.stringify({ cohortId }) : undefined,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-}
-
-async function denyRequest({
-  id,
-  permanent,
-}: {
-  id: number;
-  permanent?: boolean;
-}): Promise<void> {
-  const res = await fetch(`/api/admin/provisioning-requests/${id}/reject`, {
-    method: 'POST',
-    headers: permanent ? { 'Content-Type': 'application/json' } : undefined,
-    body: permanent ? JSON.stringify({ permanent: true }) : undefined,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-}
-
-async function fetchCohorts(): Promise<Cohort[]> {
-  const res = await fetch('/api/admin/cohorts');
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
 
 async function fetchStats(): Promise<AdminStats> {
   const res = await fetch('/api/admin/stats');
@@ -129,7 +57,9 @@ export default function Dashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// PendingActivityWidget — unified view of pending accounts and requests
+// PendingActivityWidget — pending account approvals. Each row has Approve
+// and Deny plus two checkboxes so an admin can grant a League account
+// and/or an LLM proxy token at the same moment they approve.
 // ---------------------------------------------------------------------------
 
 interface PendingUser {
@@ -137,12 +67,20 @@ interface PendingUser {
   email: string;
   displayName: string | null;
   createdAt: string;
+  cohort: { id: number; name: string } | null;
   logins: { provider: string; email: string | null; username: string | null }[];
 }
 
-type ActivityItem =
-  | { type: 'account'; id: number; email: string; displayName: string | null; createdAt: string; logins: { provider: string }[] }
-  | { type: 'request'; id: number; email: string; displayName: string | null; createdAt: string; requestedType: 'workspace' | 'claude' | 'workspace_and_claude' | 'llm_proxy'; userCohort: { id: number; name: string } | null };
+interface ApprovePayload {
+  provisionWorkspace?: boolean;
+  grantLlmProxy?: boolean;
+}
+
+interface ApproveResult {
+  ok: true;
+  workspace?: { provisioned: boolean; error?: string };
+  llmProxy?: { granted: boolean; error?: string };
+}
 
 async function fetchPendingUsers(): Promise<PendingUser[]> {
   const res = await fetch('/api/admin/pending-users');
@@ -153,12 +91,20 @@ async function fetchPendingUsers(): Promise<PendingUser[]> {
   return res.json();
 }
 
-async function approvePendingUser(id: number): Promise<void> {
-  const res = await fetch(`/api/admin/users/${id}/approve`, { method: 'POST' });
+async function approvePendingUser(
+  id: number,
+  body: ApprovePayload,
+): Promise<ApproveResult> {
+  const res = await fetch(`/api/admin/users/${id}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+    const raw = await res.json().catch(() => ({}));
+    throw new Error((raw as { error?: string }).error ?? `HTTP ${res.status}`);
   }
+  return res.json();
 }
 
 async function denyPendingUser(id: number): Promise<void> {
@@ -169,50 +115,62 @@ async function denyPendingUser(id: number): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// PendingActivityWidget — unified view of pending accounts and requests
-// ---------------------------------------------------------------------------
-
 const DISPLAY_LIMIT = 10;
+
+interface RowChoices {
+  workspace: boolean;
+  llmProxy: boolean;
+}
 
 function PendingActivityWidget() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
-  const [cohortPickerFor, setCohortPickerFor] = useState<Record<number, number>>({});
+  const [choices, setChoices] = useState<Record<number, RowChoices>>({});
 
-  const { data: users, isLoading: usersLoading, error: usersError } = useQuery<PendingUser[], Error>({
+  const { data: users, isLoading, error } = useQuery<PendingUser[], Error>({
     queryKey: ['admin', 'dashboard', 'pending-users'],
     queryFn: fetchPendingUsers,
     refetchInterval: 60_000,
   });
 
-  const { data: requests, isLoading: requestsLoading, error: requestsError } = useQuery<ProvisioningRequest[], Error>({
-    queryKey: ['admin', 'dashboard', 'pending-requests'],
-    queryFn: fetchPendingRequests,
-    refetchInterval: 60_000,
-  });
-
-  const { data: cohorts } = useQuery<Cohort[], Error>({
-    queryKey: ['admin', 'dashboard', 'cohorts'],
-    queryFn: fetchCohorts,
-  });
-
-  const approveUserMutation = useMutation<void, Error, number>({
-    mutationFn: approvePendingUser,
-    onSuccess: (_d, id) => {
+  const approveMutation = useMutation<ApproveResult, Error, { id: number; body: ApprovePayload }>({
+    mutationFn: ({ id, body }) => approvePendingUser(id, body),
+    onSuccess: (result, { id }) => {
       const u = users?.find((x) => x.id === id);
-      showToast(`Approved account for ${u?.displayName ?? u?.email}`, 'success');
+      const who = u?.displayName ?? u?.email ?? `#${id}`;
+      const bits: string[] = [];
+      if (result.workspace) {
+        bits.push(
+          result.workspace.provisioned
+            ? 'League account created'
+            : `League account failed: ${result.workspace.error ?? 'unknown'}`,
+        );
+      }
+      if (result.llmProxy) {
+        bits.push(
+          result.llmProxy.granted
+            ? 'LLM proxy granted'
+            : `LLM proxy failed: ${result.llmProxy.error ?? 'unknown'}`,
+        );
+      }
+      const suffix = bits.length > 0 ? ` (${bits.join('; ')})` : '';
+      const hasFailure =
+        (result.workspace && !result.workspace.provisioned) ||
+        (result.llmProxy && !result.llmProxy.granted);
+      showToast(`Approved ${who}${suffix}`, hasFailure ? 'error' : 'success');
       setRowErrors((prev) => { const n = { ...prev }; delete n[`user-${id}`]; return n; });
+      setChoices((prev) => { const n = { ...prev }; delete n[id]; return n; });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-users'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
-    onError: (err, id) => {
+    onError: (err, { id }) => {
       setRowErrors((prev) => ({ ...prev, [`user-${id}`]: err.message }));
       showToast(`Approve failed: ${err.message}`, 'error');
     },
   });
 
-  const denyUserMutation = useMutation<void, Error, number>({
+  const denyMutation = useMutation<void, Error, number>({
     mutationFn: denyPendingUser,
     onSuccess: (_d, id) => {
       const u = users?.find((x) => x.id === id);
@@ -226,99 +184,36 @@ function PendingActivityWidget() {
     },
   });
 
-  const approveReqMutation = useMutation<void, Error, ApprovePayload>({
-    mutationFn: approveRequest,
-    onSuccess: (_data, { id }) => {
-      const req = requests?.find((r) => r.id === id);
-      const who = req ? prettifyName({ email: req.userEmail, displayName: req.userName }) : `#${id}`;
-      showToast(`Approved ${req?.requestedType ?? 'request'} for ${who}`, 'success');
-      setRowErrors((prev) => {
-        const next = { ...prev };
-        delete next[`req-${id}`];
-        return next;
-      });
-      setCohortPickerFor((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-requests'] });
-    },
-    onError: (err, { id }) => {
-      setRowErrors((prev) => ({ ...prev, [`req-${id}`]: err.message }));
-      showToast(`Approve failed: ${err.message}`, 'error');
-    },
-  });
+  const total = users?.length ?? 0;
+  const visible = (users ?? []).slice(0, DISPLAY_LIMIT);
+  const anyPending = approveMutation.isPending || denyMutation.isPending;
 
-  const denyReqMutation = useMutation<void, Error, { id: number; permanent?: boolean }>({
-    mutationFn: denyRequest,
-    onSuccess: (_data, { id, permanent }) => {
-      const req = requests?.find((r) => r.id === id);
-      const who = req ? prettifyName({ email: req.userEmail, displayName: req.userName }) : `#${id}`;
-      showToast(
-        permanent ? `Permanently denied request for ${who}` : `Denied request for ${who}`,
-        'info',
-      );
-      setRowErrors((prev) => {
-        const next = { ...prev };
-        delete next[`req-${id}`];
-        return next;
-      });
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-requests'] });
-    },
-    onError: (err, { id }) => {
-      setRowErrors((prev) => ({ ...prev, [`req-${id}`]: err.message }));
-      showToast(`Deny failed: ${err.message}`, 'error');
-    },
-  });
-
-  const isLoading = usersLoading || requestsLoading;
-  const error = usersError || requestsError;
-
-  const userItems: ActivityItem[] = (users ?? []).map(u => ({
-    type: 'account',
-    id: u.id,
-    email: u.email,
-    displayName: u.displayName,
-    createdAt: u.createdAt,
-    logins: u.logins,
-  }));
-
-  const reqItems: ActivityItem[] = (requests ?? []).map(r => ({
-    type: 'request',
-    id: r.id,
-    email: r.userEmail,
-    displayName: r.userName,
-    createdAt: r.createdAt,
-    requestedType: r.requestedType,
-    userCohort: r.userCohort,
-  }));
-
-  const allItems = [...userItems, ...reqItems].sort((a, b) =>
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
-
-  const total = allItems.length;
-  const visible = allItems.slice(0, DISPLAY_LIMIT);
-  const anyPending = approveUserMutation.isPending || denyUserMutation.isPending ||
-                     approveReqMutation.isPending || denyReqMutation.isPending;
+  function getChoices(id: number): RowChoices {
+    return choices[id] ?? { workspace: false, llmProxy: false };
+  }
+  function setChoice(id: number, key: keyof RowChoices, value: boolean) {
+    setChoices((prev) => ({
+      ...prev,
+      [id]: { ...getChoices(id), [key]: value },
+    }));
+  }
 
   return (
     <section style={widgetStyle} aria-labelledby="pending-activity-heading">
       <h3 id="pending-activity-heading" style={widgetHeadingStyle}>
-        Pending Activity
+        Pending Accounts
       </h3>
 
-      {isLoading && <p style={loadingStyle}>Loading pending activity...</p>}
+      {isLoading && <p style={loadingStyle}>Loading pending accounts…</p>}
 
       {error && (
         <p style={errorStyle} role="alert">
-          Failed to load pending activity: {error?.message}
+          Failed to load pending accounts: {error?.message}
         </p>
       )}
 
       {!isLoading && !error && total === 0 && (
-        <p style={emptyStyle}>No pending activity.</p>
+        <p style={emptyStyle}>No accounts awaiting approval.</p>
       )}
 
       {!isLoading && !error && total > 0 && (
@@ -328,184 +223,92 @@ function PendingActivityWidget() {
               <tr>
                 <th style={thStyle}>Name</th>
                 <th style={thStyle}>Email</th>
-                <th style={thStyle}>Type</th>
                 <th style={thStyle}>Date</th>
+                <th style={thStyle}>Grant on approve</th>
                 <th style={thStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {visible.map((item) => {
-                if (item.type === 'account') {
-                  const rowError = rowErrors[`user-${item.id}`];
-                  return (
-                    <tr key={`user-${item.id}`}>
-                      <td style={tdStyle}>{item.displayName ?? '-'}</td>
-                      <td style={tdStyle}>{item.email}</td>
-                      <td style={tdStyle}>
-                        <span style={activityTypeBadgeStyle('account')}>Account</span>
-                      </td>
-                      <td style={tdStyle}>{new Date(item.createdAt).toLocaleDateString()}</td>
-                      <td style={tdStyle}>
-                        <div style={actionsCellStyle}>
-                          <button
-                            style={approveButtonStyle}
+                const rowError = rowErrors[`user-${item.id}`];
+                const c = getChoices(item.id);
+                const hasCohort = item.cohort != null;
+                const workspaceTooltip = hasCohort
+                  ? 'Create a League workspace account on approve.'
+                  : 'Assign a cohort on the user detail page before granting a League account.';
+                return (
+                  <tr key={`user-${item.id}`}>
+                    <td style={tdStyle}>{item.displayName ?? '-'}</td>
+                    <td style={tdStyle}>{item.email}</td>
+                    <td style={tdStyle}>{new Date(item.createdAt).toLocaleDateString()}</td>
+                    <td style={tdStyle}>
+                      <div style={checkboxGroupStyle}>
+                        <label style={checkboxLabelStyle} title={workspaceTooltip}>
+                          <input
+                            type="checkbox"
+                            checked={c.workspace}
+                            disabled={anyPending || !hasCohort}
+                            onChange={(e) => setChoice(item.id, 'workspace', e.target.checked)}
+                          />
+                          League account
+                        </label>
+                        <label style={checkboxLabelStyle} title="Grant an LLM proxy token on approve.">
+                          <input
+                            type="checkbox"
+                            checked={c.llmProxy}
                             disabled={anyPending}
-                            onClick={() => approveUserMutation.mutate(item.id)}
-                            aria-label={`Approve account ${item.id}`}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            style={denyButtonStyle}
-                            disabled={anyPending}
-                            onClick={() => {
-                              if (window.confirm(`Deny account for ${item.email}? They will be deactivated.`)) {
-                                denyUserMutation.mutate(item.id);
-                              }
-                            }}
-                            aria-label={`Deny account ${item.id}`}
-                          >
-                            Deny
-                          </button>
-                          {rowError && (
-                            <span style={inlineErrorStyle} role="alert">
-                              {rowError}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                } else {
-                  const rowError = rowErrors[`req-${item.id}`];
-                  const needsCohort = item.requestedType === 'workspace' && item.userCohort == null;
-                  const pickedCohortId = cohortPickerFor[item.id] ?? 0;
-
-                  return (
-                    <tr key={`req-${item.id}`}>
-                      <td style={tdStyle}>{item.displayName ?? '-'}</td>
-                      <td style={tdStyle}>{item.email}</td>
-                      <td style={tdStyle}>
-                        <span style={typeBadgeStyle(item.requestedType)}>
-                          {item.requestedType}
-                        </span>
-                      </td>
-                      <td style={tdStyle}>{new Date(item.createdAt).toLocaleDateString()}</td>
-                      <td style={tdStyle}>
-                        <div style={actionsCellStyle}>
-                          {needsCohort ? (
-                            <>
-                              <select
-                                style={selectStyle}
-                                value={pickedCohortId || ''}
-                                disabled={anyPending}
-                                onChange={(e) =>
-                                  setCohortPickerFor((prev) => ({
-                                    ...prev,
-                                    [item.id]: parseInt(e.target.value, 10) || 0,
-                                  }))
-                                }
-                                aria-label={`Select cohort for request ${item.id}`}
-                              >
-                                <option value="">Select a cohort…</option>
-                                {(cohorts ?? []).map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
-                                    {c.google_ou_path ? '' : ' (no OU)'}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                style={approveButtonStyle}
-                                disabled={anyPending || !pickedCohortId}
-                                onClick={() =>
-                                  approveReqMutation.mutate({
-                                    id: item.id,
-                                    cohortId: pickedCohortId,
-                                  })
-                                }
-                                aria-label={`Approve request ${item.id}`}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                style={denyButtonStyle}
-                                disabled={anyPending}
-                                onClick={() => denyReqMutation.mutate({ id: item.id })}
-                                aria-label={`Deny request ${item.id}`}
-                              >
-                                Deny
-                              </button>
-                              <button
-                                style={permaDenyButtonStyle}
-                                disabled={anyPending}
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      `Permanently deny this ${item.requestedType} request? The user will not be able to request again.`,
-                                    )
-                                  ) {
-                                    denyReqMutation.mutate({ id: item.id, permanent: true });
-                                  }
-                                }}
-                                aria-label={`Permanently deny request ${item.id}`}
-                              >
-                                Deny permanently
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                style={approveButtonStyle}
-                                disabled={anyPending}
-                                onClick={() => approveReqMutation.mutate({ id: item.id })}
-                                aria-label={`Approve request ${item.id}`}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                style={denyButtonStyle}
-                                disabled={anyPending}
-                                onClick={() => denyReqMutation.mutate({ id: item.id })}
-                                aria-label={`Deny request ${item.id}`}
-                              >
-                                Deny
-                              </button>
-                              <button
-                                style={permaDenyButtonStyle}
-                                disabled={anyPending}
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      `Permanently deny this ${item.requestedType} request? The user will not be able to request again.`,
-                                    )
-                                  ) {
-                                    denyReqMutation.mutate({ id: item.id, permanent: true });
-                                  }
-                                }}
-                                aria-label={`Permanently deny request ${item.id}`}
-                              >
-                                Deny permanently
-                              </button>
-                            </>
-                          )}
-                          {rowError && (
-                            <span style={inlineErrorStyle} role="alert">
-                              {rowError}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                }
+                            onChange={(e) => setChoice(item.id, 'llmProxy', e.target.checked)}
+                          />
+                          LLM proxy
+                        </label>
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={actionsCellStyle}>
+                        <button
+                          style={approveButtonStyle}
+                          disabled={anyPending}
+                          onClick={() =>
+                            approveMutation.mutate({
+                              id: item.id,
+                              body: {
+                                provisionWorkspace: c.workspace,
+                                grantLlmProxy: c.llmProxy,
+                              },
+                            })
+                          }
+                          aria-label={`Approve account ${item.id}`}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          style={denyButtonStyle}
+                          disabled={anyPending}
+                          onClick={() => {
+                            if (window.confirm(`Deny account for ${item.email}? They will be deactivated.`)) {
+                              denyMutation.mutate(item.id);
+                            }
+                          }}
+                          aria-label={`Deny account ${item.id}`}
+                        >
+                          Deny
+                        </button>
+                        {rowError && (
+                          <span style={inlineErrorStyle} role="alert">
+                            {rowError}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
               })}
             </tbody>
           </table>
 
           {total > DISPLAY_LIMIT && (
             <p style={seeAllStyle}>
-              Showing {visible.length} of {total} items. Visit <Link to="/requests" style={linkStyle}>Pending Requests</Link> to see all.
+              Showing {visible.length} of {total} pending accounts.
             </p>
           )}
         </>
@@ -586,13 +389,6 @@ const widgetHeadingStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 
-const widgetHeaderRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 12,
-};
-
 const loadingStyle: React.CSSProperties = {
   color: '#64748b',
   fontSize: 14,
@@ -658,25 +454,6 @@ const denyButtonStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 
-const permaDenyButtonStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 12,
-  background: '#7f1d1d',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const selectStyle: React.CSSProperties = {
-  padding: '4px 8px',
-  fontSize: 12,
-  borderRadius: 4,
-  border: '1px solid #cbd5e1',
-  background: '#fff',
-};
-
 const inlineErrorStyle: React.CSSProperties = {
   color: '#dc2626',
   fontSize: 12,
@@ -687,15 +464,19 @@ const seeAllStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
-const linkStyle: React.CSSProperties = {
-  color: '#4f46e5',
-  textDecoration: 'none',
+const checkboxGroupStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  fontSize: 12,
 };
 
-const manageLinkStyle: React.CSSProperties = {
-  color: '#4f46e5',
-  textDecoration: 'none',
-  fontSize: 14,
+const checkboxLabelStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  cursor: 'pointer',
+  userSelect: 'none',
 };
 
 const statCardsRowStyle: React.CSSProperties = {
@@ -715,40 +496,3 @@ const statCardStyle: React.CSSProperties = {
   minWidth: 100,
 };
 
-function typeBadgeStyle(type: string): React.CSSProperties {
-  const colorMap: Record<string, string> = {
-    workspace: '#2563eb',
-    claude: '#7c3aed',
-    workspace_and_claude: '#d97706',
-    llm_proxy: '#ec4899',
-  };
-  return {
-    display: 'inline-block',
-    padding: '2px 8px',
-    fontSize: 11,
-    fontWeight: 600,
-    borderRadius: 10,
-    background: colorMap[type] ?? '#64748b',
-    color: '#fff',
-    textTransform: 'uppercase',
-    letterSpacing: '0.03em',
-  };
-}
-
-function activityTypeBadgeStyle(type: 'account' | 'request'): React.CSSProperties {
-  const colorMap: Record<string, string> = {
-    account: '#6366f1',
-    request: '#f59e0b',
-  };
-  return {
-    display: 'inline-block',
-    padding: '2px 8px',
-    fontSize: 11,
-    fontWeight: 600,
-    borderRadius: 10,
-    background: colorMap[type],
-    color: '#fff',
-    textTransform: 'uppercase',
-    letterSpacing: '0.03em',
-  };
-}

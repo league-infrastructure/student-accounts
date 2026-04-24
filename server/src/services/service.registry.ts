@@ -13,7 +13,6 @@ import { UserService } from './user.service';
 import { CohortService } from './cohort.service';
 import { LoginService } from './login.service';
 import { ExternalAccountService } from './external-account.service';
-import { ProvisioningRequestService } from './provisioning-request.service';
 import { MergeSuggestionService } from './merge-suggestion.service';
 import { WorkspaceProvisioningService } from './workspace-provisioning.service';
 import { ClaudeProvisioningService } from './claude-provisioning.service';
@@ -57,7 +56,6 @@ export class ServiceRegistry {
   readonly cohorts: CohortService;
   readonly logins: LoginService;
   readonly externalAccounts: ExternalAccountService;
-  readonly provisioningRequests: ProvisioningRequestService;
   readonly mergeSuggestions: MergeSuggestionService;
   readonly workspaceProvisioning: WorkspaceProvisioningService;
   readonly claudeProvisioning: ClaudeProvisioningService;
@@ -111,8 +109,6 @@ export class ServiceRegistry {
     // CohortService receives the Google client so createWithOU can call createOU.
     this.cohorts = new CohortService(defaultPrisma, this.audit, wsClient);
 
-    // WorkspaceProvisioningService is constructed first so it can be injected
-    // into ProvisioningRequestService (Sprint 004 T007: approve() wires provision).
     this.workspaceProvisioning = new WorkspaceProvisioningService(
       wsClient,
       ExternalAccountRepository,
@@ -146,22 +142,7 @@ export class ServiceRegistry {
       this.audit,
     );
 
-    // LlmProxyTokenService — Sprint 013 T002. Built above
-    // ProvisioningRequestService so the latter can depend on it for the
-    // 'llm_proxy' approve branch.
     this.llmProxyTokens = new LlmProxyTokenService(defaultPrisma, this.audit);
-
-    // Sprint 004 T007: pass workspaceProvisioning so approve() can call provision().
-    // Sprint 005 T007: also pass claudeProvisioning so approve() can provision Claude seats.
-    // + approve() also grants an LLM proxy token when requested_type === 'llm_proxy'.
-    this.provisioningRequests = new ProvisioningRequestService(
-      defaultPrisma,
-      this.audit,
-      this.externalAccounts,
-      this.workspaceProvisioning,
-      this.claudeProvisioning,
-      this.llmProxyTokens,
-    );
 
     this.scheduler = new SchedulerService(defaultPrisma);
     this.backups = new BackupService(defaultPrisma);

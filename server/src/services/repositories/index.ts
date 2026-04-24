@@ -19,9 +19,6 @@ export type { CreateExternalAccountInput } from './external-account.repository.j
 export { AuditEventRepository } from './audit-event.repository.js';
 export type { CreateAuditEventInput } from './audit-event.repository.js';
 
-export { ProvisioningRequestRepository } from './provisioning-request.repository.js';
-export type { CreateProvisioningRequestInput } from './provisioning-request.repository.js';
-
 export { MergeSuggestionRepository } from './merge-suggestion.repository.js';
 export type { CreateMergeSuggestionInput } from './merge-suggestion.repository.js';
 

@@ -36,13 +36,13 @@ const ADMIN_WORKFLOW_NAV: NavItem[] = [
   { to: '/groups', label: 'Groups' },
   { to: '/cohorts', label: 'Cohorts' },
   { to: '/sync', label: 'Sync' },
-  { to: '/requests', label: 'Provisioning Requests' },
 ];
 
 /**
  * Ops-only nav — shown in the sidebar when the current path is under /admin/*.
  */
 const ADMIN_NAV: NavItem[] = [
+  { to: '/admin/users', label: 'Users' },
   { to: '/admin/audit-log', label: 'Audit Log' },
   { to: '/admin/env', label: 'Environment' },
   { to: '/admin/db', label: 'Database' },

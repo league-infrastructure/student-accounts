@@ -119,7 +119,39 @@ adminUsersRouter.post('/users', async (req, res, next) => {
 adminUsersRouter.put('/users/:id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { email, displayName, role } = req.body;
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+
+    const { email, displayName, role } = req.body as {
+      email?: string;
+      displayName?: string;
+      role?: string;
+    };
+    const actorId = (req.session as any).userId as number;
+
+    // Admin-role guards — only fire when the caller is about to demote
+    // somebody from admin. Role values are normalized server-side by
+    // mapRole; we mirror that normalization here for the check.
+    if (role !== undefined) {
+      const normalized = normalizeRoleInput(role);
+      if (normalized !== 'admin') {
+        const target = await prisma.user.findUnique({ where: { id } });
+        if (target?.role === 'admin') {
+          // Self-demote guard: mirrors the delete-user flow.
+          if (id === actorId) {
+            return res.status(403).json({ error: 'Cannot demote your own account' });
+          }
+          // Last-admin guard: count active admins; refuse if this is the
+          // only one.
+          const adminCount = await prisma.user.count({
+            where: { role: 'admin', is_active: true },
+          });
+          if (adminCount <= 1) {
+            return res.status(409).json({ error: 'Cannot demote the last admin' });
+          }
+        }
+      }
+    }
+
     const user = await req.services.users.update(id, { email, displayName, role });
     adminBus.notify('users');
     userBus.notifyUser(id);
@@ -131,6 +163,19 @@ adminUsersRouter.put('/users/:id', async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * Mirror of user.service.mapRole for the admin-role guards in PUT
+ * /users/:id. Kept inline so the handler doesn't depend on the
+ * service's private helper; the update call still runs the real
+ * mapRole for persistence.
+ */
+function normalizeRoleInput(role: string): 'admin' | 'staff' | 'student' {
+  if (role === 'ADMIN') return 'admin';
+  if (role === 'USER') return 'student';
+  if (role === 'admin' || role === 'staff' || role === 'student') return role;
+  return 'student';
+}
 
 // DELETE /admin/users/:id - soft-delete a user (is_active=false) and emit audit event
 adminUsersRouter.delete('/users/:id', async (req, res, next) => {
@@ -229,6 +274,7 @@ adminUsersRouter.get('/pending-users', async (_req, res, next) => {
       orderBy: { created_at: 'asc' },
       include: {
         logins: { select: { provider: true, provider_email: true, provider_username: true } },
+        cohort: { select: { id: true, name: true } },
       },
     });
     res.json(
@@ -237,6 +283,7 @@ adminUsersRouter.get('/pending-users', async (_req, res, next) => {
         email: u.primary_email,
         displayName: u.display_name,
         createdAt: u.created_at,
+        cohort: u.cohort ? { id: u.cohort.id, name: u.cohort.name } : null,
         logins: u.logins.map((l) => ({
           provider: l.provider,
           email: l.provider_email,
@@ -250,14 +297,34 @@ adminUsersRouter.get('/pending-users', async (_req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /admin/users/:id/approve — flip approval_status to 'approved'
+// POST /admin/users/:id/approve — flip approval_status to 'approved' and
+// optionally provision the League workspace account + LLM proxy token
+// at the same moment.
+//
+// Body (all optional):
+//   { provisionWorkspace?: boolean, grantLlmProxy?: boolean }
+//
+// The approval itself is transactional. The optional provisioning calls
+// run AFTER the approval commits and each is independently fail-soft —
+// a workspace failure does not block an LLM-proxy grant and neither
+// affects the approval. The response reports what happened.
 // ---------------------------------------------------------------------------
+
+const LLM_PROXY_DEFAULT_TOKEN_LIMIT = 1_000_000;
+const LLM_PROXY_DEFAULT_EXPIRY_DAYS = 30;
 
 adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
     const actorId = (req.session as any).userId as number;
+
+    const body = (req.body ?? {}) as {
+      provisionWorkspace?: unknown;
+      grantLlmProxy?: unknown;
+    };
+    const provisionWorkspace = body.provisionWorkspace === true;
+    const grantLlmProxy = body.grantLlmProxy === true;
 
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -278,11 +345,52 @@ adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
       });
     });
 
+    // Optional side actions — fail-soft, each in its own transaction.
+    const response: {
+      ok: true;
+      workspace?: { provisioned: boolean; error?: string };
+      llmProxy?: { granted: boolean; error?: string };
+    } = { ok: true };
+
+    if (provisionWorkspace) {
+      try {
+        await prisma.$transaction(async (tx: any) => {
+          await req.services.workspaceProvisioning.provision(id, actorId, tx);
+        });
+        response.workspace = { provisioned: true };
+      } catch (err: any) {
+        response.workspace = {
+          provisioned: false,
+          error: err?.message ?? String(err),
+        };
+      }
+    }
+
+    if (grantLlmProxy) {
+      try {
+        const expiresAt = new Date(
+          Date.now() + LLM_PROXY_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+        );
+        await req.services.llmProxyTokens.grant(
+          id,
+          { expiresAt, tokenLimit: LLM_PROXY_DEFAULT_TOKEN_LIMIT },
+          actorId,
+          { scope: 'single' },
+        );
+        response.llmProxy = { granted: true };
+      } catch (err: any) {
+        response.llmProxy = {
+          granted: false,
+          error: err?.message ?? String(err),
+        };
+      }
+    }
+
     adminBus.notify('pending-users');
     adminBus.notify('users');
     userBus.notifyUser(id);
 
-    res.json({ ok: true });
+    res.json(response);
   } catch (err) {
     next(err);
   }
