@@ -12,6 +12,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
 import { CohortRepository } from './repositories/cohort.repository.js';
+import { GroupRepository } from './repositories/group.repository.js';
 import type { Cohort } from '../generated/prisma/client.js';
 
 const logger = createLogger('cohort-service');
@@ -198,6 +199,95 @@ export class CohortService {
         details: { google_ou_path: ouPath },
       });
       return cohort;
+    });
+  }
+
+  /**
+   * Sync every active student in the cohort into a Group whose name
+   * matches the cohort name. If no such group exists, create it. If the
+   * group already exists, add only the members who aren't in it yet
+   * (idempotent — safe to click repeatedly).
+   *
+   * Account management (workspace provisioning, Claude seats, LLM proxy
+   * tokens) lives on the group page, not on the cohort page. This method
+   * is the seam that copies cohort membership into the group so an admin
+   * can then operate on that class of students from the group view.
+   *
+   * Only students are copied. Staff or admin users who happen to share
+   * the cohort_id are intentionally excluded — cohort-wide account
+   * operations have only ever applied to students.
+   *
+   * Audit trail:
+   *  - `create_group` with `source: 'cohort-sync'` when the group is new
+   *  - `add_group_member` with `source: 'cohort-sync'` for each added user
+   *
+   * All writes happen inside a single transaction.
+   */
+  async syncToGroup(
+    cohortId: number,
+    actorId: number,
+  ): Promise<{
+    groupId: number;
+    groupName: string;
+    created: boolean;
+    addedCount: number;
+    alreadyMemberCount: number;
+    eligibleCount: number;
+  }> {
+    return this.prisma.$transaction(async (tx: any) => {
+      const cohort = await CohortRepository.findById(tx, cohortId);
+      if (!cohort) throw new NotFoundError(`Cohort ${cohortId} not found`);
+
+      let group = await GroupRepository.findByName(tx, cohort.name);
+      const created = group == null;
+      if (!group) {
+        group = await GroupRepository.create(tx, {
+          name: cohort.name,
+          description: `Synced from cohort "${cohort.name}"`,
+        });
+        await this.audit.record(tx, {
+          actor_user_id: actorId,
+          action: 'create_group',
+          target_entity_type: 'Group',
+          target_entity_id: String(group.id),
+          details: { name: cohort.name, source: 'cohort-sync', cohortId },
+        });
+      }
+
+      const students: Array<{ id: number }> = await tx.user.findMany({
+        where: { cohort_id: cohortId, is_active: true, role: 'student' },
+        select: { id: true },
+      });
+
+      const existing: Array<{ user_id: number }> = await tx.userGroup.findMany({
+        where: { group_id: group.id },
+        select: { user_id: true },
+      });
+      const existingIds = new Set(existing.map((m) => m.user_id));
+
+      let addedCount = 0;
+      for (const s of students) {
+        if (existingIds.has(s.id)) continue;
+        await GroupRepository.addMember(tx, group.id, s.id);
+        await this.audit.record(tx, {
+          actor_user_id: actorId,
+          action: 'add_group_member',
+          target_user_id: s.id,
+          target_entity_type: 'Group',
+          target_entity_id: String(group.id),
+          details: { source: 'cohort-sync', cohortId },
+        });
+        addedCount++;
+      }
+
+      return {
+        groupId: group.id,
+        groupName: group.name,
+        created,
+        addedCount,
+        alreadyMemberCount: students.length - addedCount,
+        eligibleCount: students.length,
+      };
     });
   }
 }

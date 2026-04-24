@@ -1,30 +1,16 @@
 /**
  * CohortDetailPanel — per-cohort admin view at /cohorts/:id.
  *
- * Lists every active student in the cohort with their current League and
- * Claude account status. Bulk action buttons at the top perform the same
- * operation on every eligible member of the cohort:
- *
- *  - Create Claude seats (POST /admin/cohorts/:id/bulk-provision claude)
- *    — League accounts cannot be bulk-created from here; cohort membership
- *      already implies a League OU placement.
- *  - Suspend All         (POST /admin/cohorts/:id/bulk-suspend-all)
- *    — Suspends every active workspace + claude ExternalAccount for every
- *      active cohort member.
- *  - Delete All          (POST /admin/cohorts/:id/bulk-remove-all)
- *    — Removes every active + suspended workspace + claude ExternalAccount
- *      for every active cohort member.
- *
- * Each bulk action confirms, then re-fetches the member list and shows the
- * succeeded/failed counts. Failure entries from the *-all endpoints carry
- * a `type` field (workspace | claude) so the banner can render
- * "name (claude): reason".
+ * Read-only view of cohort membership. Cohorts are the Google Workspace
+ * OU concept; account management (workspace, Claude, LLM proxy) happens
+ * on the group detail page, not here. The "Sync to group" button copies
+ * this cohort's active students into a group with the same name and
+ * navigates there.
  */
 
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LlmProxyGrantModal } from '../../components/LlmProxyGrantModal';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface ExternalAccount {
   type: string;
@@ -45,26 +31,13 @@ interface CohortDetail {
   users: Member[];
 }
 
-type AccountType = 'workspace' | 'claude';
-type Operation = 'provision' | 'suspend' | 'remove';
-type AllOperation = 'suspend' | 'remove';
-
-interface BulkResult {
-  succeeded: number[];
-  failed: Array<{
-    accountId?: number;
-    userId: number;
-    userName: string;
-    /** Only populated by the *-all endpoints (suspend-all / remove-all). */
-    type?: AccountType;
-    error: string;
-  }>;
-}
-
-function hasAccount(m: Member, type: AccountType, statuses: string[]): boolean {
-  return m.externalAccounts.some(
-    (a) => a.type === type && statuses.includes(a.status),
-  );
+interface SyncToGroupResult {
+  groupId: number;
+  groupName: string;
+  created: boolean;
+  addedCount: number;
+  alreadyMemberCount: number;
+  eligibleCount: number;
 }
 
 /** A cohort is a Google Workspace OU — every active member has a League
@@ -73,7 +46,9 @@ function hasAccount(m: Member, type: AccountType, statuses: string[]): boolean {
 function hasLeagueAccount(m: Member): boolean {
   const email = (m.email ?? '').toLowerCase();
   if (/@([a-z0-9-]+\.)?jointheleague\.org$/.test(email)) return true;
-  return hasAccount(m, 'workspace', ['active', 'pending']);
+  return m.externalAccounts.some(
+    (a) => a.type === 'workspace' && ['active', 'pending'].includes(a.status),
+  );
 }
 
 export default function CohortDetailPanel() {
@@ -98,177 +73,33 @@ export default function CohortDetailPanel() {
 
   const data = detailQuery.data ?? null;
   const error = detailQuery.error ? (detailQuery.error as Error).message : null;
-  const load = (): Promise<void> =>
-    queryClient
-      .invalidateQueries({
-        queryKey: ['admin', 'cohorts', numericId, 'detail'],
-      })
-      .then(() => undefined);
 
-  const [busy, setBusy] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [showGrantModal, setShowGrantModal] = useState(false);
 
-  async function runBulk(op: Operation, accountType: AccountType, label: string) {
-    const verb = op === 'provision' ? 'Create' : op === 'suspend' ? 'Suspend' : 'Delete';
-    const product = accountType === 'workspace' ? 'League accounts' : 'Claude seats';
-    if (!confirm(`${verb} ${product} for all eligible students in this cohort?`)) return;
-
-    setBusy(`${op}-${accountType}`);
-    setBanner(null);
-    try {
-      const endpoint =
-        op === 'provision'
-          ? `/api/admin/cohorts/${id}/bulk-provision`
-          : op === 'suspend'
-            ? `/api/admin/cohorts/${id}/bulk-suspend`
-            : `/api/admin/cohorts/${id}/bulk-remove`;
-      const res = await fetch(endpoint, {
+  const syncMutation = useMutation<SyncToGroupResult, Error, void>({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/cohorts/${id}/sync-to-group`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountType }),
       });
-      const body = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
-      if (!res.ok && res.status !== 207) {
-        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
-        throw new Error(msg);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
-      const r = body as BulkResult;
+      return res.json();
+    },
+    onSuccess: (result) => {
+      const verb = result.created ? 'Created group' : 'Updated group';
       setBanner({
-        ok: r.failed.length === 0,
-        msg: `${label}: ${r.succeeded.length} succeeded, ${r.failed.length} failed.` +
-          (r.failed.length ? ` ${r.failed.map((f) => `${f.userName}: ${f.error}`).join('; ')}` : ''),
+        ok: true,
+        msg: `${verb} "${result.groupName}": added ${result.addedCount}, already a member: ${result.alreadyMemberCount}.`,
       });
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'Bulk action failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  /**
-   * Run a cohort-wide "suspend all" or "delete all" against every live
-   * workspace + claude ExternalAccount for every active member.
-   */
-  async function runBulkAll(op: AllOperation, label: string) {
-    const verb = op === 'suspend' ? 'Suspend' : 'Delete';
-    if (
-      !confirm(
-        `${verb} EVERY League and Claude account for every active student in this cohort?`,
-      )
-    ) {
-      return;
-    }
-
-    setBusy(`${op}-all`);
-    setBanner(null);
-    try {
-      const endpoint =
-        op === 'suspend'
-          ? `/api/admin/cohorts/${id}/bulk-suspend-all`
-          : `/api/admin/cohorts/${id}/bulk-remove-all`;
-      const res = await fetch(endpoint, { method: 'POST' });
-      const body = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
-      if (!res.ok && res.status !== 207) {
-        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      const r = body as BulkResult;
-      setBanner({
-        ok: r.failed.length === 0,
-        msg: `${label}: ${r.succeeded.length} succeeded, ${r.failed.length} failed.` +
-          (r.failed.length
-            ? ' ' +
-              r.failed
-                .map((f) => {
-                  const t = f.type ? ` (${f.type})` : '';
-                  return `${f.userName}${t}: ${f.error}`;
-                })
-                .join('; ')
-            : ''),
-      });
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'Bulk action failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function runBulkLlmProxyGrant(expiresAtStr: string, tokenLimit: number) {
-    setBusy('llm-proxy-grant');
-    setBanner(null);
-    setShowGrantModal(false);
-    try {
-      const res = await fetch(
-        `/api/admin/cohorts/${id}/llm-proxy/bulk-grant`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresAt: expiresAtStr, tokenLimit }),
-        },
-      );
-      const body = (await res.json().catch(() => ({}))) as any;
-      if (!res.ok && res.status !== 207) {
-        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      const s = body.succeeded?.length ?? 0;
-      const f = body.failed?.length ?? 0;
-      const skip = body.skipped?.length ?? 0;
-      let csv = '';
-      if (body.tokensByUser) {
-        csv = Object.entries(body.tokensByUser)
-          .map(([uid, tok]) => `${uid},${tok}`)
-          .join('\n');
-      }
-      setBanner({
-        ok: f === 0,
-        msg:
-          `LLM proxy grant: ${s} succeeded, ${f} failed, ${skip} skipped.` +
-          (csv ? `\nTokens (user_id,token):\n${csv}` : ''),
-      });
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'LLM proxy grant failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function runBulkLlmProxyRevoke() {
-    if (
-      !confirm(
-        'Revoke LLM proxy access for every student in this cohort who has an active token?',
-      )
-    )
-      return;
-    setBusy('llm-proxy-revoke');
-    setBanner(null);
-    try {
-      const res = await fetch(
-        `/api/admin/cohorts/${id}/llm-proxy/bulk-revoke`,
-        { method: 'POST' },
-      );
-      const body = (await res.json().catch(() => ({}))) as any;
-      if (!res.ok && res.status !== 207) {
-        const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      const s = body.succeeded?.length ?? 0;
-      const f = body.failed?.length ?? 0;
-      const skip = body.skipped?.length ?? 0;
-      setBanner({
-        ok: f === 0,
-        msg: `LLM proxy revoke: ${s} succeeded, ${f} failed, ${skip} skipped.`,
-      });
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'LLM proxy revoke failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
+      queryClient.invalidateQueries({ queryKey: ['admin', 'groups'] });
+      navigate(`/groups/${result.groupId}`);
+    },
+    onError: (err) => {
+      setBanner({ ok: false, msg: err.message || 'Sync to group failed' });
+    },
+  });
 
   if (error) {
     return (
@@ -280,9 +111,7 @@ export default function CohortDetailPanel() {
   }
   if (!data) return <p style={{ color: '#64748b' }}>Loading cohort…</p>;
 
-  const missingClaude = data.users.filter(
-    (m) => m.role === 'student' && !hasAccount(m, 'claude', ['active', 'pending']),
-  ).length;
+  const activeStudents = data.users.filter((m) => m.role === 'student').length;
 
   return (
     <div>
@@ -294,7 +123,7 @@ export default function CohortDetailPanel() {
 
       {banner && (
         <div
-          role="alert"
+          role={banner.ok ? 'status' : 'alert'}
           style={{
             padding: 10,
             marginBottom: 16,
@@ -308,46 +137,32 @@ export default function CohortDetailPanel() {
         </div>
       )}
 
-      {/* Bulk action buttons */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        <BulkButton
-          label={`Create Claude (${missingClaude})`}
-          disabled={busy !== null || missingClaude === 0}
-          busy={busy === 'provision-claude'}
-          kind="primary"
-          onClick={() => runBulk('provision', 'claude', 'Create Claude seats')}
-        />
-        <BulkButton
-          label="Suspend All"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'suspend-all'}
-          kind="warn"
-          onClick={() => runBulkAll('suspend', 'Suspend all accounts')}
-        />
-        <BulkButton
-          label="Delete All"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'remove-all'}
-          kind="danger"
-          onClick={() => runBulkAll('remove', 'Delete all accounts')}
-        />
-        <BulkButton
-          label="Grant LLM Proxy"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'llm-proxy-grant'}
-          kind="primary"
-          onClick={() => setShowGrantModal(true)}
-        />
-        <BulkButton
-          label="Revoke LLM Proxy"
-          disabled={busy !== null || data.users.length === 0}
-          busy={busy === 'llm-proxy-revoke'}
-          kind="warn"
-          onClick={runBulkLlmProxyRevoke}
-        />
+      <div
+        style={{
+          marginBottom: 16,
+          padding: 12,
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: 6,
+          fontSize: 13,
+          color: '#475569',
+        }}
+      >
+        To grant workspace, Claude, or LLM proxy access to this class, sync
+        the cohort into a group and manage accounts from the group page.
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending || activeStudents === 0}
+            style={syncButtonStyle(syncMutation.isPending || activeStudents === 0)}
+          >
+            {syncMutation.isPending ? 'Syncing…' : `Sync to group "${data.cohort.name}"`}
+          </button>
+        </div>
       </div>
 
-      {/* Members table */}
+      {/* Members table (read-only) */}
       <table style={tableStyle}>
         <thead>
           <tr>
@@ -391,54 +206,13 @@ export default function CohortDetailPanel() {
           )}
         </tbody>
       </table>
-
-      <LlmProxyGrantModal
-        isOpen={showGrantModal}
-        onCancel={() => setShowGrantModal(false)}
-        onConfirm={runBulkLlmProxyGrant}
-        isLoading={busy === 'llm-proxy-grant'}
-      />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Helper components
+// Helper components + styles
 // ---------------------------------------------------------------------------
-
-function BulkButton({
-  label,
-  disabled,
-  busy,
-  kind,
-  onClick,
-}: {
-  label: string;
-  disabled: boolean;
-  busy: boolean;
-  kind: 'primary' | 'warn' | 'danger';
-  onClick: () => void;
-}) {
-  const base: React.CSSProperties = {
-    padding: '8px 14px',
-    fontSize: 13,
-    fontWeight: 600,
-    borderRadius: 6,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    border: 'none',
-    opacity: disabled ? 0.5 : 1,
-  };
-  const color = kind === 'primary' ? '#2563eb' : kind === 'warn' ? '#d97706' : '#dc2626';
-  return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      style={{ ...base, background: color, color: '#fff' }}
-    >
-      {busy ? 'Working…' : label}
-    </button>
-  );
-}
 
 function StatusPill({ status }: { status: string }) {
   const color =
@@ -450,6 +224,19 @@ function StatusPill({ status }: { status: string }) {
       {status}
     </span>
   );
+}
+
+function syncButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    padding: '8px 14px',
+    fontSize: 13,
+    fontWeight: 600,
+    background: disabled ? '#cbd5e1' : '#0891b2',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 6,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+  };
 }
 
 const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 14 };
