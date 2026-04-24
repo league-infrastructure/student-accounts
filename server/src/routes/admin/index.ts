@@ -24,6 +24,7 @@ import { anthropicSyncRouter } from './anthropic-sync';
 import { adminEventsRouter } from './events';
 import { adminGroupsRouter } from './groups';
 import { adminLlmProxyRouter } from './llm-proxy';
+import { adminUsersViewsRouter } from './users-views';
 
 export const adminRouter = Router();
 
@@ -39,6 +40,10 @@ adminRouter.use('/admin', adminDbRouter);
 adminRouter.use('/admin', adminConfigRouter);
 adminRouter.use('/admin', adminLogsRouter);
 adminRouter.use('/admin', adminSessionsRouter);
+// adminUsersViewsRouter comes BEFORE adminUsersRouter so its literal
+// segments (/users/with-llm-proxy, /users/bulk-*) win against the
+// /users/:id pattern in adminUsersRouter.
+adminRouter.use('/admin', adminUsersViewsRouter);
 adminRouter.use('/admin', adminUsersRouter);
 adminRouter.use('/admin', adminSchedulerRouter);
 adminRouter.use('/admin', adminBackupsRouter);

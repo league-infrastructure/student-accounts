@@ -11,6 +11,9 @@ interface NavItem {
   to: string;
   label: string;
   end?: boolean;
+  /** Optional child items. Rendered indented; visible only when the
+   *  current pathname starts with the parent's `to`. */
+  children?: NavItem[];
 }
 
 const MAIN_NAV: NavItem[] = [];
@@ -21,7 +24,15 @@ const MAIN_NAV: NavItem[] = [];
  */
 const ADMIN_WORKFLOW_NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', end: true },
-  { to: '/users', label: 'Users' },
+  {
+    to: '/users',
+    label: 'Users',
+    end: true,
+    children: [
+      { to: '/users/students', label: 'Students' },
+      { to: '/users/llm-proxy', label: 'LLM Proxy' },
+    ],
+  },
   { to: '/groups', label: 'Groups' },
   { to: '/cohorts', label: 'Cohorts' },
   { to: '/sync', label: 'Sync' },
@@ -387,17 +398,40 @@ export default function AppLayout() {
 
       {/* Primary nav */}
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: 8 }}>
-        {primaryNav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            {item.label}
-          </NavLink>
-        ))}
+        {primaryNav.map((item) => {
+          const childrenVisible =
+            item.children &&
+            (location.pathname === item.to ||
+              location.pathname.startsWith(item.to + '/'));
+          return (
+            <div key={item.to}>
+              <NavLink
+                to={item.to}
+                end={item.end}
+                onClick={closeSidebarIfMobile}
+                style={({ isActive }) => styles.navLink(isActive)}
+              >
+                {item.label}
+              </NavLink>
+              {childrenVisible &&
+                item.children!.map((child) => (
+                  <NavLink
+                    key={child.to}
+                    to={child.to}
+                    end={child.end}
+                    onClick={closeSidebarIfMobile}
+                    style={({ isActive }) => ({
+                      ...styles.navLink(isActive),
+                      paddingLeft: 32,
+                      fontSize: 13,
+                    })}
+                  >
+                    {child.label}
+                  </NavLink>
+                ))}
+            </div>
+          );
+        })}
       </div>
 
       {/* User area — above MCP Setup */}
