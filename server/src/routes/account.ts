@@ -165,7 +165,7 @@ accountRouter.delete(
 // workspace-baseline constraint.
 // ---------------------------------------------------------------------------
 
-const VALID_REQUEST_TYPES: CreateRequestType[] = ['workspace', 'claude', 'workspace_and_claude', 'llm_proxy'];
+const VALID_REQUEST_TYPES: CreateRequestType[] = ['workspace', 'claude', 'workspace_and_claude'];
 
 // ---------------------------------------------------------------------------
 // POST /api/account/provisioning-requests — create a provisioning request
