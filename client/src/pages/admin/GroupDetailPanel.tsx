@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
+import { LlmProxyGrantModal } from '../../components/LlmProxyGrantModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,6 +101,8 @@ export default function GroupDetailPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedQuery = useDebounced(searchQuery, 300);
   const [matches, setMatches] = useState<UserMatch[]>([]);
+
+  const [showGrantModal, setShowGrantModal] = useState(false);
 
   async function load() {
     setError(null);
@@ -205,24 +208,10 @@ export default function GroupDetailPanel() {
     }
   }
 
-  async function runBulkLlmProxyGrant() {
-    const expiresAtStr = window.prompt(
-      'Expiration date/time for the new tokens (ISO 8601, e.g. 2026-05-31T17:00:00Z)',
-      new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-    );
-    if (!expiresAtStr) return;
-    const tokenLimitStr = window.prompt(
-      'Token limit per user (integer)',
-      '1000000',
-    );
-    if (!tokenLimitStr) return;
-    const tokenLimit = parseInt(tokenLimitStr, 10);
-    if (!Number.isFinite(tokenLimit) || tokenLimit <= 0) {
-      setBanner({ ok: false, msg: 'tokenLimit must be a positive integer.' });
-      return;
-    }
+  async function runBulkLlmProxyGrant(expiresAtStr: string, tokenLimit: number) {
     setBusy('llm-proxy-grant');
     setBanner(null);
+    setShowGrantModal(false);
     try {
       const body: any = { expiresAt: expiresAtStr, tokenLimit };
       if (selectedIds.size > 0) {
@@ -256,6 +245,7 @@ export default function GroupDetailPanel() {
           `LLM proxy grant: ${s} succeeded, ${f} failed, ${skip} skipped.` +
           (csv ? `\nTokens (user_id,token):\n${csv}` : ''),
       });
+      await load();
     } catch (err: any) {
       setBanner({ ok: false, msg: err.message || 'LLM proxy grant failed' });
     } finally {
@@ -297,6 +287,7 @@ export default function GroupDetailPanel() {
         ok: f === 0,
         msg: `LLM proxy revoke: ${s} succeeded, ${f} failed, ${skip} skipped.`,
       });
+      await load();
     } catch (err: any) {
       setBanner({ ok: false, msg: err.message || 'LLM proxy revoke failed' });
     } finally {
@@ -600,7 +591,7 @@ export default function GroupDetailPanel() {
         <Button
           variant="default"
           disabled={busy !== null || getGrantLlmProxyCount() === 0}
-          onClick={runBulkLlmProxyGrant}
+          onClick={() => setShowGrantModal(true)}
         >
           Grant LLM Proxy ({getGrantLlmProxyCount()})
         </Button>
@@ -715,6 +706,13 @@ export default function GroupDetailPanel() {
           )}
         </tbody>
       </table>
+
+      <LlmProxyGrantModal
+        isOpen={showGrantModal}
+        onCancel={() => setShowGrantModal(false)}
+        onConfirm={runBulkLlmProxyGrant}
+        isLoading={busy === 'llm-proxy-grant'}
+      />
     </div>
   );
 }
