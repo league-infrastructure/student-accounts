@@ -13,9 +13,7 @@ interface NavItem {
   end?: boolean;
 }
 
-const MAIN_NAV: NavItem[] = [
-  { to: '/account', label: 'Account' },
-];
+const MAIN_NAV: NavItem[] = [];
 
 /**
  * Admin workflow nav — shown in the main sidebar when user.role === 'admin'
