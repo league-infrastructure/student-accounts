@@ -511,47 +511,6 @@ function ServicesSection({ data, onRequest, requesting, requestError }: Services
             </td>
           </tr>
 
-          {/* LLM Proxy */}
-          {(() => {
-            const llmEnabled = data.profile.llmProxyEnabled === true;
-            const pendingLlm = data.provisioningRequests.find(
-              (r) => r.requestedType === 'llm_proxy' && r.status === 'pending',
-            );
-            const latestLlm = data.provisioningRequests.find(
-              (r) => r.requestedType === 'llm_proxy',
-            );
-            const permaRejectedLlm = data.provisioningRequests.some(
-              (r) => r.requestedType === 'llm_proxy' && r.status === 'rejected_permanent',
-            );
-            const statusCell = llmEnabled
-              ? 'active'
-              : pendingLlm
-                ? 'Request pending'
-                : latestLlm
-                  ? `Request ${latestLlm.status}`
-                  : 'None';
-            const showRequestButton =
-              !llmEnabled && !pendingLlm && !permaRejectedLlm;
-            return (
-              <tr style={styles.tr}>
-                <td style={styles.td}>LLM Proxy</td>
-                <td style={styles.td}>{statusCell}</td>
-                <td style={styles.td}>
-                  {showRequestButton ? (
-                    <button
-                      onClick={() => onRequest('llm_proxy')}
-                      disabled={requesting}
-                      style={styles.requestButton}
-                      aria-label="Request LLM Proxy"
-                    >
-                      Request LLM Proxy
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })()}
-
           {/* Pike13 */}
           <tr style={styles.tr}>
             <td style={styles.td}>Pike13</td>
