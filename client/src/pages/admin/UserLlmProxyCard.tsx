@@ -17,7 +17,8 @@
  *   the admin moves on.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface StatusResponse {
   enabled: boolean;
@@ -44,33 +45,39 @@ function defaultExpiresAt(): string {
 }
 
 export default function UserLlmProxyCard({ userId, userName }: Props) {
-  const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showGrantForm, setShowGrantForm] = useState(false);
   const [expiresAtInput, setExpiresAtInput] = useState<string>(defaultExpiresAt());
   const [tokenLimitInput, setTokenLimitInput] = useState<number>(1_000_000);
 
-  const load = useCallback(async () => {
-    setErr(null);
-    try {
+  // Nested under ['admin', 'users', ...] so the SSE 'users' topic cascades
+  // here when another admin grants/revokes a token elsewhere.
+  const {
+    data: status,
+    error: queryError,
+  } = useQuery<StatusResponse>({
+    queryKey: ['admin', 'users', userId, 'llm-proxy'],
+    queryFn: async () => {
       const res = await fetch(`/api/admin/users/${userId}/llm-proxy-token`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json()) as StatusResponse;
-      setStatus(body);
-    } catch (e: any) {
-      setErr(e.message ?? 'Failed to load LLM proxy status');
-    }
-  }, [userId]);
+      return res.json();
+    },
+    enabled: Number.isFinite(userId),
+  });
 
-  useEffect(() => {
-    if (!Number.isFinite(userId)) return;
-    void load();
-  }, [userId, load]);
+  const err =
+    mutationError ?? (queryError ? (queryError as Error).message : null);
+
+  const refetchStatus = () =>
+    queryClient.invalidateQueries({
+      queryKey: ['admin', 'users', userId, 'llm-proxy'],
+    });
 
   async function submitGrant() {
     setBusy(true);
-    setErr(null);
+    setMutationError(null);
     try {
       const expiresAt = new Date(expiresAtInput).toISOString();
       const res = await fetch(`/api/admin/users/${userId}/llm-proxy-token`, {
@@ -86,9 +93,9 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
       // student's own Account page. Admins don't need to see it.
       await res.json().catch(() => null);
       setShowGrantForm(false);
-      await load();
+      await refetchStatus();
     } catch (e: any) {
-      setErr(e.message ?? 'Grant failed');
+      setMutationError(e.message ?? 'Grant failed');
     } finally {
       setBusy(false);
     }
@@ -98,16 +105,16 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
     const msg = `Revoke LLM proxy access for ${userName ?? 'this user'}? Their token will stop working immediately.`;
     if (!window.confirm(msg)) return;
     setBusy(true);
-    setErr(null);
+    setMutationError(null);
     try {
       const res = await fetch(`/api/admin/users/${userId}/llm-proxy-token`, { method: 'DELETE' });
       if (!res.ok && res.status !== 204) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
-      await load();
+      await refetchStatus();
     } catch (e: any) {
-      setErr(e.message ?? 'Revoke failed');
+      setMutationError(e.message ?? 'Revoke failed');
     } finally {
       setBusy(false);
     }

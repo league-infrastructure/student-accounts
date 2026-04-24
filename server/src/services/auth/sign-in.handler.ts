@@ -283,6 +283,7 @@ export async function signInHandler(
           '[sign-in.handler] external user, notifying pending-users bus'
         );
         adminBus.notify('pending-users');
+        adminBus.notify('users');
       }
     }
 

@@ -32,6 +32,7 @@ import { prisma } from '../../services/prisma.js';
 import { AuditService } from '../../services/audit.service.js';
 import { ExternalAccountRepository } from '../../services/repositories/external-account.repository.js';
 import { AppError } from '../../errors.js';
+import { adminBus, userBus } from '../../services/change-bus.js';
 
 export const adminDeprovisionRouter = Router();
 
@@ -105,7 +106,14 @@ adminDeprovisionRouter.post('/users/:id/deprovision', async (req, res, next) => 
       // In production, pino would log this; in tests it's silent.
     }
 
-    // --- 6. Return result ---
+    // --- 6. Fire change notifications. Even with partial failures, any
+    //        succeeded removal changes user state visible in admin views. ---
+    if (succeeded.length > 0) {
+      adminBus.notify('users');
+      userBus.notifyUser(userId);
+    }
+
+    // --- 7. Return result ---
     const status = failed.length > 0 && succeeded.length > 0 ? 207 : 200;
     return res.status(status).json({ succeeded, failed });
   } catch (err: any) {

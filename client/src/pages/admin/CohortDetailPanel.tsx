@@ -21,8 +21,9 @@
  * "name (claude): reason".
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LlmProxyGrantModal } from '../../components/LlmProxyGrantModal';
 
 interface ExternalAccount {
@@ -78,27 +79,35 @@ function hasLeagueAccount(m: Member): boolean {
 export default function CohortDetailPanel() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [data, setData] = useState<CohortDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const numericId = id ? parseInt(id, 10) : NaN;
+
+  // Nested under ['admin', 'cohorts', ...] so the SSE 'cohorts' and
+  // 'users' topics both cascade here when membership or external accounts
+  // change for this cohort's students.
+  const detailQuery = useQuery<CohortDetail>({
+    queryKey: ['admin', 'cohorts', numericId, 'detail'],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/cohorts/${id}/members`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    enabled: Number.isFinite(numericId),
+  });
+
+  const data = detailQuery.data ?? null;
+  const error = detailQuery.error ? (detailQuery.error as Error).message : null;
+  const load = (): Promise<void> =>
+    queryClient
+      .invalidateQueries({
+        queryKey: ['admin', 'cohorts', numericId, 'detail'],
+      })
+      .then(() => undefined);
+
   const [busy, setBusy] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ ok: boolean; msg: string } | null>(null);
   const [showGrantModal, setShowGrantModal] = useState(false);
-
-  async function load() {
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/cohorts/${id}/members`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
-    } catch (err: any) {
-      setError(err.message || 'Failed to load cohort');
-    }
-  }
-
-  useEffect(() => {
-    if (id) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
   async function runBulk(op: Operation, accountType: AccountType, label: string) {
     const verb = op === 'provision' ? 'Create' : op === 'suspend' ? 'Suspend' : 'Delete';

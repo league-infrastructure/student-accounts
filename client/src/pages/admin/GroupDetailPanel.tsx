@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '../../components/ui/button';
 import { LlmProxyGrantModal } from '../../components/LlmProxyGrantModal';
 
@@ -85,9 +86,31 @@ function useDebounced<T>(value: T, delayMs: number): T {
 export default function GroupDetailPanel() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const [data, setData] = useState<GroupDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const numericId = id ? parseInt(id, 10) : NaN;
+
+  // Nested under ['admin', 'groups', ...] so the SSE 'groups' topic
+  // cascades here when another admin mutates this group's membership.
+  const detailQuery = useQuery<GroupDetail>({
+    queryKey: ['admin', 'groups', numericId, 'detail'],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/groups/${id}/members`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    enabled: Number.isFinite(numericId),
+  });
+
+  const data = detailQuery.data ?? null;
+  const error = detailQuery.error ? (detailQuery.error as Error).message : null;
+  const load = (): Promise<void> =>
+    queryClient
+      .invalidateQueries({
+        queryKey: ['admin', 'groups', numericId, 'detail'],
+      })
+      .then(() => undefined);
+
   const [busy, setBusy] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -103,23 +126,6 @@ export default function GroupDetailPanel() {
   const [matches, setMatches] = useState<UserMatch[]>([]);
 
   const [showGrantModal, setShowGrantModal] = useState(false);
-
-  async function load() {
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/groups/${id}/members`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json()) as GroupDetail;
-      setData(body);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load group');
-    }
-  }
-
-  useEffect(() => {
-    if (id) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
   // Live search effect
   useEffect(() => {

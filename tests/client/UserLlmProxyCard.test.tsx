@@ -8,7 +8,19 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import UserLlmProxyCard from '../../client/src/pages/admin/UserLlmProxyCard';
+
+function renderCard(props: { userId: number; userName?: string }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <UserLlmProxyCard {...props} />
+    </QueryClientProvider>,
+  );
+}
 
 const originalFetch = globalThis.fetch;
 
@@ -60,7 +72,7 @@ afterEach(() => {
 describe('UserLlmProxyCard — disabled state', () => {
   it('renders the disabled pill + Grant access button when the GET returns { enabled: false }', async () => {
     setFetch([() => jsonResponse(200, { enabled: false })]);
-    render(<UserLlmProxyCard userId={7} userName="Pat" />);
+    renderCard({ userId: 7, userName: 'Pat' });
     await waitFor(() => {
       expect(screen.getByText(/^disabled$/i)).toBeTruthy();
     });
@@ -86,7 +98,7 @@ describe('UserLlmProxyCard — enabled state', () => {
           grantedAt: '2026-05-01T12:00:00Z',
         }),
     ]);
-    render(<UserLlmProxyCard userId={7} userName="Pat" />);
+    renderCard({ userId: 7, userName: 'Pat' });
     await waitFor(() => {
       expect(screen.getByText(/Revoke access/i)).toBeTruthy();
     });
@@ -128,7 +140,7 @@ describe('UserLlmProxyCard — grant flow', () => {
         }),
     ]);
 
-    render(<UserLlmProxyCard userId={7} userName="Pat" />);
+    renderCard({ userId: 7, userName: 'Pat' });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /grant access/i })).toBeTruthy();
     });
@@ -172,7 +184,7 @@ describe('UserLlmProxyCard — revoke', () => {
       () => jsonResponse(200, { enabled: false }),
     ]);
 
-    render(<UserLlmProxyCard userId={7} userName="Pat" />);
+    renderCard({ userId: 7, userName: 'Pat' });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /revoke access/i })).toBeTruthy();
     });

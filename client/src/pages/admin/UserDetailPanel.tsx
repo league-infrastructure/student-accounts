@@ -16,8 +16,9 @@
  * those actions were no-ops. Each kind gets its own card now.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { prettifyName } from './utils/prettifyName';
 import UserGroupsCard from './UserGroupsCard';
 import UserLlmProxyCard from './UserLlmProxyCard';
@@ -116,36 +117,40 @@ function isStaffLeagueEmail(e: string): boolean {
 export default function UserDetailPanel() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const [user, setUser] = useState<UserDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState('');
+  const numericId = id ? parseInt(id, 10) : NaN;
+  const userQuery = useQuery<UserDetail>({
+    queryKey: ['admin', 'users', numericId, 'detail'],
+    queryFn: () => fetchUserDetail(id!),
+    enabled: Number.isFinite(numericId),
+  });
+
+  const user = userQuery.data ?? null;
+  const loading = userQuery.isLoading;
+  const pageError = userQuery.error ? (userQuery.error as Error).message : '';
+
+  // Pike13 is an external read-only lookup; not invalidated by admin
+  // mutations, so a plain useQuery with a long stale time is fine.
+  const pike13Query = useQuery<Pike13Result>({
+    queryKey: ['admin', 'users', numericId, 'pike13'],
+    queryFn: async () => {
+      const r = await fetch(`/api/admin/users/${id}/pike13`);
+      if (!r.ok) return { present: true, error: 'Network error fetching Pike13 data' };
+      return r.json();
+    },
+    enabled: Number.isFinite(numericId),
+    staleTime: 60_000,
+  });
+  const pike13Data = pike13Query.data ?? null;
+
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [pike13Data, setPike13Data] = useState<Pike13Result | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!id) return;
-    setPageError('');
-    try {
-      setUser(await fetchUserDetail(id));
-    } catch (err: any) {
-      setPageError(err.message ?? 'Failed to load user');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  useEffect(() => {
-    if (!id) return;
-    setPike13Data(null);
-    fetch(`/api/admin/users/${id}/pike13`)
-      .then((r) => r.json())
-      .then((d: Pike13Result) => setPike13Data(d))
-      .catch(() => setPike13Data({ present: true, error: 'Network error fetching Pike13 data' }));
-  }, [id]);
+  const refresh = () =>
+    queryClient.invalidateQueries({
+      queryKey: ['admin', 'users', numericId, 'detail'],
+    });
 
   // -------------------------------------------------------------------------
   // Actions

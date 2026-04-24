@@ -108,6 +108,7 @@ adminProvisioningRequestsRouter.post('/provisioning-requests/:id/approve', async
     const updated = await req.services.provisioningRequests.approve(id, deciderId, { cohortId });
 
     adminBus.notify('pending-requests');
+    adminBus.notify('users');
     userBus.notifyUser(updated.user_id);
 
     res.json({
@@ -151,6 +152,7 @@ adminProvisioningRequestsRouter.post('/provisioning-requests/:id/reject', async 
       : await req.services.provisioningRequests.reject(id, deciderId);
 
     adminBus.notify('pending-requests');
+    adminBus.notify('users');
     userBus.notifyUser(updated.user_id);
 
     res.json({

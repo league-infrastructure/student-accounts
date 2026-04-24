@@ -8,7 +8,19 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import UserGroupsCard from '../../../../client/src/pages/admin/UserGroupsCard';
+
+function renderCard(props: { userId: number; userName?: string }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <UserGroupsCard {...props} />
+    </QueryClientProvider>,
+  );
+}
 
 const USER_GROUPS = [
   { id: 1, name: 'Alpha' },
@@ -49,7 +61,7 @@ describe('UserGroupsCard', () => {
       }),
     );
 
-    render(<UserGroupsCard userId={42} userName="Alice" />);
+    renderCard({ userId: 42, userName: "Alice" });
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
     expect(screen.getByText('Beta')).toBeInTheDocument();
   });
@@ -64,7 +76,7 @@ describe('UserGroupsCard', () => {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(ALL_GROUPS) });
       }),
     );
-    render(<UserGroupsCard userId={42} />);
+    renderCard({ userId: 42 });
     await waitFor(() =>
       expect(screen.getByText(/not in any groups yet/i)).toBeInTheDocument(),
     );
@@ -105,7 +117,7 @@ describe('UserGroupsCard', () => {
       });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<UserGroupsCard userId={42} userName="Alice" />);
+    renderCard({ userId: 42, userName: "Alice" });
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
 
     const removeAlpha = screen.getByRole('button', { name: /remove from alpha/i });
@@ -156,7 +168,7 @@ describe('UserGroupsCard', () => {
       });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<UserGroupsCard userId={42} />);
+    renderCard({ userId: 42 });
     await waitFor(() => expect(screen.getByText(/not in any groups yet/i)).toBeInTheDocument());
 
     const select = screen.getByLabelText(/select group to add/i) as HTMLSelectElement;

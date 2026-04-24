@@ -19,6 +19,7 @@ import { Router } from 'express';
 import { prisma } from '../../services/prisma.js';
 import { AppError } from '../../errors.js';
 import { WorkspaceApiError } from '../../services/google-workspace/google-workspace-admin.client.js';
+import { adminBus, userBus } from '../../services/change-bus.js';
 
 export const adminExternalAccountsRouter = Router();
 
@@ -42,6 +43,9 @@ adminExternalAccountsRouter.post('/external-accounts/:id/suspend', async (req, r
     const updated = await (prisma as any).$transaction(async (tx: any) => {
       return req.services.externalAccountLifecycle.suspend(id, actorId, tx);
     });
+
+    adminBus.notify('users');
+    userBus.notifyUser(updated.user_id);
 
     return res.status(200).json({
       id: updated.id,
@@ -94,6 +98,9 @@ adminExternalAccountsRouter.post('/external-accounts/:id/unsuspend', async (req,
       return req.services.externalAccountLifecycle.unsuspend(id, actorId, tx);
     });
 
+    adminBus.notify('users');
+    userBus.notifyUser(updated.user_id);
+
     return res.status(200).json({
       id: updated.id,
       userId: updated.user_id,
@@ -125,6 +132,9 @@ adminExternalAccountsRouter.post('/external-accounts/:id/remove', async (req, re
     const updated = await (prisma as any).$transaction(async (tx: any) => {
       return req.services.externalAccountLifecycle.remove(id, actorId, tx);
     });
+
+    adminBus.notify('users');
+    userBus.notifyUser(updated.user_id);
 
     return res.status(200).json({
       id: updated.id,
