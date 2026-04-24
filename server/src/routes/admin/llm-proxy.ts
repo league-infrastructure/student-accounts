@@ -22,7 +22,7 @@ import { Router } from 'express';
 import { AppError, NotFoundError } from '../../errors.js';
 import { UserRepository } from '../../services/repositories/user.repository.js';
 import { prisma } from '../../services/prisma.js';
-import { userBus } from '../../services/change-bus.js';
+import { adminBus, userBus } from '../../services/change-bus.js';
 
 export const adminLlmProxyRouter = Router();
 
@@ -145,6 +145,7 @@ adminLlmProxyRouter.post(
       );
 
       userBus.notifyUser(userId);
+      adminBus.notify('users');
 
       return res.status(201).json({
         token: result.token,
@@ -178,6 +179,7 @@ adminLlmProxyRouter.delete(
       await req.services.llmProxyTokens.revoke(userId, actorId);
 
       userBus.notifyUser(userId);
+      adminBus.notify('users');
 
       return res.status(204).send();
     } catch (err) {
@@ -245,6 +247,7 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
         for (const userId of result.succeeded) {
           userBus.notifyUser(userId);
         }
+        adminBus.notify('users');
 
         return res.status(bulkResultStatus(result)).json(result);
       } catch (err) {
@@ -282,6 +285,7 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
         for (const userId of result.succeeded) {
           userBus.notifyUser(userId);
         }
+        adminBus.notify('users');
 
         return res.status(bulkResultStatus(result)).json(result);
       } catch (err) {
