@@ -84,6 +84,7 @@ enum ExternalAccountStatus {
 enum ProvisioningType {
   workspace
   claude
+  llm_proxy
 }
 
 enum ProvisioningStatus {
