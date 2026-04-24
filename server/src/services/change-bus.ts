@@ -25,3 +25,25 @@ export const adminBus = new AdminChangeBus();
 // Generous ceiling — every open /api/admin/events tab registers one
 // listener, plus tests may add transient subscribers.
 adminBus.setMaxListeners(100);
+
+// ---------------------------------------------------------------------------
+// User-scoped change bus for per-user account updates (Sprint 015).
+//
+// When an admin approves/rejects a provisioning request, grants/revokes an
+// LLM proxy token, or approves/denies a pending account, fire
+// `userBus.notifyUser(userId)`. The SSE endpoint at /api/account/events
+// subscribes to user-specific events and forwards them to the student,
+// triggering a re-fetch of their account data.
+// ---------------------------------------------------------------------------
+
+class UserChangeBus extends EventEmitter {
+  notifyUser(userId: number): void {
+    this.emit(`user-${userId}`);
+  }
+}
+
+export const userBus = new UserChangeBus();
+
+// Generous ceiling — accommodates many simultaneous student sessions
+// across multiple browser tabs.
+userBus.setMaxListeners(500);

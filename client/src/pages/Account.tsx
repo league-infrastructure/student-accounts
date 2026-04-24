@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProviderStatus } from '../hooks/useProviderStatus';
+import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import AccountLlmProxyCard from './account/AccountLlmProxyCard';
 
 // ---------------------------------------------------------------------------
@@ -687,6 +688,9 @@ export default function Account() {
   const queryClient = useQueryClient();
   const role = user?.role?.toLowerCase();
   const isNonStudent = role === 'staff' || role === 'admin';
+
+  // Open SSE connection to receive real-time account updates from the server.
+  useAccountEventStream();
 
   // All hooks must be called unconditionally before any early return.
   const {

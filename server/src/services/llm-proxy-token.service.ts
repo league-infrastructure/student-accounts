@@ -120,9 +120,11 @@ export class LlmProxyTokenService {
     params: GrantParams,
     actorId: number,
     opts: GrantOptions = {},
+    tx?: any,
   ): Promise<GrantResult> {
+    const db = tx ?? this.prisma;
     const existing = await LlmProxyTokenRepository.findActiveForUser(
-      this.prisma,
+      db,
       userId,
     );
     if (existing) {
@@ -135,8 +137,8 @@ export class LlmProxyTokenService {
       TOKEN_PREFIX + randomBytes(TOKEN_BYTES).toString('base64url');
     const tokenHash = hashToken(plaintext);
 
-    const row = await this.prisma.$transaction(async (tx: any) => {
-      const created = await LlmProxyTokenRepository.create(tx, {
+    const execute = async (txClient: any) => {
+      const created = await LlmProxyTokenRepository.create(txClient, {
         user_id: userId,
         token_hash: tokenHash,
         token_plaintext: plaintext,
@@ -144,7 +146,7 @@ export class LlmProxyTokenService {
         token_limit: params.tokenLimit,
         granted_by: actorId,
       });
-      await this.audit.record(tx, {
+      await this.audit.record(txClient, {
         actor_user_id: actorId,
         action: 'grant_llm_proxy_token',
         target_user_id: userId,
@@ -158,7 +160,9 @@ export class LlmProxyTokenService {
         },
       });
       return created;
-    });
+    };
+
+    const row = tx ? await execute(tx) : await this.prisma.$transaction(execute);
 
     return { token: plaintext, row };
   }

@@ -10,7 +10,7 @@
  * token from an admin at grant time (T005 plaintext-once flow).
  */
 
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 interface LlmProxyStatus {
   enabled: boolean;
@@ -25,26 +25,17 @@ interface LlmProxyStatus {
   grantedAt?: string;
 }
 
-export default function AccountLlmProxyCard() {
-  const [status, setStatus] = useState<LlmProxyStatus | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+async function fetchLlmProxyStatus(): Promise<LlmProxyStatus> {
+  const res = await fetch('/api/account/llm-proxy');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/account/llm-proxy');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as LlmProxyStatus;
-        if (!cancelled) setStatus(body);
-      } catch (e: any) {
-        if (!cancelled) setErr(e.message ?? 'Failed to load');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+export default function AccountLlmProxyCard() {
+  const { data: status, error: err } = useQuery<LlmProxyStatus>({
+    queryKey: ['account', 'llm-proxy'],
+    queryFn: fetchLlmProxyStatus,
+  });
 
   async function copyEndpoint() {
     if (!status?.endpoint) return;

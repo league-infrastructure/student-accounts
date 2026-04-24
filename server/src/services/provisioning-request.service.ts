@@ -391,6 +391,7 @@ export class ProvisioningRequestService {
           { expiresAt, tokenLimit: 1_000_000 },
           deciderId,
           { scope: 'single', scopeId: null },
+          tx,
         );
       } else {
         // requested_type === 'claude'

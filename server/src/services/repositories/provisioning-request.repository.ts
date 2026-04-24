@@ -12,7 +12,7 @@ import type { DbClient } from './types.js';
 
 export type CreateProvisioningRequestInput = {
   user_id: number;
-  requested_type: 'workspace' | 'claude';
+  requested_type: 'workspace' | 'claude' | 'llm_proxy';
   status?: 'pending' | 'approved' | 'rejected';
 };
 

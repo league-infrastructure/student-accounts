@@ -22,6 +22,7 @@ import { Router } from 'express';
 import { AppError, NotFoundError } from '../../errors.js';
 import { UserRepository } from '../../services/repositories/user.repository.js';
 import { prisma } from '../../services/prisma.js';
+import { userBus } from '../../services/change-bus.js';
 
 export const adminLlmProxyRouter = Router();
 
@@ -143,6 +144,8 @@ adminLlmProxyRouter.post(
         { scope: 'single' },
       );
 
+      userBus.notifyUser(userId);
+
       return res.status(201).json({
         token: result.token,
         tokenId: result.row.id,
@@ -173,6 +176,9 @@ adminLlmProxyRouter.delete(
 
       const actorId = (req.session as any).userId as number;
       await req.services.llmProxyTokens.revoke(userId, actorId);
+
+      userBus.notifyUser(userId);
+
       return res.status(204).send();
     } catch (err) {
       handleError(err, res, next);
@@ -234,6 +240,12 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
           actorId,
           parsedUserIds,
         );
+
+        // Notify all users who received tokens
+        for (const userId of result.succeeded) {
+          userBus.notifyUser(userId);
+        }
+
         return res.status(bulkResultStatus(result)).json(result);
       } catch (err) {
         handleError(err, res, next);
@@ -265,6 +277,12 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
           actorId,
           parsedUserIds,
         );
+
+        // Notify all users whose tokens were revoked
+        for (const userId of result.succeeded) {
+          userBus.notifyUser(userId);
+        }
+
         return res.status(bulkResultStatus(result)).json(result);
       } catch (err) {
         handleError(err, res, next);
