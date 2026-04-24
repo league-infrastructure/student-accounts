@@ -43,8 +43,7 @@ const logger = createLogger('provisioning-request');
 export type CreateRequestType =
   | 'workspace'
   | 'claude'
-  | 'workspace_and_claude'
-  | 'llm_proxy';
+  | 'workspace_and_claude';
 
 export class ProvisioningRequestService {
   constructor(
@@ -96,7 +95,6 @@ export class ProvisioningRequestService {
   ): Promise<ProvisioningRequest[]> {
     const wantsWorkspace = requestType === 'workspace' || requestType === 'workspace_and_claude';
     const wantsClaude = requestType === 'claude' || requestType === 'workspace_and_claude';
-    const wantsLlmProxy = requestType === 'llm_proxy';
 
     const results = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created: ProvisioningRequest[] = [];
@@ -228,63 +226,6 @@ export class ProvisioningRequestService {
           },
         });
         created.push(claudeReq);
-      }
-
-      // --- create llm_proxy row ---
-      if (wantsLlmProxy) {
-        const existingActive = await (tx as any).llmProxyToken.findFirst({
-          where: {
-            user_id: userId,
-            revoked_at: null,
-            expires_at: { gt: new Date() },
-          },
-        });
-        if (existingActive) {
-          throw new ConflictError(
-            `User ${userId} already has an active LLM proxy token`,
-          );
-        }
-        const existingPending = await (tx as any).provisioningRequest.findFirst({
-          where: {
-            user_id: userId,
-            requested_type: 'llm_proxy',
-            status: 'pending',
-          },
-        });
-        if (existingPending) {
-          throw new ConflictError(
-            `User ${userId} already has a pending LLM proxy request`,
-          );
-        }
-        const permaRejected = await (tx as any).provisioningRequest.findFirst({
-          where: {
-            user_id: userId,
-            requested_type: 'llm_proxy',
-            status: 'rejected_permanent',
-          },
-        });
-        if (permaRejected) {
-          throw new ConflictError(
-            `User ${userId} has been permanently denied LLM proxy access. Contact an admin.`,
-          );
-        }
-        const req = await ProvisioningRequestRepository.create(tx, {
-          user_id: userId,
-          requested_type: 'llm_proxy',
-          status: 'pending',
-        });
-        await this.audit.record(tx, {
-          actor_user_id: actorId,
-          action: 'create_provisioning_request',
-          target_user_id: userId,
-          target_entity_type: 'ProvisioningRequest',
-          target_entity_id: String(req.id),
-          details: {
-            requestedType: 'llm_proxy',
-            provisioningRequestId: req.id,
-          },
-        });
-        created.push(req);
       }
 
       return created;
