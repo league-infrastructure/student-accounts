@@ -237,7 +237,7 @@ authRouter.get('/auth/google', (req: Request, res: Response, next: NextFunction)
     logger.info({}, '[google] link mode flagged in session');
   }
   logger.info({}, '[google] redirecting to Google OAuth');
-  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+  passport.authenticate('google', { scope: ['profile', 'email'], prompt: 'select_account' })(req, res, next);
 });
 
 /**
