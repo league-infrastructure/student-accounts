@@ -24,6 +24,8 @@ import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
 import UsersPanel from './pages/admin/UsersPanel';
 import UserDetailPanel from './pages/admin/UserDetailPanel';
+import StudentAccountsPanel from './pages/admin/StudentAccountsPanel';
+import LlmProxyUsersPanel from './pages/admin/LlmProxyUsersPanel';
 import ProvisioningRequests from './pages/admin/ProvisioningRequests';
 import Cohorts from './pages/admin/Cohorts';
 import CohortDetailPanel from './pages/admin/CohortDetailPanel';
@@ -84,6 +86,10 @@ function App() {
                 <Route path="/groups" element={<Groups />} />
                 <Route path="/groups/:id" element={<GroupDetailPanel />} />
                 <Route path="/users" element={<UsersPanel />} />
+                {/* Literal sub-paths come BEFORE /users/:id so they win
+                   the match against the dynamic segment. */}
+                <Route path="/users/students" element={<StudentAccountsPanel />} />
+                <Route path="/users/llm-proxy" element={<LlmProxyUsersPanel />} />
                 <Route path="/users/:id" element={<UserDetailPanel />} />
                 <Route path="/sync" element={<SyncPanel />} />
                 <Route path="/merge-queue" element={<MergeQueuePanel />} />
