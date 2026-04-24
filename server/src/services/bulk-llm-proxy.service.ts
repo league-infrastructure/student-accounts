@@ -1,10 +1,8 @@
 /**
  * BulkLlmProxyService — bulk grant / revoke of LLM proxy access across
- * a cohort or an app-level group (Sprint 013 T007).
+ * an app-level group.
  *
- * Scoping predicate:
- *  - cohort: `User.cohort_id = scope.id` AND `is_active = true`.
- *  - group:  membership in `UserGroup` AND `is_active = true`.
+ * Scoping predicate: membership in `UserGroup` AND `User.is_active = true`.
  *
  * Per-user mutation runs inside its own `prisma.$transaction` via
  * `LlmProxyTokenService.grant` / `revoke`. A failure on one user does
@@ -25,7 +23,6 @@
 
 import { NotFoundError } from '../errors.js';
 import { createLogger } from './logger.js';
-import { CohortRepository } from './repositories/cohort.repository.js';
 import { GroupRepository } from './repositories/group.repository.js';
 import type { LlmProxyTokenService } from './llm-proxy-token.service.js';
 
@@ -35,9 +32,7 @@ const logger = createLogger('bulk-llm-proxy-service');
 // Public types
 // ---------------------------------------------------------------------------
 
-export type BulkLlmProxyScope =
-  | { kind: 'cohort'; id: number }
-  | { kind: 'group'; id: number };
+export type BulkLlmProxyScope = { kind: 'group'; id: number };
 
 export type BulkLlmProxyGrantParams = {
   expiresAt: Date;
@@ -84,22 +79,6 @@ export class BulkLlmProxyService {
     userIds?: number[],
   ): Promise<MemberRow[]> {
     const userIdFilter = userIds && userIds.length > 0 ? { in: userIds } : undefined;
-
-    if (scope.kind === 'cohort') {
-      const cohort = await CohortRepository.findById(this.prisma, scope.id);
-      if (!cohort) throw new NotFoundError(`Cohort ${scope.id} not found`);
-      const users = await (this.prisma as any).user.findMany({
-        where: {
-          ...(userIdFilter && { id: userIdFilter }),
-          cohort_id: scope.id,
-          is_active: true,
-        },
-        select: { id: true, display_name: true, primary_email: true },
-        orderBy: { display_name: 'asc' },
-      });
-      return users;
-    }
-    // group
     const group = await GroupRepository.findById(this.prisma, scope.id);
     if (!group) throw new NotFoundError(`Group ${scope.id} not found`);
     const users = await (this.prisma as any).user.findMany({

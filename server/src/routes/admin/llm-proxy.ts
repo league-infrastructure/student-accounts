@@ -189,115 +189,99 @@ adminLlmProxyRouter.delete(
 );
 
 // ---------------------------------------------------------------------------
-// Bulk endpoints (Sprint 013 T007)
+// Bulk endpoints — group-scoped only. Cohort-scoped bulk operations were
+// removed when cohorts became a Google-OU-only view; admins sync a cohort
+// into a group and run bulk ops there.
 // ---------------------------------------------------------------------------
 
-type Scope = 'cohort' | 'group';
-
 function bulkResultStatus(result: { succeeded: number[]; failed: { userId: number }[] }) {
-  if (result.failed.length > 0 && result.succeeded.length > 0) return 207;
-  if (result.failed.length > 0 && result.succeeded.length === 0) return 207;
+  if (result.failed.length > 0) return 207;
   return 200;
 }
 
-function registerBulkRoutes(scope: Scope, paramPrefix: string) {
-  // POST /admin/<scope>s/:id/llm-proxy/bulk-grant
-  adminLlmProxyRouter.post(
-    `/${paramPrefix}/:id/llm-proxy/bulk-grant`,
-    async (req, res, next) => {
-      try {
-        const id = parseIntParam(req.params.id);
-        if (id === null)
-          return res.status(400).json({ error: `Invalid ${scope} id` });
+// POST /admin/groups/:id/llm-proxy/bulk-grant
+adminLlmProxyRouter.post(
+  '/groups/:id/llm-proxy/bulk-grant',
+  async (req, res, next) => {
+    try {
+      const id = parseIntParam(req.params.id);
+      if (id === null) return res.status(400).json({ error: 'Invalid group id' });
 
-        const body = (req.body ?? {}) as {
-          expiresAt?: unknown;
-          tokenLimit?: unknown;
-          userIds?: unknown;
-        };
-        const expiresAt = parseFutureDate(body.expiresAt);
-        if (!expiresAt) {
-          return res.status(400).json({
-            error: 'expiresAt must be an ISO 8601 date/time in the future.',
-          });
-        }
-        const tokenLimit = parsePositiveInt(body.tokenLimit);
-        if (!tokenLimit) {
-          return res
-            .status(400)
-            .json({ error: 'tokenLimit must be a positive integer.' });
-        }
-
-        // Validate userIds if provided
-        const parsedUserIds =
-          Array.isArray(body.userIds) &&
-          body.userIds.every((uid) => typeof uid === 'number')
-            ? (body.userIds as number[])
-            : undefined;
-
-        const actorId = (req.session as any).userId as number;
-        const result = await req.services.bulkLlmProxy.bulkGrant(
-          { kind: scope, id },
-          { expiresAt, tokenLimit },
-          actorId,
-          parsedUserIds,
-        );
-
-        // Notify all users who received tokens, and fire the scope topic
-        // so the cohort / group detail panels refresh their member rows.
-        for (const userId of result.succeeded) {
-          userBus.notifyUser(userId);
-        }
-        adminBus.notify('users');
-        adminBus.notify(scope === 'cohort' ? 'cohorts' : 'groups');
-
-        return res.status(bulkResultStatus(result)).json(result);
-      } catch (err) {
-        handleError(err, res, next);
+      const body = (req.body ?? {}) as {
+        expiresAt?: unknown;
+        tokenLimit?: unknown;
+        userIds?: unknown;
+      };
+      const expiresAt = parseFutureDate(body.expiresAt);
+      if (!expiresAt) {
+        return res.status(400).json({
+          error: 'expiresAt must be an ISO 8601 date/time in the future.',
+        });
       }
-    },
-  );
-
-  // POST /admin/<scope>s/:id/llm-proxy/bulk-revoke
-  adminLlmProxyRouter.post(
-    `/${paramPrefix}/:id/llm-proxy/bulk-revoke`,
-    async (req, res, next) => {
-      try {
-        const id = parseIntParam(req.params.id);
-        if (id === null)
-          return res.status(400).json({ error: `Invalid ${scope} id` });
-
-        const body = (req.body ?? {}) as { userIds?: unknown };
-
-        // Validate userIds if provided
-        const parsedUserIds =
-          Array.isArray(body.userIds) &&
-          body.userIds.every((uid) => typeof uid === 'number')
-            ? (body.userIds as number[])
-            : undefined;
-
-        const actorId = (req.session as any).userId as number;
-        const result = await req.services.bulkLlmProxy.bulkRevoke(
-          { kind: scope, id },
-          actorId,
-          parsedUserIds,
-        );
-
-        // Notify all users whose tokens were revoked, and fire the scope
-        // topic so the cohort / group detail panels refresh.
-        for (const userId of result.succeeded) {
-          userBus.notifyUser(userId);
-        }
-        adminBus.notify('users');
-        adminBus.notify(scope === 'cohort' ? 'cohorts' : 'groups');
-
-        return res.status(bulkResultStatus(result)).json(result);
-      } catch (err) {
-        handleError(err, res, next);
+      const tokenLimit = parsePositiveInt(body.tokenLimit);
+      if (!tokenLimit) {
+        return res.status(400).json({ error: 'tokenLimit must be a positive integer.' });
       }
-    },
-  );
-}
 
-registerBulkRoutes('cohort', 'cohorts');
-registerBulkRoutes('group', 'groups');
+      const parsedUserIds =
+        Array.isArray(body.userIds) &&
+        body.userIds.every((uid) => typeof uid === 'number')
+          ? (body.userIds as number[])
+          : undefined;
+
+      const actorId = (req.session as any).userId as number;
+      const result = await req.services.bulkLlmProxy.bulkGrant(
+        { kind: 'group', id },
+        { expiresAt, tokenLimit },
+        actorId,
+        parsedUserIds,
+      );
+
+      for (const userId of result.succeeded) {
+        userBus.notifyUser(userId);
+      }
+      adminBus.notify('users');
+      adminBus.notify('groups');
+
+      return res.status(bulkResultStatus(result)).json(result);
+    } catch (err) {
+      handleError(err, res, next);
+    }
+  },
+);
+
+// POST /admin/groups/:id/llm-proxy/bulk-revoke
+adminLlmProxyRouter.post(
+  '/groups/:id/llm-proxy/bulk-revoke',
+  async (req, res, next) => {
+    try {
+      const id = parseIntParam(req.params.id);
+      if (id === null) return res.status(400).json({ error: 'Invalid group id' });
+
+      const body = (req.body ?? {}) as { userIds?: unknown };
+
+      const parsedUserIds =
+        Array.isArray(body.userIds) &&
+        body.userIds.every((uid) => typeof uid === 'number')
+          ? (body.userIds as number[])
+          : undefined;
+
+      const actorId = (req.session as any).userId as number;
+      const result = await req.services.bulkLlmProxy.bulkRevoke(
+        { kind: 'group', id },
+        actorId,
+        parsedUserIds,
+      );
+
+      for (const userId of result.succeeded) {
+        userBus.notifyUser(userId);
+      }
+      adminBus.notify('users');
+      adminBus.notify('groups');
+
+      return res.status(bulkResultStatus(result)).json(result);
+    } catch (err) {
+      handleError(err, res, next);
+    }
+  },
+);

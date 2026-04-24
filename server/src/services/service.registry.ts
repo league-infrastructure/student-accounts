@@ -19,7 +19,6 @@ import { WorkspaceProvisioningService } from './workspace-provisioning.service';
 import { ClaudeProvisioningService } from './claude-provisioning.service';
 import { ExternalAccountLifecycleService } from './external-account-lifecycle.service';
 import { WorkspaceSyncService } from './workspace-sync.service';
-import { BulkCohortService } from './bulk-cohort.service';
 import { GroupService } from './group.service';
 import { BulkGroupService } from './bulk-group.service';
 import { LlmProxyTokenService } from './llm-proxy-token.service';
@@ -74,7 +73,6 @@ export class ServiceRegistry {
   readonly pike13Client: Pike13ApiClient;
   readonly pike13Sync: Pike13SyncService;
   readonly workspaceSync: WorkspaceSyncService;
-  readonly bulkCohort: BulkCohortService;
   readonly anthropicSync: AnthropicSyncService;
   /** App-level Group service (Sprint 012). */
   readonly groups: GroupService;
@@ -195,17 +193,6 @@ export class ServiceRegistry {
       ExternalAccountRepository,
       CohortRepository,
       this.audit,
-    );
-
-    // BulkCohortService — Sprint 008 T001.
-    this.bulkCohort = new BulkCohortService(
-      defaultPrisma,
-      this.externalAccountLifecycle,
-      UserRepository,
-      ExternalAccountRepository,
-      CohortRepository,
-      this.workspaceProvisioning,
-      this.claudeProvisioning,
     );
 
     // AnthropicSyncService — Sprint 010 T011.
