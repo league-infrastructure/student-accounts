@@ -123,3 +123,44 @@ adminCohortsRouter.post('/cohorts/:id/sync-to-group', async (req, res, next) => 
     next(err);
   }
 });
+
+// ---------------------------------------------------------------------------
+// GET /admin/cohorts/:id/members
+// Returns cohort + active users with externalAccounts. Powers the
+// read-only cohort detail view.
+// ---------------------------------------------------------------------------
+
+adminCohortsRouter.get('/cohorts/:id/members', async (req, res, next) => {
+  try {
+    const cohortId = parseInt(req.params.id, 10);
+    if (isNaN(cohortId)) return res.status(400).json({ error: 'Invalid cohort id' });
+
+    const cohort = await (prisma as any).cohort.findUnique({ where: { id: cohortId } });
+    if (!cohort) return res.status(404).json({ error: 'Cohort not found' });
+
+    const users = await (prisma as any).user.findMany({
+      where: { cohort_id: cohortId, is_active: true },
+      orderBy: { display_name: 'asc' },
+      include: {
+        external_accounts: { select: { type: true, status: true, external_id: true } },
+      },
+    });
+
+    res.json({
+      cohort: { id: cohort.id, name: cohort.name, google_ou_path: cohort.google_ou_path },
+      users: users.map((u: any) => ({
+        id: u.id,
+        displayName: u.display_name,
+        email: u.primary_email,
+        role: u.role,
+        externalAccounts: (u.external_accounts ?? []).map((a: any) => ({
+          type: a.type,
+          status: a.status,
+          externalId: a.external_id,
+        })),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});

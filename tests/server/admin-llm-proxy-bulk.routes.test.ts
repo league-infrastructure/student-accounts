@@ -1,18 +1,17 @@
 /**
- * Integration tests for the admin bulk LLM-proxy routes (Sprint 013 T007).
+ * Integration tests for the admin bulk LLM-proxy routes (group-scoped).
  *
  * Verifies:
  *  - 200 + { succeeded, failed, skipped, tokensByUser? } on happy path.
- *  - 404 when the cohort / group doesn't exist.
+ *  - 404 when the group doesn't exist.
  *  - 400 on bad expiresAt / tokenLimit.
  *  - 401 unauthenticated.
- *  - Parallel coverage for cohort and group scopes.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app, { registry } from '../../server/src/app';
 import { prisma } from '../../server/src/services/prisma';
-import { makeUser, makeCohort, makeGroup, makeMembership } from './helpers/factories';
+import { makeUser, makeGroup, makeMembership } from './helpers/factories';
 
 let adminAgent: ReturnType<typeof request.agent>;
 let adminUserId: number;
@@ -57,120 +56,7 @@ function futureIso(daysAhead = 30): string {
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/admin/cohorts/:id/llm-proxy/bulk-grant
-// ---------------------------------------------------------------------------
-
-describe('POST /api/admin/cohorts/:id/llm-proxy/bulk-grant', () => {
-  it('200 with succeeded + tokensByUser for a cohort with active students', async () => {
-    const cohort = await makeCohort();
-    const u1 = await makeUser({ role: 'student', cohort_id: cohort.id });
-    const u2 = await makeUser({ role: 'student', cohort_id: cohort.id });
-
-    const res = await adminAgent
-      .post(`/api/admin/cohorts/${cohort.id}/llm-proxy/bulk-grant`)
-      .send({ expiresAt: futureIso(), tokenLimit: 10_000 });
-
-    expect(res.status).toBe(200);
-    expect(res.body.succeeded.sort()).toEqual([u1.id, u2.id].sort());
-    expect(Object.keys(res.body.tokensByUser).length).toBe(2);
-    for (const uid of res.body.succeeded) {
-      expect(res.body.tokensByUser[uid].startsWith('llmp_')).toBe(true);
-    }
-  });
-
-  it('404 when the cohort does not exist', async () => {
-    const res = await adminAgent
-      .post('/api/admin/cohorts/9999999/llm-proxy/bulk-grant')
-      .send({ expiresAt: futureIso(), tokenLimit: 1000 });
-    expect(res.status).toBe(404);
-  });
-
-  it('400 on past expiresAt', async () => {
-    const cohort = await makeCohort();
-    const res = await adminAgent
-      .post(`/api/admin/cohorts/${cohort.id}/llm-proxy/bulk-grant`)
-      .send({
-        expiresAt: new Date(Date.now() - 1000).toISOString(),
-        tokenLimit: 1000,
-      });
-    expect(res.status).toBe(400);
-  });
-
-  it('400 on zero tokenLimit', async () => {
-    const cohort = await makeCohort();
-    const res = await adminAgent
-      .post(`/api/admin/cohorts/${cohort.id}/llm-proxy/bulk-grant`)
-      .send({ expiresAt: futureIso(), tokenLimit: 0 });
-    expect(res.status).toBe(400);
-  });
-
-  it('401 unauthenticated', async () => {
-    const res = await request(app)
-      .post('/api/admin/cohorts/1/llm-proxy/bulk-grant')
-      .send({ expiresAt: futureIso(), tokenLimit: 1000 });
-    expect(res.status).toBe(401);
-  });
-
-  it('skipped includes users who already had an active token', async () => {
-    const cohort = await makeCohort();
-    const u1 = await makeUser({ role: 'student', cohort_id: cohort.id });
-    const u2 = await makeUser({ role: 'student', cohort_id: cohort.id });
-    // Grant u1 first.
-    const actor = await makeUser({ role: 'admin' });
-    await registry.llmProxyTokens.grant(
-      u1.id,
-      { expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000), tokenLimit: 100 },
-      actor.id,
-    );
-    const res = await adminAgent
-      .post(`/api/admin/cohorts/${cohort.id}/llm-proxy/bulk-grant`)
-      .send({ expiresAt: futureIso(), tokenLimit: 1000 });
-    expect(res.status).toBe(200);
-    expect(res.body.skipped).toEqual([u1.id]);
-    expect(res.body.succeeded).toEqual([u2.id]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/admin/cohorts/:id/llm-proxy/bulk-revoke
-// ---------------------------------------------------------------------------
-
-describe('POST /api/admin/cohorts/:id/llm-proxy/bulk-revoke', () => {
-  it('200 revokes every active token and reports skipped for users with none', async () => {
-    const cohort = await makeCohort();
-    const u1 = await makeUser({ role: 'student', cohort_id: cohort.id });
-    const u2 = await makeUser({ role: 'student', cohort_id: cohort.id });
-    const u3 = await makeUser({ role: 'student', cohort_id: cohort.id });
-    const actor = await makeUser({ role: 'admin' });
-    await registry.llmProxyTokens.grant(
-      u1.id,
-      { expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000), tokenLimit: 100 },
-      actor.id,
-    );
-    await registry.llmProxyTokens.grant(
-      u2.id,
-      { expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000), tokenLimit: 100 },
-      actor.id,
-    );
-
-    const res = await adminAgent.post(
-      `/api/admin/cohorts/${cohort.id}/llm-proxy/bulk-revoke`,
-    );
-    expect(res.status).toBe(200);
-    expect(res.body.succeeded.sort()).toEqual([u1.id, u2.id].sort());
-    expect(res.body.skipped).toEqual([u3.id]);
-  });
-
-  it('404 when the cohort does not exist', async () => {
-    const res = await adminAgent.post(
-      '/api/admin/cohorts/9999999/llm-proxy/bulk-revoke',
-    );
-    expect(res.status).toBe(404);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Group bulk routes
+// POST /api/admin/groups/:id/llm-proxy/bulk-*
 // ---------------------------------------------------------------------------
 
 describe('POST /api/admin/groups/:id/llm-proxy/bulk-grant', () => {
