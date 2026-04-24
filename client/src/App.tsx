@@ -26,7 +26,7 @@ import UsersPanel from './pages/admin/UsersPanel';
 import UserDetailPanel from './pages/admin/UserDetailPanel';
 import StudentAccountsPanel from './pages/admin/StudentAccountsPanel';
 import LlmProxyUsersPanel from './pages/admin/LlmProxyUsersPanel';
-import ProvisioningRequests from './pages/admin/ProvisioningRequests';
+import AdminUsersPanel from './pages/admin/AdminUsersPanel';
 import Cohorts from './pages/admin/Cohorts';
 import CohortDetailPanel from './pages/admin/CohortDetailPanel';
 import Groups from './pages/admin/Groups';
@@ -80,7 +80,6 @@ function App() {
                   Non-admin users at any of these paths are redirected to /account. */}
               <Route element={<AdminOnlyRoute />}>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/requests" element={<ProvisioningRequests />} />
                 <Route path="/cohorts" element={<Cohorts />} />
                 <Route path="/cohorts/:id" element={<CohortDetailPanel />} />
                 <Route path="/groups" element={<Groups />} />
@@ -97,6 +96,7 @@ function App() {
 
               {/* Admin ops pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
+                <Route path="/admin/users" element={<AdminUsersPanel />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />
                 <Route path="/admin/config" element={<ConfigPanel />} />

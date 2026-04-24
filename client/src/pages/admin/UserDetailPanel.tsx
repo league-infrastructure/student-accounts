@@ -22,6 +22,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { prettifyName } from './utils/prettifyName';
 import UserGroupsCard from './UserGroupsCard';
 import UserLlmProxyCard from './UserLlmProxyCard';
+import { isStudentLeagueEmail, isStaffLeagueEmail } from '../../lib/email-domain';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,22 +93,6 @@ async function apiPost(path: string): Promise<any> {
     throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
   }
   return body;
-}
-
-// ---------------------------------------------------------------------------
-// Email classification helpers
-// ---------------------------------------------------------------------------
-
-function isStudentLeagueEmail(e: string): boolean {
-  return /@students\.jointheleague\.org$/i.test(e);
-}
-
-function isStaffLeagueEmail(e: string): boolean {
-  // Any *.jointheleague.org but NOT students.
-  return (
-    /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(e) &&
-    !isStudentLeagueEmail(e)
-  );
 }
 
 // ---------------------------------------------------------------------------

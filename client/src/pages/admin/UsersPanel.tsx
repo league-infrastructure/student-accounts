@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { prettifyName } from './utils/prettifyName';
+import { isRecent, NEW_USER_BG } from '../../lib/recent-user';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,7 +59,7 @@ type FilterOption =
 // Sort types
 // ---------------------------------------------------------------------------
 
-type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'admin' | 'joined';
+type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'joined';
 
 // Account chip identifiers rendered in the Accounts column, ordered so
 // they sort in a stable, meaningful way. League accounts are split into
@@ -215,12 +216,6 @@ function sortUsers(users: AdminUser[], col: SortCol, dir: 'asc' | 'desc'): Admin
       case 'accounts':
         cmp = accountsSortKey(a).localeCompare(accountsSortKey(b));
         break;
-      case 'admin': {
-        const aAdmin = normalizeRole(a.role) === 'admin' ? 0 : 1;
-        const bAdmin = normalizeRole(b.role) === 'admin' ? 0 : 1;
-        cmp = aAdmin - bAdmin;
-        break;
-      }
       case 'joined':
         cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         break;
@@ -646,14 +641,16 @@ export default function UsersPanel() {
 
   const [mutationError, setMutationError] = useState('');
   const error = mutationError || (queryError ? (queryError as Error).message : '');
-  const [updating, setUpdating] = useState<number | null>(null);
   const [impersonating, setImpersonating] = useState<number | null>(null);
 
   // Filter / search / sort state
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterOption>({ type: 'all' });
-  const [sortCol, setSortCol] = useState<SortCol>('name');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  // Default sort puts the most recently joined users first so newcomers
+  // are immediately visible; rows created in the last 24h are also
+  // highlighted in the table below.
+  const [sortCol, setSortCol] = useState<SortCol>('joined');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Selection + bulk action state
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -663,27 +660,6 @@ export default function UsersPanel() {
 
   const refetchUsers = () =>
     queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-
-  async function toggleAdmin(user: AdminUser) {
-    const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
-    setUpdating(user.id);
-    try {
-      const res = await fetch(`/api/users/${user.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: newRole }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // The server fires `adminBus.notify('users')` which triggers refetch
-      // via the admin SSE stream. If SSE is unavailable, invalidate here
-      // so the UI still updates.
-      void refetchUsers();
-    } catch (err: any) {
-      setMutationError(err.message || 'Failed to update user');
-    } finally {
-      setUpdating(null);
-    }
-  }
 
   async function handleImpersonate(user: AdminUser) {
     setImpersonating(user.id);
@@ -885,9 +861,6 @@ export default function UsersPanel() {
             <SortableTh col="accounts" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Accounts
             </SortableTh>
-            <SortableTh col="admin" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
-              Admin
-            </SortableTh>
             <SortableTh col="joined" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Joined
             </SortableTh>
@@ -898,8 +871,13 @@ export default function UsersPanel() {
           {visible.map((user) => {
             const isOwnRow = currentUser?.id === user.id;
             const isChecked = selected.has(user.id);
+            const rowBackground = isChecked
+              ? '#eff6ff'
+              : isRecent(user.createdAt)
+                ? NEW_USER_BG
+                : undefined;
             return (
-              <tr key={user.id} style={isChecked ? { background: '#eff6ff' } : undefined}>
+              <tr key={user.id} style={rowBackground ? { background: rowBackground } : undefined}>
                 {/* Checkbox cell */}
                 <td style={{ ...tdStyle, width: 36, textAlign: 'center' }}>
                   {!isOwnRow && (
@@ -946,15 +924,6 @@ export default function UsersPanel() {
                       <AccountIcon key={kind} kind={kind} />
                     ))}
                   </div>
-                </td>
-                <td style={tdStyle}>
-                  <input
-                    type="checkbox"
-                    checked={user.role === 'ADMIN'}
-                    disabled={updating === user.id}
-                    onChange={() => toggleAdmin(user)}
-                    style={{ cursor: 'pointer', width: 16, height: 16 }}
-                  />
                 </td>
                 <td style={tdStyle}>
                   {new Date(user.createdAt).toLocaleDateString()}

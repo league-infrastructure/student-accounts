@@ -160,7 +160,6 @@ describe('AppLayout', () => {
 
     renderLayout();
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Provisioning Requests')).toBeInTheDocument();
     expect(screen.getByText('Cohorts')).toBeInTheDocument();
     expect(screen.getByText('Users')).toBeInTheDocument();
     expect(screen.getByText('Sync')).toBeInTheDocument();
@@ -170,7 +169,6 @@ describe('AppLayout', () => {
   it('does not show ADMIN_WORKFLOW_NAV items for non-admin users', () => {
     renderLayout();
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
-    expect(screen.queryByText('Provisioning Requests')).not.toBeInTheDocument();
     expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
     expect(screen.queryByText('Users')).not.toBeInTheDocument();
     expect(screen.queryByText('Sync')).not.toBeInTheDocument();
@@ -190,7 +188,7 @@ describe('AppLayout', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
-    expect(screen.queryByText('Provisioning Requests')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
   });
 
   it('shows ops-only ADMIN_NAV items (not workflow items) when in /admin/* section', () => {

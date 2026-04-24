@@ -3,7 +3,7 @@
  *
  * Replaces the 2-second polling on the Dashboard. The client opens a single
  * EventSource connection. The server holds it open and writes one
- * `event: <topic>` frame per change (pending-users, pending-requests) as
+ * `event: <topic>` frame per change (pending-users, users, cohorts, groups) as
  * the change bus fires. Heartbeats every 25s keep intermediaries from
  * dropping the connection.
  *

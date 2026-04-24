@@ -12,9 +12,6 @@ import { useQueryClient } from '@tanstack/react-query';
  *
  *   pending-users      → ['admin', 'dashboard', 'pending-users'],
  *                        ['admin', 'dashboard', 'stats']
- *   pending-requests   → ['admin', 'dashboard', 'pending-requests'],
- *                        ['admin', 'dashboard', 'stats'],
- *                        ['admin', 'provisioning-requests']
  *   users              → ['admin', 'users']           (+ any sub-keys)
  *   cohorts            → ['admin', 'cohorts']         (+ any sub-keys)
  *   groups             → ['admin', 'groups']          (+ any sub-keys)
@@ -40,14 +37,6 @@ export function useAdminEventStream() {
       invalidate([
         ['admin', 'dashboard', 'pending-users'],
         ['admin', 'dashboard', 'stats'],
-      ]),
-    );
-    source.addEventListener(
-      'pending-requests',
-      invalidate([
-        ['admin', 'dashboard', 'pending-requests'],
-        ['admin', 'dashboard', 'stats'],
-        ['admin', 'provisioning-requests'],
       ]),
     );
     source.addEventListener('users', invalidate([['admin', 'users']]));
