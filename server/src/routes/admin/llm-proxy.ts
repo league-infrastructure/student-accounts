@@ -243,11 +243,13 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
           parsedUserIds,
         );
 
-        // Notify all users who received tokens
+        // Notify all users who received tokens, and fire the scope topic
+        // so the cohort / group detail panels refresh their member rows.
         for (const userId of result.succeeded) {
           userBus.notifyUser(userId);
         }
         adminBus.notify('users');
+        adminBus.notify(scope === 'cohort' ? 'cohorts' : 'groups');
 
         return res.status(bulkResultStatus(result)).json(result);
       } catch (err) {
@@ -281,11 +283,13 @@ function registerBulkRoutes(scope: Scope, paramPrefix: string) {
           parsedUserIds,
         );
 
-        // Notify all users whose tokens were revoked
+        // Notify all users whose tokens were revoked, and fire the scope
+        // topic so the cohort / group detail panels refresh.
         for (const userId of result.succeeded) {
           userBus.notifyUser(userId);
         }
         adminBus.notify('users');
+        adminBus.notify(scope === 'cohort' ? 'cohorts' : 'groups');
 
         return res.status(bulkResultStatus(result)).json(result);
       } catch (err) {

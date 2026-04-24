@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { prettifyName } from './utils/prettifyName';
 
@@ -616,10 +617,35 @@ function RowMenu({
 export default function UsersPanel() {
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [cohorts, setCohorts] = useState<CohortOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+
+  // Data — loaded via React Query so the admin SSE stream can invalidate
+  // and trigger an automatic refetch when another admin mutates a user.
+  const {
+    data: users = [],
+    isLoading: loading,
+    error: queryError,
+  } = useQuery<AdminUser[]>({
+    queryKey: ['admin', 'users'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/users');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const { data: cohorts = [] } = useQuery<CohortOption[]>({
+    queryKey: ['admin', 'cohorts'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/cohorts');
+      if (!res.ok) return [];
+      const data: CohortOption[] = await res.json();
+      return data.filter((c) => !!c.google_ou_path);
+    },
+  });
+
+  const [mutationError, setMutationError] = useState('');
+  const error = mutationError || (queryError ? (queryError as Error).message : '');
   const [updating, setUpdating] = useState<number | null>(null);
   const [impersonating, setImpersonating] = useState<number | null>(null);
 
@@ -635,34 +661,8 @@ export default function UsersPanel() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState('');
 
-  useEffect(() => {
-    fetchUsers();
-    fetchCohorts();
-  }, []);
-
-  async function fetchUsers() {
-    try {
-      const res = await fetch('/api/admin/users');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setUsers(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load users');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchCohorts() {
-    try {
-      const res = await fetch('/api/admin/cohorts');
-      if (!res.ok) return; // silently ignore — cohorts are optional
-      const data: CohortOption[] = await res.json();
-      setCohorts(data.filter((c) => !!c.google_ou_path));
-    } catch {
-      // not critical
-    }
-  }
+  const refetchUsers = () =>
+    queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
 
   async function toggleAdmin(user: AdminUser) {
     const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN';
@@ -674,12 +674,12 @@ export default function UsersPanel() {
         body: JSON.stringify({ role: newRole }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const updated = await res.json();
-      setUsers((prev) =>
-        prev.map((u) => (u.id === updated.id ? { ...u, role: updated.role } : u)),
-      );
+      // The server fires `adminBus.notify('users')` which triggers refetch
+      // via the admin SSE stream. If SSE is unavailable, invalidate here
+      // so the UI still updates.
+      void refetchUsers();
     } catch (err: any) {
-      setError(err.message || 'Failed to update user');
+      setMutationError(err.message || 'Failed to update user');
     } finally {
       setUpdating(null);
     }
@@ -710,15 +710,14 @@ export default function UsersPanel() {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
       }
-      // Remove from local state
-      setUsers((prev) => prev.filter((u) => u.id !== user.id));
       setSelected((prev) => {
         const next = new Set(prev);
         next.delete(user.id);
         return next;
       });
+      void refetchUsers();
     } catch (err: any) {
-      setError(err.message || 'Failed to delete user');
+      setMutationError(err.message || 'Failed to delete user');
     }
   }
 
@@ -734,7 +733,7 @@ export default function UsersPanel() {
     if (failures.length > 0) {
       setBulkError(`${failures.length} deletion(s) failed.`);
     }
-    await fetchUsers();
+    await refetchUsers();
     setSelected(new Set());
     setBulkDeleting(false);
   }

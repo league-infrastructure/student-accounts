@@ -11,7 +11,8 @@
  *   DELETE /api/admin/groups/:groupId/members/:userId — remove
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface GroupSummary {
   id: number;
@@ -33,40 +34,49 @@ interface Props {
 }
 
 export default function UserGroupsCard({ userId, userName }: Props) {
-  const [memberships, setMemberships] = useState<UserMembership[] | null>(null);
-  const [allGroups, setAllGroups] = useState<GroupSummary[] | null>(null);
+  const queryClient = useQueryClient();
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
-  const [err, setErr] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    setErr(null);
-    try {
-      const [memRes, allRes] = await Promise.all([
-        fetch(`/api/admin/users/${userId}/groups`),
-        fetch('/api/admin/groups'),
-      ]);
-      if (!memRes.ok) throw new Error(`HTTP ${memRes.status}`);
-      if (!allRes.ok) throw new Error(`HTTP ${allRes.status}`);
-      const mems = (await memRes.json()) as UserMembership[];
-      const alls = (await allRes.json()) as GroupSummary[];
-      setMemberships(mems);
-      setAllGroups(alls);
-    } catch (e: any) {
-      setErr(e.message ?? 'Failed to load groups');
-    }
-  }, [userId]);
+  // Nested under ['admin', 'users', ...] and ['admin', 'groups'] so each
+  // matching SSE topic invalidates the right slice.
+  const membershipsQuery = useQuery<UserMembership[]>({
+    queryKey: ['admin', 'users', userId, 'groups'],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/users/${userId}/groups`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    enabled: Number.isFinite(userId),
+  });
 
-  useEffect(() => {
-    if (!Number.isFinite(userId)) return;
-    void load();
-  }, [userId, load]);
+  const allGroupsQuery = useQuery<GroupSummary[]>({
+    queryKey: ['admin', 'groups'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/groups');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const err =
+    mutationError ??
+    (membershipsQuery.error ? (membershipsQuery.error as Error).message : null) ??
+    (allGroupsQuery.error ? (allGroupsQuery.error as Error).message : null);
+
+  const refetchAll = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ['admin', 'users', userId, 'groups'],
+    });
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'groups'] });
+  };
 
   async function remove(group: UserMembership) {
     const msg = `Remove ${userName ?? 'this user'} from "${group.name}"?`;
     if (!window.confirm(msg)) return;
     setBusy(true);
-    setErr(null);
+    setMutationError(null);
     try {
       const res = await fetch(`/api/admin/groups/${group.id}/members/${userId}`, {
         method: 'DELETE',
@@ -75,9 +85,9 @@ export default function UserGroupsCard({ userId, userName }: Props) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
-      await load();
+      refetchAll();
     } catch (e: any) {
-      setErr(e.message ?? 'Remove failed');
+      setMutationError(e.message ?? 'Remove failed');
     } finally {
       setBusy(false);
     }
@@ -88,7 +98,7 @@ export default function UserGroupsCard({ userId, userName }: Props) {
     const groupId = parseInt(selectedGroupId, 10);
     if (!Number.isFinite(groupId)) return;
     setBusy(true);
-    setErr(null);
+    setMutationError(null);
     try {
       const res = await fetch(`/api/admin/groups/${groupId}/members`, {
         method: 'POST',
@@ -100,15 +110,15 @@ export default function UserGroupsCard({ userId, userName }: Props) {
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
       setSelectedGroupId('');
-      await load();
+      refetchAll();
     } catch (e: any) {
-      setErr(e.message ?? 'Add failed');
+      setMutationError(e.message ?? 'Add failed');
     } finally {
       setBusy(false);
     }
   }
 
-  if (memberships === null || allGroups === null) {
+  if (membershipsQuery.data === undefined || allGroupsQuery.data === undefined) {
     return (
       <section style={cardStyle}>
         <h2 style={cardTitleStyle}>Groups</h2>
@@ -121,8 +131,8 @@ export default function UserGroupsCard({ userId, userName }: Props) {
     );
   }
 
-  const memberList = Array.isArray(memberships) ? memberships : [];
-  const groupList = Array.isArray(allGroups) ? allGroups : [];
+  const memberList = Array.isArray(membershipsQuery.data) ? membershipsQuery.data : [];
+  const groupList = Array.isArray(allGroupsQuery.data) ? allGroupsQuery.data : [];
   const memberIds = new Set(memberList.map((m) => m.id));
   const availableGroups = groupList.filter((g) => !memberIds.has(g.id));
 

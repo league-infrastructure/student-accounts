@@ -273,6 +273,7 @@ accountRouter.patch(
         where: { id: userId },
         data: { display_name: displayName },
       });
+      adminBus.notify('users');
       res.json({ ok: true, displayName });
     } catch (err) {
       next(err);
@@ -306,6 +307,7 @@ accountRouter.post(
         where: { id: userId },
         data: { display_name: displayName, onboarding_completed: true },
       });
+      adminBus.notify('users');
       res.json({ ok: true });
     } catch (err) {
       next(err);

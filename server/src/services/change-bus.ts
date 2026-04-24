@@ -1,10 +1,10 @@
 /**
  * Tiny in-process event bus for broadcasting admin-visible state changes.
  *
- * Mutation handlers call `adminBus.notify('pending-users' | 'pending-requests')`
- * after they commit. The SSE endpoint at /api/admin/events subscribes and
- * forwards the topic name to connected admin clients, which then invalidate
- * the relevant TanStack Query caches.
+ * Mutation handlers call `adminBus.notify(topic)` after they commit. The
+ * SSE endpoint at /api/admin/events subscribes and forwards the topic
+ * name to connected admin clients, which then invalidate the relevant
+ * TanStack Query caches. Topic list is defined by `AdminChangeTopic`.
  *
  * This is deliberately single-process. In a multi-instance deployment the
  * bus would need to move to Postgres LISTEN/NOTIFY or a message broker.
@@ -12,7 +12,24 @@
 
 import { EventEmitter } from 'node:events';
 
-export type AdminChangeTopic = 'pending-users' | 'pending-requests';
+/**
+ * Admin SSE topics. Kept coarse on purpose — clients use React Query's
+ * default prefix-match invalidation, so `users` cascades to every key
+ * starting with `['admin', 'users', ...]`.
+ *
+ *   pending-users      — /admin/pending-users list or user.approval_status changed
+ *   pending-requests   — /admin/provisioning-requests pending list changed
+ *   users              — any user row mutated (role, cohort, approval,
+ *                        deletion, external accounts, LLM proxy token)
+ *   cohorts            — cohort list or cohort membership changed
+ *   groups             — group list or group membership changed
+ */
+export type AdminChangeTopic =
+  | 'pending-users'
+  | 'pending-requests'
+  | 'users'
+  | 'cohorts'
+  | 'groups';
 
 class AdminChangeBus extends EventEmitter {
   notify(topic: AdminChangeTopic): void {

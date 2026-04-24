@@ -105,6 +105,7 @@ adminUsersRouter.post('/users', async (req, res, next) => {
     const { email, displayName, role } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
     const user = await req.services.users.create({ email, displayName, role });
+    adminBus.notify('users');
     res.status(201).json(serializeUser(user));
   } catch (err: any) {
     if (err.code === 'P2002') {
@@ -120,6 +121,8 @@ adminUsersRouter.put('/users/:id', async (req, res, next) => {
     const id = parseInt(req.params.id, 10);
     const { email, displayName, role } = req.body;
     const user = await req.services.users.update(id, { email, displayName, role });
+    adminBus.notify('users');
+    userBus.notifyUser(id);
     res.json(serializeUser(user));
   } catch (err: any) {
     if (err.code === 'P2025') {
@@ -148,6 +151,8 @@ adminUsersRouter.delete('/users/:id', async (req, res, next) => {
       });
     });
 
+    adminBus.notify('users');
+    userBus.notifyUser(id);
     res.json({ success: true });
   } catch (err: any) {
     next(err);
@@ -274,6 +279,7 @@ adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
     });
 
     adminBus.notify('pending-users');
+    adminBus.notify('users');
     userBus.notifyUser(id);
 
     res.json({ ok: true });
@@ -311,6 +317,7 @@ adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
     });
 
     adminBus.notify('pending-users');
+    adminBus.notify('users');
     userBus.notifyUser(id);
 
     res.json({ ok: true });
@@ -339,6 +346,9 @@ adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
     const account = await (prisma as any).$transaction(async (tx: any) => {
       return req.services.claudeProvisioning.provision(userId, actorId, tx);
     });
+
+    adminBus.notify('users');
+    userBus.notifyUser(userId);
 
     return res.status(201).json({
       id: account.id,

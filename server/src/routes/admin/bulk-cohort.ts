@@ -23,11 +23,27 @@
 import { Router } from 'express';
 import { AppError } from '../../errors.js';
 import type { AccountType } from '../../services/bulk-cohort.service.js';
+import { adminBus, userBus } from '../../services/change-bus.js';
 
 export const adminBulkCohortRouter = Router();
 
 const VALID_ACCOUNT_TYPES: AccountType[] = ['workspace', 'claude'];
 const VALID_OPERATIONS = ['suspend', 'remove'] as const;
+
+/**
+ * Fire change notifications for a bulk operation result. Bulk cohort
+ * mutations alter ExternalAccount rows for multiple users — the admin
+ * users list, the cohort detail view, and each affected student's
+ * account all need to invalidate.
+ */
+function notifyBulkResult(result: { succeeded: number[] }) {
+  if (result.succeeded.length === 0) return;
+  adminBus.notify('users');
+  adminBus.notify('cohorts');
+  for (const userId of result.succeeded) {
+    userBus.notifyUser(userId);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // GET /admin/cohorts/:id/bulk-preview
@@ -96,6 +112,7 @@ adminBulkCohortRouter.post('/cohorts/:id/bulk-suspend', async (req, res, next) =
       actorId,
     );
 
+    notifyBulkResult(result);
     const status = result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
   } catch (err: any) {
@@ -133,6 +150,7 @@ adminBulkCohortRouter.post('/cohorts/:id/bulk-remove', async (req, res, next) =>
       actorId,
     );
 
+    notifyBulkResult(result);
     const status = result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
   } catch (err: any) {
@@ -160,6 +178,7 @@ adminBulkCohortRouter.post('/cohorts/:id/bulk-suspend-all', async (req, res, nex
 
     const result = await req.services.bulkCohort.suspendAllInCohort(cohortId, actorId);
 
+    notifyBulkResult(result);
     const status = result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
   } catch (err: any) {
@@ -188,6 +207,7 @@ adminBulkCohortRouter.post('/cohorts/:id/bulk-remove-all', async (req, res, next
 
     const result = await req.services.bulkCohort.removeAllInCohort(cohortId, actorId);
 
+    notifyBulkResult(result);
     const status = result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
   } catch (err: any) {
@@ -225,6 +245,7 @@ adminBulkCohortRouter.post('/cohorts/:id/bulk-provision', async (req, res, next)
       actorId,
     );
 
+    notifyBulkResult(result);
     const status = result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
   } catch (err: any) {

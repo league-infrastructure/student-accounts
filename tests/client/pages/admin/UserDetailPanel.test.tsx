@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import UserDetailPanel from '../../../../client/src/pages/admin/UserDetailPanel';
 
 // ---------------------------------------------------------------------------
@@ -85,11 +86,16 @@ const ACTIVE_CLAUDE_ACCOUNT = {
 
 function renderPanel(userId: string | number, fetchImpl: (...args: unknown[]) => unknown) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(fetchImpl));
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
     <MemoryRouter initialEntries={[`/admin/users/${userId}`]}>
-      <Routes>
-        <Route path="/admin/users/:id" element={<UserDetailPanel />} />
-      </Routes>
+      <QueryClientProvider client={client}>
+        <Routes>
+          <Route path="/admin/users/:id" element={<UserDetailPanel />} />
+        </Routes>
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 }

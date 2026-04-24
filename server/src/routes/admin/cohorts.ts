@@ -19,6 +19,7 @@ import { Router } from 'express';
 import { prisma } from '../../services/prisma.js';
 import { AppError } from '../../errors.js';
 import { WorkspaceApiError } from '../../services/google-workspace/google-workspace-admin.client.js';
+import { adminBus } from '../../services/change-bus.js';
 
 export const adminCohortsRouter = Router();
 
@@ -69,6 +70,8 @@ adminCohortsRouter.post('/cohorts', async (req, res, next) => {
     const actorId = (req.session as any).userId as number;
 
     const cohort = await req.services.cohorts.createWithOU(name, actorId);
+
+    adminBus.notify('cohorts');
 
     return res.status(201).json({
       id: cohort.id,

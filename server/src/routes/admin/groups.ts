@@ -31,6 +31,7 @@ import { Router } from 'express';
 import { AppError } from '../../errors.js';
 import { WorkspaceApiError } from '../../services/google-workspace/google-workspace-admin.client.js';
 import type { AccountType } from '../../services/bulk-account.shared.js';
+import { adminBus, userBus } from '../../services/change-bus.js';
 
 export const adminGroupsRouter = Router();
 
@@ -63,6 +64,21 @@ function handleError(err: unknown, res: any, next: any) {
 function parseIntParam(raw: string, label = 'id'): number | null {
   const n = parseInt(raw, 10);
   return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Fire change notifications for a bulk operation result. Bulk group
+ * mutations alter ExternalAccount rows for multiple users — the admin
+ * users list, the group detail view (which shows per-member account
+ * status), and each affected student's account all need to invalidate.
+ */
+function notifyBulkResult(result: { succeeded: number[] }) {
+  if (result.succeeded.length === 0) return;
+  adminBus.notify('users');
+  adminBus.notify('groups');
+  for (const userId of result.succeeded) {
+    userBus.notifyUser(userId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +128,8 @@ adminGroupsRouter.post('/groups', async (req, res, next) => {
       { name, description: descInput ?? null },
       actorId,
     );
+
+    adminBus.notify('groups');
 
     return res.status(201).json({
       id: g.id,
@@ -179,6 +197,7 @@ adminGroupsRouter.put('/groups/:id', async (req, res, next) => {
 
     const actorId = (req.session as any).userId as number;
     const g = await req.services.groups.update(id, updates, actorId);
+    adminBus.notify('groups');
     return res.json({
       id: g.id,
       name: g.name,
@@ -202,6 +221,7 @@ adminGroupsRouter.delete('/groups/:id', async (req, res, next) => {
 
     const actorId = (req.session as any).userId as number;
     await req.services.groups.delete(id, actorId);
+    adminBus.notify('groups');
     return res.status(204).send();
   } catch (err) {
     handleError(err, res, next);
@@ -245,6 +265,8 @@ adminGroupsRouter.post('/groups/:id/members', async (req, res, next) => {
 
     const actorId = (req.session as any).userId as number;
     await req.services.groups.addMember(id, parsed, actorId);
+    adminBus.notify('groups');
+    adminBus.notify('users');
     return res.status(201).json({ groupId: id, userId: parsed });
   } catch (err) {
     handleError(err, res, next);
@@ -267,6 +289,8 @@ adminGroupsRouter.delete(
 
       const actorId = (req.session as any).userId as number;
       await req.services.groups.removeMember(id, userId, actorId);
+      adminBus.notify('groups');
+      adminBus.notify('users');
       return res.status(204).send();
     } catch (err) {
       handleError(err, res, next);
@@ -340,6 +364,7 @@ adminGroupsRouter.post('/groups/:id/bulk-provision', async (req, res, next) => {
       actorId,
       parsedUserIds,
     );
+    notifyBulkResult(result);
     const status =
       result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
@@ -370,6 +395,7 @@ adminGroupsRouter.post('/groups/:id/bulk-suspend-all', async (req, res, next) =>
       actorId,
       parsedUserIds,
     );
+    notifyBulkResult(result);
     const status =
       result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);
@@ -400,6 +426,7 @@ adminGroupsRouter.post('/groups/:id/bulk-remove-all', async (req, res, next) => 
       actorId,
       parsedUserIds,
     );
+    notifyBulkResult(result);
     const status =
       result.failed.length > 0 && result.succeeded.length > 0 ? 207 : 200;
     return res.status(status).json(result);

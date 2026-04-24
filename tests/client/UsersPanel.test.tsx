@@ -24,6 +24,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import UsersPanel from '../../client/src/pages/admin/UsersPanel';
 
 // ---- Mock useAuth ----
@@ -106,9 +107,14 @@ const SAMPLE_COHORTS = [
 // ---- Helpers ----
 
 function renderPanel() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
     <MemoryRouter>
-      <UsersPanel />
+      <QueryClientProvider client={client}>
+        <UsersPanel />
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 }

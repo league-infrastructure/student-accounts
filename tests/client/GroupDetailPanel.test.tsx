@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GroupDetailPanel from '../../client/src/pages/admin/GroupDetailPanel';
 
 const GROUP_WITH_TWO = {
@@ -44,11 +45,16 @@ const GROUP_WITH_TWO = {
 };
 
 function renderPanel() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
     <MemoryRouter initialEntries={['/groups/7']}>
-      <Routes>
-        <Route path="/groups/:id" element={<GroupDetailPanel />} />
-      </Routes>
+      <QueryClientProvider client={client}>
+        <Routes>
+          <Route path="/groups/:id" element={<GroupDetailPanel />} />
+        </Routes>
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 }
