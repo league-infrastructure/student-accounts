@@ -1,16 +1,16 @@
 ---
 id: '001'
-title: "Prisma schema migration — passphrase + credential fields"
-status: todo
+title: "Prisma schema migration \u2014 passphrase + credential fields"
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
-  - SUC-008
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
+- SUC-008
 depends-on: []
 github-issue: ''
 todo: plan-passphrase-self-onboarding.md
@@ -25,20 +25,20 @@ Add the schema fields that every subsequent ticket depends on. No application co
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma`: `Group` model gains five new fields:
+- [x] `server/prisma/schema.prisma`: `Group` model gains five new fields:
   - `signup_passphrase  String?`
   - `signup_passphrase_grant_llm_proxy  Boolean  @default(false)`
   - `signup_passphrase_expires_at  DateTime?`
   - `signup_passphrase_created_at  DateTime?`
   - `signup_passphrase_created_by  Int?`
-- [ ] `server/prisma/schema.prisma`: `Cohort` model gains the same five fields (identical names and types).
-- [ ] `server/prisma/schema.prisma`: `User` model gains:
+- [x] `server/prisma/schema.prisma`: `Cohort` model gains the same five fields (identical names and types).
+- [x] `server/prisma/schema.prisma`: `User` model gains:
   - `username  String?  @unique`
   - `password_hash  String?`
-- [ ] Dev DB updated — `prisma/sqlite-push.sh` (or `npx prisma db push`) runs without error.
-- [ ] `npx prisma generate` produces an updated Prisma client with no errors.
-- [ ] `npx tsc --noEmit` in `server/` shows no new errors beyond the pre-existing 25.
-- [ ] `npm run test:server` full suite passes (no regressions from schema change).
+- [x] Dev DB updated — `prisma/sqlite-push.sh` (or `npx prisma db push`) runs without error.
+- [x] `npx prisma generate` produces an updated Prisma client with no errors.
+- [x] `npx tsc --noEmit` in `server/` shows no new errors beyond the pre-existing 25.
+- [x] `npm run test:server` full suite passes (no regressions from schema change).
 
 ## Implementation Plan
 
