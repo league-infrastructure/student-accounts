@@ -1,15 +1,15 @@
 ---
 id: '002'
-title: "Server utilities — passphrase-words, passphrase generator, password hash/verify"
-status: todo
+title: "Server utilities \u2014 passphrase-words, passphrase generator, password hash/verify"
+status: in-progress
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-004
-  - SUC-005
-  - SUC-006
+- SUC-001
+- SUC-002
+- SUC-004
+- SUC-005
+- SUC-006
 depends-on:
-  - '001'
+- '001'
 github-issue: ''
 todo: plan-passphrase-self-onboarding.md
 ---
@@ -25,42 +25,42 @@ Create three pure utility modules that have no dependencies on the database, ser
 
 ### passphrase-words.ts
 
-- [ ] File created at `server/src/utils/passphrase-words.ts`.
-- [ ] Exports a `readonly string[]` named `PASSPHRASE_WORDS`.
-- [ ] Contains at least 400 words.
-- [ ] All words are lowercase, 3–8 characters, common English words.
-- [ ] List has been reviewed and contains nothing sexual, profane, drug-related, violent, insulting, or scatological (audience is kids). The review is explicit — not just "started from EFF".
-- [ ] No duplicate entries.
+- [x] File created at `server/src/utils/passphrase-words.ts`.
+- [x] Exports a `readonly string[]` named `PASSPHRASE_WORDS`.
+- [x] Contains at least 400 words. (621 words)
+- [x] All words are lowercase, 3–8 characters, common English words.
+- [x] List has been reviewed and contains nothing sexual, profane, drug-related, violent, insulting, or scatological (audience is kids). The review is explicit — not just "started from EFF". (Authored from scratch; every word individually evaluated.)
+- [x] No duplicate entries.
 
 ### passphrase.ts
 
-- [ ] File created at `server/src/utils/passphrase.ts`.
-- [ ] `generatePassphrase(words?: 3 | 4): string` — uses `crypto.randomInt` to pick words from `PASSPHRASE_WORDS`; joins with hyphens; defaults to 3 words.
-- [ ] `validatePassphraseShape(input: string): boolean` — returns true iff input is 2–4 lowercase words joined by hyphens, all words drawn from `PASSPHRASE_WORDS`.
-- [ ] No non-Node-built-in imports (pure utility).
+- [x] File created at `server/src/utils/passphrase.ts`.
+- [x] `generatePassphrase(words?: 3 | 4): string` — uses `crypto.randomInt` to pick words from `PASSPHRASE_WORDS`; joins with hyphens; defaults to 3 words.
+- [x] `validatePassphraseShape(input: string): boolean` — returns true iff input is 2–4 lowercase words joined by hyphens, all words drawn from `PASSPHRASE_WORDS`.
+- [x] No non-Node-built-in imports (pure utility).
 
 ### password.ts
 
-- [ ] File created at `server/src/utils/password.ts`.
-- [ ] `hashPassword(plain: string): Promise<string>` — generates a random 16-byte salt (hex), runs `crypto.scrypt(plain, salt, 64)`, returns `"<saltHex>:<keyHex>"`.
-- [ ] `verifyPassword(plain: string, stored: string): Promise<boolean>` — splits stored, re-derives key with same params, compares using `crypto.timingSafeEqual`.
-- [ ] Returns `false` (not throws) if `stored` is malformed or null/undefined.
-- [ ] No npm dependencies; uses only Node's built-in `crypto` module.
+- [x] File created at `server/src/utils/password.ts`.
+- [x] `hashPassword(plain: string): Promise<string>` — generates a random 16-byte salt (hex), runs `crypto.scrypt(plain, salt, 64)`, returns `"<saltHex>:<keyHex>"`.
+- [x] `verifyPassword(plain: string, stored: string): Promise<boolean>` — splits stored, re-derives key with same params, compares using `crypto.timingSafeEqual`.
+- [x] Returns `false` (not throws) if `stored` is malformed or null/undefined.
+- [x] No npm dependencies; uses only Node's built-in `crypto` module.
 
 ### Tests
 
-- [ ] `tests/server/utils/passphrase.test.ts` created and green:
+- [x] `tests/server/utils/passphrase.test.ts` created and green:
   - `generatePassphrase()` returns a string matching `/^[a-z]+-[a-z]+-[a-z]+$/`.
   - Every word in the generated phrase is in `PASSPHRASE_WORDS`.
   - No duplicate words within a single generated phrase.
   - `validatePassphraseShape` accepts valid phrases; rejects too-short, too-long, non-word-list, uppercase, no-hyphen inputs.
-- [ ] `tests/server/utils/password.test.ts` created and green:
+- [x] `tests/server/utils/password.test.ts` created and green:
   - `hashPassword` / `verifyPassword` round-trip: correct plain-text verifies true.
   - Wrong plain-text verifies false.
   - Empty string as plain-text still hashes safely; verifies false against a different hash.
   - Null/undefined stored value returns false without throwing.
-- [ ] `npm run test:server` passes with all new suites included.
-- [ ] `npx tsc --noEmit` in `server/` shows no new errors.
+- [x] `npm run test:server` passes with all new suites included.
+- [x] `npx tsc --noEmit` in `server/` shows no new errors.
 
 ## Implementation Plan
 
