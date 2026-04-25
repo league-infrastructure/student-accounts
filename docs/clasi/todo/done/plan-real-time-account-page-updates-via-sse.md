@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 ---
 
 # Plan: Real-Time Account Page Updates via SSE
