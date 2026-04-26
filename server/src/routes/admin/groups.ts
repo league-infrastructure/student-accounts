@@ -30,6 +30,7 @@
 import { Router } from 'express';
 import { AppError } from '../../errors.js';
 import { WorkspaceApiError } from '../../services/google-workspace/google-workspace-admin.client.js';
+import { prisma } from '../../services/prisma.js';
 import type { AccountType } from '../../services/bulk-account.shared.js';
 import { adminBus, userBus } from '../../services/change-bus.js';
 
@@ -432,5 +433,115 @@ adminGroupsRouter.post('/groups/:id/bulk-remove-all', async (req, res, next) => 
     return res.status(status).json(result);
   } catch (err) {
     handleError(err, res, next);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/groups/:id/passphrase
+// Creates or rotates the signup passphrase for a group.
+// Body: { plaintext?: string; grantLlmProxy: boolean }
+// Returns 201 { plaintext, expiresAt, grantLlmProxy, createdAt }
+// ---------------------------------------------------------------------------
+
+adminGroupsRouter.post('/groups/:id/passphrase', async (req, res, next) => {
+  try {
+    const id = parseIntParam(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Invalid group id' });
+
+    const group = await (prisma as any).group.findUnique({ where: { id } });
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const { plaintext, grantLlmProxy } = req.body as {
+      plaintext?: unknown;
+      grantLlmProxy?: unknown;
+    };
+
+    if (typeof grantLlmProxy !== 'boolean') {
+      return res.status(400).json({ error: 'grantLlmProxy must be a boolean' });
+    }
+
+    const actorId = (req.session as any).userId as number;
+    const record = await req.services.passphrases.create(
+      { kind: 'group', id },
+      {
+        plaintext: typeof plaintext === 'string' ? plaintext : undefined,
+        grantLlmProxy,
+      },
+      actorId,
+    );
+
+    adminBus.notify('groups');
+
+    return res.status(201).json({
+      plaintext: record.plaintext,
+      expiresAt: record.expiresAt,
+      grantLlmProxy: record.grantLlmProxy,
+      createdAt: record.createdAt,
+    });
+  } catch (err: any) {
+    if (err instanceof AppError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/groups/:id/passphrase
+// Returns the active passphrase for a group, or 404 if none.
+// ---------------------------------------------------------------------------
+
+adminGroupsRouter.get('/groups/:id/passphrase', async (req, res, next) => {
+  try {
+    const id = parseIntParam(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Invalid group id' });
+
+    const group = await (prisma as any).group.findUnique({ where: { id } });
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const record = await req.services.passphrases.getActive({ kind: 'group', id });
+    if (!record) {
+      return res.status(404).json({ error: 'No active passphrase' });
+    }
+
+    return res.json({
+      plaintext: record.plaintext,
+      expiresAt: record.expiresAt,
+      grantLlmProxy: record.grantLlmProxy,
+      createdAt: record.createdAt,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /admin/groups/:id/passphrase
+// Revokes the active passphrase for a group. Idempotent.
+// Returns 204.
+// ---------------------------------------------------------------------------
+
+adminGroupsRouter.delete('/groups/:id/passphrase', async (req, res, next) => {
+  try {
+    const id = parseIntParam(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Invalid group id' });
+
+    const group = await (prisma as any).group.findUnique({ where: { id } });
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const actorId = (req.session as any).userId as number;
+    await req.services.passphrases.revoke({ kind: 'group', id }, actorId);
+
+    adminBus.notify('groups');
+
+    return res.status(204).send();
+  } catch (err) {
+    next(err);
   }
 });
