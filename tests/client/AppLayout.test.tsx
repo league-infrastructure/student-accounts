@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AppLayout from '../../client/src/components/AppLayout';
+
+function withQueryClient(node: React.ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return <QueryClientProvider client={client}>{node}</QueryClientProvider>;
+}
 
 // ---- Mock useAuth ----
 
@@ -31,9 +39,11 @@ vi.mock('../../client/src/context/AuthContext', () => ({
 
 function renderLayout() {
   return render(
-    <MemoryRouter>
-      <AppLayout />
-    </MemoryRouter>,
+    withQueryClient(
+      <MemoryRouter>
+        <AppLayout />
+      </MemoryRouter>,
+    ),
   );
 }
 
@@ -144,9 +154,11 @@ describe('AppLayout', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/admin/env']}>
-        <AppLayout />
-      </MemoryRouter>,
+      withQueryClient(
+        <MemoryRouter initialEntries={['/admin/env']}>
+          <AppLayout />
+        </MemoryRouter>,
+      ),
     );
     expect(screen.getByText('Audit Log')).toBeInTheDocument();
   });
@@ -183,9 +195,11 @@ describe('AppLayout', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/admin/env']}>
-        <AppLayout />
-      </MemoryRouter>,
+      withQueryClient(
+        <MemoryRouter initialEntries={['/admin/env']}>
+          <AppLayout />
+        </MemoryRouter>,
+      ),
     );
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
     expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
@@ -199,9 +213,11 @@ describe('AppLayout', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/admin/env']}>
-        <AppLayout />
-      </MemoryRouter>,
+      withQueryClient(
+        <MemoryRouter initialEntries={['/admin/env']}>
+          <AppLayout />
+        </MemoryRouter>,
+      ),
     );
     expect(screen.getByText('Environment')).toBeInTheDocument();
     expect(screen.getByText('Database')).toBeInTheDocument();
