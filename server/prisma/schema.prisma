@@ -66,6 +66,7 @@ enum CreatedVia {
   pike13_sync
   admin_created
   workspace_sync
+  passphrase_signup
 }
 
 enum ExternalAccountType {

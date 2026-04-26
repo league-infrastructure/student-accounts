@@ -38,7 +38,7 @@ export class UserService {
     data: {
       display_name: string;
       primary_email: string;
-      created_via: 'social_login' | 'pike13_sync' | 'admin_created';
+      created_via: 'social_login' | 'pike13_sync' | 'admin_created' | 'passphrase_signup';
       role?: 'student' | 'staff' | 'admin';
       cohort_id?: number | null;
       approval_status?: 'approved' | 'pending';
