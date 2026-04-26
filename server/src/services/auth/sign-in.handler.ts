@@ -32,7 +32,6 @@ import { mergeScan } from './merge-scan.stub.js';
 import {
   type GoogleWorkspaceAdminClient,
   StaffOULookupError,
-  NotInStaffOUError,
 } from '../google-workspace/google-workspace-admin.client.js';
 
 const logger = createLogger('sign-in.handler');
@@ -326,49 +325,19 @@ export async function signInHandler(
     }
   }
 
-  // --- Step 4: Staff OU enforcement (Google sign-ins only) ---
+  // --- Step 4: Staff OU detection (@jointheleague.org accounts only) ---
   //
-  // Google OAuth is the staff/admin path. Students log in via passphrase.
-  // Anyone signing in via Google must be in GOOGLE_STAFF_OU_PATH.
+  // Only runs for Google sign-ins with a @jointheleague.org email address.
+  // @students.jointheleague.org, gmail.com, and all other domains are skipped
+  // and receive role=student (unchanged from creation default).
   //
   // Behaviour:
-  //   - Google sign-in + non-League email (gmail.com, etc.) → DENY.
-  //   - Google sign-in + @jointheleague.org + OU starts with
-  //     GOOGLE_STAFF_OU_PATH → role becomes 'staff' (admin elevation
-  //     happens in Step 5 if applicable).
-  //   - Google sign-in + @jointheleague.org + OU outside the staff path
-  //     → DENY (e.g. @students.jointheleague.org accounts).
-  //   - getUserOU() throws StaffOULookupError → emit auth_denied audit
-  //     event, log at ERROR, and re-throw so the caller denies sign-in
-  //     (RD-001).
-  //
-  // Dev escape hatch: GOOGLE_STAFF_OU_PATH unset skips the OU check
-  // entirely. Production must set the env var.
-  //
-  // GitHub OAuth bypasses this enforcement — it's left as-is for the
-  // external-identity flow with admin approval.
-
-  if (provider === 'google') {
-    const isLeagueDomain = providerEmail
-      ? /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(providerEmail)
-      : false;
-    const staffOuPath = resolveStaffOuPath();
-
-    // Non-League Google identities can never be in /Staff. Deny outright.
-    // Skipped only when GOOGLE_STAFF_OU_PATH is unset (dev mode).
-    if (!isLeagueDomain && staffOuPath !== null) {
-      logger.error(
-        { email: providerEmail },
-        '[sign-in.handler] Step 4: non-League Google sign-in — staff-only login enforced, denying.',
-      );
-      await _writeAuthDeniedEvent(options, providerEmail ?? '<unknown>', 'NOT_LEAGUE_DOMAIN');
-      throw new NotInStaffOUError(
-        'Google sign-in requires a @jointheleague.org account in the staff OU.',
-        'NOT_LEAGUE_DOMAIN',
-        providerEmail ?? undefined,
-      );
-    }
-  }
+  //   - OU path starts with GOOGLE_STAFF_OU_PATH → update role to 'staff'.
+  //   - OU path does not start with GOOGLE_STAFF_OU_PATH → keep role 'student'
+  //     (RD-003: @jointheleague.org accounts not yet in the staff OU sign in
+  //     as students, not a hard deny).
+  //   - getUserOU() throws StaffOULookupError → emit auth_denied audit event,
+  //     log at ERROR, and re-throw so the caller denies sign-in (RD-001).
 
   if (provider === 'google' && providerEmail?.toLowerCase().endsWith('@jointheleague.org')) {
     logger.info(
@@ -446,20 +415,17 @@ export async function signInHandler(
           );
         }
       } else {
-        // Google sign-in must land in /Staff. League accounts in any
-        // other OU (Students/<cohort>, /graveyard, etc.) are denied
-        // outright.
-        logger.error(
+        logger.info(
           { email: providerEmail, ouPath, staffOuPath },
-          '[sign-in.handler] Step 4: OU outside staff path — denying Google login.',
+          '[sign-in.handler] Step 4: OU does not match staff path'
         );
-        await _writeAuthDeniedEvent(options, providerEmail, 'OU_NOT_STAFF');
-        throw new NotInStaffOUError(
-          'Google sign-in requires a @jointheleague.org account in the staff OU.',
-          'OU_NOT_STAFF',
-          providerEmail,
-          ouPath,
-        );
+        if (user.role === 'staff') {
+          user = await userService.updateRole(user.id, 'student');
+          logger.info(
+            { userId: user.id, newRole: 'student' },
+            '[sign-in.handler] Step 4: role downgraded to student'
+          );
+        }
       }
     }
 
