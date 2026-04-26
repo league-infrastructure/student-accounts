@@ -631,6 +631,11 @@ describe('Google link-mode callback — conflict (AC-05)', () => {
 
 describe('Google link-mode — unauthenticated session.userId absent (AC-06)', () => {
   it('falls through to normal sign-in when session.link is set but userId is absent', async () => {
+    // Pre-seed approved user — post-Sprint-015, brand-new social_login users
+    // are pending and would land on /login?error=pending_approval. Step 3a of
+    // signInHandler matches by email so a pre-seeded user is reused as-is.
+    await makeUser({ primary_email: 'link-no-userid@example.com', display_name: 'Link No UserId' });
+
     // Simulate: callback is hit without an active session (no userId).
     // The verify callback checks `req.session?.link && linkUserId` — if
     // linkUserId is absent, it falls through to signInHandler.
@@ -660,6 +665,12 @@ describe('Google link-mode — unauthenticated session.userId absent (AC-06)', (
 
 describe('Google normal sign-in — regression (AC-07)', () => {
   it('creates a new user on first sign-in (unchanged behavior)', async () => {
+    // Pre-seed approved user — see note in AC-06 above.
+    await makeUser({
+      primary_email: 'regression-normal@example.com',
+      display_name: 'Regression Normal',
+    });
+
     mockGoogleStrategy.setProfile({
       id: 'google-uid-regression-normal',
       displayName: 'Regression Normal',

@@ -397,9 +397,20 @@ adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /admin/users/:id/deny-approval — soft-delete a pending user. No
-// "permanently rejected" state needed: deactivation is terminal unless an
-// admin manually flips is_active back.
+// POST /admin/users/:id/deny-approval — deny a pending user.
+//
+// Two flavors, distinguished by request body:
+//
+//   { }                  → soft deny: is_active=false, approval_status='rejected'.
+//                          If the user later re-OAuths, the sign-in handler
+//                          reactivates them back into the approval queue.
+//
+//   { permanent: true }  → permanent deny: is_active=false,
+//                          approval_status='rejected_permanent'. Re-OAuth
+//                          attempts are refused — the user lands on the
+//                          login page with a "permanently denied" message
+//                          and never gets a session. Only an admin manually
+//                          flipping the status can undo this.
 // ---------------------------------------------------------------------------
 
 adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
@@ -407,12 +418,17 @@ adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
     const actorId = (req.session as any).userId as number;
+    const permanent = (req.body as { permanent?: boolean } | undefined)?.permanent === true;
+    const newStatus = permanent ? 'rejected_permanent' : 'rejected';
 
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id }, data: { is_active: false } });
+      await tx.user.update({
+        where: { id },
+        data: { is_active: false, approval_status: newStatus },
+      });
       await tx.auditEvent.create({
         data: {
           action: 'deny_user_approval',
@@ -420,6 +436,7 @@ adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
           target_user_id: id,
           target_entity_type: 'User',
           target_entity_id: String(id),
+          details: { permanent },
         },
       });
     });
@@ -428,7 +445,7 @@ adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
     adminBus.notify('users');
     userBus.notifyUser(id);
 
-    res.json({ ok: true });
+    res.json({ ok: true, permanent });
   } catch (err) {
     next(err);
   }

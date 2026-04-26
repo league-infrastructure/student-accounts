@@ -236,24 +236,25 @@ describe('GET /api/auth/google/callback — new user', () => {
     expect(login.provider_email).toBe('newuser@example.com');
   });
 
-  it('redirects to /account on successful sign-in', async () => {
+  it('redirects to /login?error=pending_approval on first sign-in (non-staff)', async () => {
     mockStrategy.setProfile(googleProfile);
 
     const res = await request(app).get('/api/auth/google/callback');
 
+    // Non-staff users always start in the approval queue.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/account');
+    expect(res.headers.location).toBe('/login?error=pending_approval');
   });
 
-  it('sets session userId and role via req.login', async () => {
+  it('does NOT establish a session for a pending user', async () => {
     mockStrategy.setProfile(googleProfile);
 
     const agent = request.agent(app);
     await agent.get('/api/auth/google/callback');
 
-    // Check the session by hitting /api/auth/me
+    // /api/auth/me should be unauthenticated since approval is pending.
     const me = await agent.get('/api/auth/me');
-    expect([200]).toContain(me.status);
+    expect(me.status).toBe(401);
   });
 });
 
@@ -430,7 +431,7 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     expect(me.body.role).toBe('STAFF');
   });
 
-  it('creates user with role=student when OU path does not match (RD-003)', async () => {
+  it('creates a pending student when OU path does not match (RD-003)', async () => {
     const adminDirClient = new FakeGoogleWorkspaceAdminClient();
     adminDirClient.configure('getUserOU', '/Students/Cohort2025');
     useVerifyCallback({ adminDirClient, auditService, prisma });
@@ -443,15 +444,17 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
 
     const res = await request(app).get('/api/auth/google/callback');
 
-    // Sign-in succeeds (RD-003: not a hard deny)
+    // Sign-in is not a hard deny but no session is established —
+    // they wait in the approval queue.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/account');
+    expect(res.headers.location).toBe('/login?error=pending_approval');
 
     const user = await (prisma as any).user.findFirst({
       where: { primary_email: 'nonstaffou@jointheleague.org' },
     });
     expect(user).not.toBeNull();
     expect(user.role).toBe('student');
+    expect(user.approval_status).toBe('pending');
   });
 
   it('redirects to /?error=staff_lookup_failed when AdminClient throws StaffOULookupError (RD-001)', async () => {
@@ -512,7 +515,7 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     expect(events[0].target_entity_id).toBe('auditdenied@jointheleague.org');
   });
 
-  it('skips OU check for @students.jointheleague.org — role=student, no lookup', async () => {
+  it('@students.jointheleague.org sign-ins skip OU check and land in the approval queue', async () => {
     let ouLookupCalled = false;
     const adminDirClient: any = {
       getUserOU: async () => {
@@ -531,7 +534,7 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     const res = await request(app).get('/api/auth/google/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/account');
+    expect(res.headers.location).toBe('/login?error=pending_approval');
     expect(ouLookupCalled).toBe(false);
 
     const user = await (prisma as any).user.findFirst({
@@ -539,9 +542,10 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     });
     expect(user).not.toBeNull();
     expect(user.role).toBe('student');
+    expect(user.approval_status).toBe('pending');
   });
 
-  it('skips OU check for external email (gmail.com) — role=student, no lookup', async () => {
+  it('external Google sign-ins (gmail.com) land in the approval queue, no OU lookup', async () => {
     let ouLookupCalled = false;
     const adminDirClient: any = {
       getUserOU: async () => {
@@ -560,7 +564,7 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     const res = await request(app).get('/api/auth/google/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/account');
+    expect(res.headers.location).toBe('/login?error=pending_approval');
     expect(ouLookupCalled).toBe(false);
 
     const user = await (prisma as any).user.findFirst({
@@ -568,6 +572,7 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     });
     expect(user).not.toBeNull();
     expect(user.role).toBe('student');
+    expect(user.approval_status).toBe('pending');
   });
 });
 
@@ -638,7 +643,7 @@ describe('GET /api/auth/google/callback — post-login redirect by role', () => 
     expect(res.headers.location).toBe('/staff/directory');
   });
 
-  it('redirects student to /account', async () => {
+  it('redirects pending student to /login?error=pending_approval (no session)', async () => {
     mockStrategy.setProfile({
       id: 'google-uid-student-redirect',
       displayName: 'Student User',
@@ -648,6 +653,6 @@ describe('GET /api/auth/google/callback — post-login redirect by role', () => 
     const res = await request(app).get('/api/auth/google/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/account');
+    expect(res.headers.location).toBe('/login?error=pending_approval');
   });
 });

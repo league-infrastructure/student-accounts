@@ -107,8 +107,12 @@ async function approvePendingUser(
   return res.json();
 }
 
-async function denyPendingUser(id: number): Promise<void> {
-  const res = await fetch(`/api/admin/users/${id}/deny-approval`, { method: 'POST' });
+async function denyPendingUser(id: number, permanent: boolean): Promise<void> {
+  const res = await fetch(`/api/admin/users/${id}/deny-approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ permanent }),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
@@ -170,15 +174,19 @@ function PendingActivityWidget() {
     },
   });
 
-  const denyMutation = useMutation<void, Error, number>({
-    mutationFn: denyPendingUser,
-    onSuccess: (_d, id) => {
+  const denyMutation = useMutation<void, Error, { id: number; permanent: boolean }>({
+    mutationFn: ({ id, permanent }) => denyPendingUser(id, permanent),
+    onSuccess: (_d, { id, permanent }) => {
       const u = users?.find((x) => x.id === id);
-      showToast(`Denied account for ${u?.displayName ?? u?.email}`, 'info');
+      const who = u?.displayName ?? u?.email;
+      showToast(
+        permanent ? `Permanently denied ${who}` : `Denied ${who} (can re-apply)`,
+        'info',
+      );
       setRowErrors((prev) => { const n = { ...prev }; delete n[`user-${id}`]; return n; });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'pending-users'] });
     },
-    onError: (err, id) => {
+    onError: (err, { id }) => {
       setRowErrors((prev) => ({ ...prev, [`user-${id}`]: err.message }));
       showToast(`Deny failed: ${err.message}`, 'error');
     },
@@ -285,13 +293,33 @@ function PendingActivityWidget() {
                           style={denyButtonStyle}
                           disabled={anyPending}
                           onClick={() => {
-                            if (window.confirm(`Deny account for ${item.email}? They will be deactivated.`)) {
-                              denyMutation.mutate(item.id);
+                            if (
+                              window.confirm(
+                                `Deny ${item.email}? They can re-apply by signing in again.`,
+                              )
+                            ) {
+                              denyMutation.mutate({ id: item.id, permanent: false });
                             }
                           }}
                           aria-label={`Deny account ${item.id}`}
                         >
                           Deny
+                        </button>
+                        <button
+                          style={denyButtonStyle}
+                          disabled={anyPending}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `PERMANENTLY deny ${item.email}? Future sign-in attempts will be refused.`,
+                              )
+                            ) {
+                              denyMutation.mutate({ id: item.id, permanent: true });
+                            }
+                          }}
+                          aria-label={`Permanently deny account ${item.id}`}
+                        >
+                          Deny permanently
                         </button>
                         {rowError && (
                           <span style={inlineErrorStyle} role="alert">
