@@ -36,9 +36,9 @@ which handles the full lifecycle.
    ```
 
    The `test_command` parameter controls how tests are run:
-   - Omit or pass a command string to run that test suite
-   - Pass `""` (empty string) to skip tests entirely
-     (for non-Python projects or projects without a test suite)
+   - Omit or `None`: runs `uv run pytest` (default)
+   - Custom string (e.g., `"npm test"`): runs that command
+   - Empty string `""`: skips tests entirely (non-Python projects)
 
    The tool handles internally:
    - Pre-condition verification with self-repair

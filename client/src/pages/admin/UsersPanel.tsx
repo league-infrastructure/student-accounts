@@ -65,8 +65,8 @@ type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'joined';
 // they sort in a stable, meaningful way. League accounts are split into
 // staff (flag) vs student (bolt) by whether "student" appears in any
 // jointheleague.org address on the user.
-type AccountKind = 'google' | 'league-staff' | 'league-student' | 'pike13' | 'claude';
-const ACCOUNT_ORDER: AccountKind[] = ['league-staff', 'league-student', 'google', 'claude', 'pike13'];
+type AccountKind = 'google' | 'github' | 'league-staff' | 'league-student' | 'pike13' | 'claude';
+const ACCOUNT_ORDER: AccountKind[] = ['league-staff', 'league-student', 'google', 'github', 'claude', 'pike13'];
 
 /** Any @jointheleague.org address attached to the user (primary, a login
  *  email, or a workspace external_id). */
@@ -96,6 +96,8 @@ function userAccounts(u: AdminUser): AccountKind[] {
   }
   // Google Login (external Google sign-in, e.g. gmail.com)
   if (u.providers?.some((p) => p.provider === 'google')) out.add('google');
+  // GitHub login linked to this user
+  if (u.providers?.some((p) => p.provider === 'github')) out.add('github');
   const eats = u.externalAccountTypes ?? [];
   if (eats.includes('claude')) out.add('claude');
   if (eats.includes('pike13')) out.add('pike13');
@@ -266,6 +268,16 @@ function AccountIcon({ kind }: { kind: AccountKind }) {
         src="https://www.google.com/favicon.ico"
         alt="Google"
         title="External Google account"
+        style={common}
+      />
+    );
+  }
+  if (kind === 'github') {
+    return (
+      <img
+        src={PROVIDER_LOGOS.github.src}
+        alt="GitHub"
+        title="GitHub account linked"
         style={common}
       />
     );

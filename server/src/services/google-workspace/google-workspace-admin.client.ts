@@ -154,6 +154,30 @@ export class StaffOULookupError extends Error {
 }
 
 /**
+ * Thrown when a Google OAuth sign-in succeeds at the IdP but the
+ * resolved Workspace user is not in the configured staff OU. Google
+ * login is staff-only — students use passphrase signup, external
+ * Google identities have no path to /Staff and are denied.
+ *
+ * Callers (the OAuth callback) translate this into a redirect to the
+ * login page with `?error=staff_only`.
+ */
+export class NotInStaffOUError extends Error {
+  readonly code: string;
+  readonly email?: string;
+  /** The actual OU path the user resolved to (for audit logs). */
+  readonly ouPath?: string;
+
+  constructor(message: string, code: string, email?: string, ouPath?: string) {
+    super(message);
+    this.name = 'NotInStaffOUError';
+    this.code = code;
+    this.email = email;
+    this.ouPath = ouPath;
+  }
+}
+
+/**
  * Thrown when the Admin SDK returns an HTTP error response for a write
  * operation (createUser, createOU, suspendUser, deleteUser, listUsersInOU).
  */

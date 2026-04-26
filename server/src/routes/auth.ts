@@ -15,7 +15,10 @@ import { Router, Request, Response, NextFunction } from 'express';
 import passport from 'passport';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { StaffOULookupError } from '../services/google-workspace/google-workspace-admin.client.js';
+import {
+  StaffOULookupError,
+  NotInStaffOUError,
+} from '../services/google-workspace/google-workspace-admin.client.js';
 import { AuditService } from '../services/audit.service.js';
 import { createLogger } from '../services/logger.js';
 
@@ -272,15 +275,22 @@ authRouter.get(
         );
         if (err) {
           logger.error({ err }, '[google-callback] authentication error');
+          if (err instanceof NotInStaffOUError) {
+            logger.error(
+              { code: err.code, email: err.email, ouPath: err.ouPath },
+              '[google-callback] NotInStaffOUError, redirecting',
+            );
+            return res.redirect('/login?error=staff_only');
+          }
           if (err instanceof StaffOULookupError) {
             logger.error(
               { code: err.code, email: err.email },
               '[google-callback] StaffOULookupError, redirecting'
             );
-            return res.redirect('/?error=staff_lookup_failed');
+            return res.redirect('/login?error=staff_lookup_failed');
           }
           logger.error({}, '[google-callback] generic error, redirecting');
-          return res.redirect('/?error=oauth_denied');
+          return res.redirect('/login?error=oauth_denied');
         }
         if (!user) {
           logger.error({ info }, '[google-callback] no user returned by passport');

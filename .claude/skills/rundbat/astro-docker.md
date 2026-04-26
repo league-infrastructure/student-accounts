@@ -25,10 +25,15 @@ Dockerfile (node build → nginx serve) and a production nginx config.
    `docker/nginx.conf`.
 
 2. Review the generated files in `docker/`:
-   - `Dockerfile` — 3-stage build: deps (node), build (astro), runtime (nginx)
+   - `Dockerfile` — 3-stage build: deps (node), build (astro), runtime (`nginxinc/nginx-unprivileged:alpine`, UID 101)
    - `nginx.conf` — production config with SPA routing, gzip, cache headers
    - `docker-compose.yml` — app service on port 8080
    - `.env.example` — environment variable template
+
+   The Dockerfile also emits a `HEALTHCHECK` that hits `http://localhost:8080/`
+   via `wget --spider`. The target is `/` because nginx serves `index.html`
+   for SPA fallback, so `/` is reliably 200 for any static Astro build. If
+   your site serves from a base path, edit the healthcheck URL.
 
 3. Customize if needed:
    - If your Astro project uses a custom `outDir`, update the
@@ -55,11 +60,14 @@ Dockerfile (node build → nginx serve) and a production nginx config.
 
 ## Notes
 
-- Port 8080 is used (non-root nginx container).
+- Port 8080 is used (nginx-unprivileged image runs as UID 101 and listens
+  on 8080 by default — no privilege needed).
 - Only static output is supported (`output: "static"` in `astro.config.*`).
   SSR/hybrid Astro support is planned for a future sprint.
 - The nginx config includes SPA routing fallback (`try_files`),
   1-year cache for hashed assets, and security headers.
+- See `docker-best-practices` for the full checklist of what rundbat's
+  Astro template does and does not enforce.
 
 ## Outputs
 

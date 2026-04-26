@@ -21,7 +21,10 @@ import {
   resolveStaffOuPath,
   DEFAULT_STAFF_OU_PATH,
 } from '../../../../server/src/services/auth/sign-in.handler.js';
-import { StaffOULookupError } from '../../../../server/src/services/google-workspace/google-workspace-admin.client.js';
+import {
+  StaffOULookupError,
+  NotInStaffOUError,
+} from '../../../../server/src/services/google-workspace/google-workspace-admin.client.js';
 import { FakeGoogleWorkspaceAdminClient } from '../../helpers/fake-google-workspace-admin.client.js';
 import { makeUser, makeLogin } from '../../helpers/factories.js';
 
@@ -367,24 +370,24 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
     expect(user.role).toBe('staff');
   });
 
-  it('sets role=student when OU path does not match (RD-003)', async () => {
+  it('throws NotInStaffOUError when OU path does not match (Google login is staff-only)', async () => {
     const adminDirClient = new FakeGoogleWorkspaceAdminClient();
     adminDirClient.configure('getUserOU', '/Students/Spring2025');
 
-    const user = await signInHandler(
-      'google',
-      {
-        providerUserId: 'google-uid-nonstaffou',
-        providerEmail: 'carol@jointheleague.org',
-        displayName: 'Carol Not In Staff OU',
-        providerUsername: null,
-      },
-      userService,
-      loginService,
-      { adminDirClient },
-    );
-
-    expect(user.role).toBe('student');
+    await expect(
+      signInHandler(
+        'google',
+        {
+          providerUserId: 'google-uid-nonstaffou',
+          providerEmail: 'carol@jointheleague.org',
+          displayName: 'Carol Not In Staff OU',
+          providerUsername: null,
+        },
+        userService,
+        loginService,
+        { adminDirClient },
+      ),
+    ).rejects.toThrow(NotInStaffOUError);
   });
 
   it('throws StaffOULookupError when AdminClient fails (RD-001)', async () => {
@@ -468,7 +471,7 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
     expect(user.role).toBe('student');
   });
 
-  it('does NOT call adminDirClient for external (gmail.com) accounts', async () => {
+  it('denies external Google sign-ins (gmail.com) without calling adminDirClient', async () => {
     let ouLookupCalled = false;
     const adminDirClient: any = {
       getUserOU: async (_email: string) => {
@@ -477,21 +480,24 @@ describe('signInHandler — @jointheleague.org staff OU detection (UC-003)', () 
       },
     };
 
-    const user = await signInHandler(
-      'google',
-      {
-        providerUserId: 'google-uid-gmail-ext',
-        providerEmail: 'external@gmail.com',
-        displayName: 'External User',
-        providerUsername: null,
-      },
-      userService,
-      loginService,
-      { adminDirClient },
-    );
+    await expect(
+      signInHandler(
+        'google',
+        {
+          providerUserId: 'google-uid-gmail-ext',
+          providerEmail: 'external@gmail.com',
+          displayName: 'External User',
+          providerUsername: null,
+        },
+        userService,
+        loginService,
+        { adminDirClient },
+      ),
+    ).rejects.toThrow(NotInStaffOUError);
 
+    // The handler short-circuits on the non-League domain before
+    // calling getUserOU.
     expect(ouLookupCalled).toBe(false);
-    expect(user.role).toBe('student');
   });
 
   it('updates role to staff on subsequent sign-in when OU matches (returning user)', async () => {
@@ -636,27 +642,29 @@ describe('signInHandler — ADMIN_EMAILS admin role assignment (T006)', () => {
     expect(user.role).toBe('admin');
   });
 
-  it('sets role=admin even when OU check would have yielded student (not in staff OU)', async () => {
+  it('denies sign-in even for ADMIN_EMAILS users when their OU is not /Staff', async () => {
+    // Policy: Google login is staff-only. ADMIN_EMAILS no longer
+    // bypasses the OU enforcement — admins must be in /Staff like
+    // everyone else who signs in via Google.
     _setAdminEmails(new Set(['admin@jointheleague.org']));
 
     const adminDirClient = new FakeGoogleWorkspaceAdminClient();
-    // Non-staff OU — without ADMIN_EMAILS would be 'student'
     adminDirClient.configure('getUserOU', '/Other/OU');
 
-    const user = await signInHandler(
-      'google',
-      {
-        providerUserId: 'google-uid-admin-nostaffou-003',
-        providerEmail: 'admin@jointheleague.org',
-        displayName: 'Admin Not In Staff OU',
-        providerUsername: null,
-      },
-      userService,
-      loginService,
-      { adminDirClient, auditService, prisma },
-    );
-
-    expect(user.role).toBe('admin');
+    await expect(
+      signInHandler(
+        'google',
+        {
+          providerUserId: 'google-uid-admin-nostaffou-003',
+          providerEmail: 'admin@jointheleague.org',
+          displayName: 'Admin Not In Staff OU',
+          providerUsername: null,
+        },
+        userService,
+        loginService,
+        { adminDirClient, auditService, prisma },
+      ),
+    ).rejects.toThrow(NotInStaffOUError);
   });
 
   it('does NOT set role=admin when email is NOT in ADMIN_EMAILS (staff OU case)', async () => {

@@ -129,10 +129,11 @@ export default function StudentAccountsPanel() {
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 4px', fontSize: 22 }}>Student accounts</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 22 }}>League Students</h2>
       <p style={{ color: '#64748b', marginTop: 0, fontSize: 13 }}>
-        Every active user whose primary email is on the student domain. Use
-        the checkboxes to select rows and run a bulk action.
+        Active users with a @students.jointheleague.org account — i.e. students
+        who have a League workspace identity, not just a username/passphrase
+        account. Use the checkboxes to select rows and run a bulk action.
       </p>
 
       {banner && (

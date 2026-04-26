@@ -1,12 +1,21 @@
 {
   "files": {
-    ".claude/skills/rundbat/astro-docker.md": "08e4809297951f28359a36ed2a27c8ad79d6beee4e280639f94d885df627ab58",
-    ".claude/skills/rundbat/deploy-setup.md": "b3c8eb327d4ca5afbbae4755c0a29bb9425c9243dfe0a1a500f1fc58be04e550",
+    ".claude/skills/rundbat/astro-docker.md": "f6970a1e4040bfd79d795c74f6a2366ada4c86d8732beeb75e7ea0b6d0211f28",
+    ".claude/skills/rundbat/deploy-init.md": "76ddbccd95bf03285a0a37f03f7ada5845a9ef78db0bfd98b22ee7e8ce2a993a",
+    ".claude/skills/rundbat/deploy-setup.md": "ec93d1056f7cc8d1b94aab314d3c4aa1b161fb16bc8e81ab30ceb92873c964d6",
     ".claude/skills/rundbat/dev-database.md": "639f8597619ed5ff9fd8d67d50c6c432b27e5918ff7f993a1db3270a3142432f",
-    ".claude/skills/rundbat/diagnose.md": "c70b1a3517f301406c23ee2275f0367fc167135272bfe9b90ce0562b1c1e0a82",
-    ".claude/skills/rundbat/init-docker.md": "069a18caf2cd8e74cb8f2f0e1150878584a5a55c98d44f8db992f8db7aa92791",
-    ".claude/skills/rundbat/manage-secrets.md": "6f29569afa08862bfecdeb47c0d8df4d835efd0b1c92754b48a6ce2465739acd",
-    ".claude/agents/deployment-expert.md": "63632dd0816ff2d18aaac60a23310d31d51f51dc28a9159ab18b98d4dad6d5cf",
+    ".claude/skills/rundbat/diagnose.md": "5b85d55fc2ca03e8e4f0610e6780440949ab5a887b9842a9bbc3c89f25c5ffea",
+    ".claude/skills/rundbat/docker-best-practices.md": "3b1fe82f89c90a2df03013a63bdffee4e3653b8d8c3c7eb13c2ae3376dd3b3f8",
+    ".claude/skills/rundbat/docker-secrets-build.md": "9d9917d6d4a4726a3fd51bd21069c39a16e04af5825109927ef78be06adb14e8",
+    ".claude/skills/rundbat/docker-secrets-compose.md": "f4744c2d2a1a27b6afd0d01c88c69aa0129d98766ad327099a146345edb501a2",
+    ".claude/skills/rundbat/docker-secrets-swarm.md": "2353c876236a392a1ca818104c36c6512f27d8697b4ec5726300708400582e10",
+    ".claude/skills/rundbat/docker-secrets.md": "442d2338451938338b0b9337b5cd26ef2822d0d7fd427d21eccfb3e65b55204f",
+    ".claude/skills/rundbat/docker-swarm-deploy.md": "1d8ec3180ad214a3765106144e87e4229676ee81208063930de4dd8e515d333b",
+    ".claude/skills/rundbat/generate.md": "820de50e1c61b6409cc5730f8a0326b9eaca96310153f3306193d799790f3dbc",
+    ".claude/skills/rundbat/github-deploy.md": "047988a31cfbdfe3a2da47fd67ca30fff0416aee73ba17c45a47b6d692d1985e",
+    ".claude/skills/rundbat/init-docker.md": "4fabf6e566b2f89ece1212b47e046abf04098801abf1a0712797e1fb13a8c875",
+    ".claude/skills/rundbat/manage-secrets.md": "0c0fc3ad6ca1cb43bd75374cec90ea277fedace2d202277c85364e1e4e52b389",
+    ".claude/agents/deployment-expert.md": "bb4c35d5bf85a3531c820b61e567509db308504f2fcb914d8a05ffa5049eb852",
     ".claude/rules/rundbat.md": "609a24f6013e33892b9cc39bb802d98aa6e5d007acd5148f59b8a6a624515ce7"
   },
   "version": "1"
