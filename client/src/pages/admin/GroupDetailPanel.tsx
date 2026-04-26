@@ -12,6 +12,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '../../components/ui/button';
 import { LlmProxyGrantModal } from '../../components/LlmProxyGrantModal';
+import { PassphraseCard } from '../../components/PassphraseCard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -589,6 +590,15 @@ export default function GroupDetailPanel() {
         >
           {banner.msg}
         </div>
+      )}
+
+      {/* Passphrase card */}
+      {Number.isFinite(numericId) && (
+        <PassphraseCard
+          scopeKind="group"
+          scopeId={numericId}
+          scopeName={data.group.name}
+        />
       )}
 
       {/* Bulk action buttons (Ticket 008) */}

@@ -7,6 +7,12 @@
  *   - Remove posts a DELETE and re-fetches.
  *   - Each of the four bulk buttons hits the correct endpoint.
  *   - Suspend-all failure banner renders "name (type): reason".
+ *
+ * Note (Sprint 015 T007): GroupDetailPanel now renders a PassphraseCard which
+ * makes an additional GET /api/admin/groups/:id/passphrase fetch. Tests that
+ * use url-agnostic sequential mocks (mockResolvedValueOnce) need the passphrase
+ * fetch to be handled. The helpers below route by URL so each endpoint gets the
+ * correct response regardless of call order.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -14,6 +20,11 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GroupDetailPanel from '../../client/src/pages/admin/GroupDetailPanel';
+
+/** Return a 404 for passphrase endpoints so PassphraseCard shows empty state. */
+function passphraseNotFound() {
+  return { ok: false, status: 404, json: async () => ({ error: 'Not found' }) };
+}
 
 const GROUP_WITH_TWO = {
   group: {
@@ -82,43 +93,39 @@ describe('GroupDetailPanel', () => {
     const matchJson = [
       { id: 42, displayName: 'Charlie', email: 'charlie@league', matchedOn: 'display_name' },
     ];
-    const fetchMock = vi
-      .fn()
-      // initial members GET
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(GROUP_WITH_TWO),
-      })
-      // search GET
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(matchJson),
-      })
-      // POST /members
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        json: () => Promise.resolve({ groupId: 7, userId: 42 }),
-      })
-      // re-fetch after add
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            ...GROUP_WITH_TWO,
-            users: [
-              ...GROUP_WITH_TWO.users,
-              {
-                id: 42,
-                displayName: 'Charlie',
-                email: 'charlie@league',
-                role: 'student',
-                externalAccounts: [],
-                llmProxyToken: { status: 'none' as const },
-              },
-            ],
-          }),
-      });
+    const updatedGroup = {
+      ...GROUP_WITH_TWO,
+      users: [
+        ...GROUP_WITH_TWO.users,
+        {
+          id: 42,
+          displayName: 'Charlie',
+          email: 'charlie@league',
+          role: 'student',
+          externalAccounts: [],
+          llmProxyToken: { status: 'none' as const },
+        },
+      ],
+    };
+    let membersCallCount = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (typeof url === 'string' && url.endsWith('/passphrase')) {
+        return Promise.resolve(passphraseNotFound());
+      }
+      if (typeof url === 'string' && url.includes('/user-search')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(matchJson) });
+      }
+      if (typeof url === 'string' && url.endsWith('/members') && opts?.method === 'POST') {
+        return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve({ groupId: 7, userId: 42 }) });
+      }
+      if (typeof url === 'string' && url.endsWith('/members')) {
+        // First call returns original, second returns updated list
+        membersCallCount++;
+        const data = membersCallCount > 1 ? updatedGroup : GROUP_WITH_TWO;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     renderPanel();
@@ -167,24 +174,16 @@ describe('GroupDetailPanel', () => {
         { accountId: 202, userId: 12, userName: 'Bob', type: 'claude', error: 'boom' },
       ],
     };
-    const fetchMock = vi
-      .fn()
-      // initial GET
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(GROUP_WITH_TWO),
-      })
-      // POST suspend-all → 207
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 207,
-        json: () => Promise.resolve(suspendBody),
-      })
-      // re-fetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(GROUP_WITH_TWO),
-      });
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (typeof url === 'string' && url.endsWith('/passphrase')) {
+        return Promise.resolve(passphraseNotFound());
+      }
+      if (typeof url === 'string' && url.endsWith('/bulk-suspend-all') && opts?.method === 'POST') {
+        return Promise.resolve({ ok: false, status: 207, json: () => Promise.resolve(suspendBody) });
+      }
+      // members GET (initial + re-fetch)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(GROUP_WITH_TWO) });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     renderPanel();
@@ -198,24 +197,15 @@ describe('GroupDetailPanel', () => {
 
   it('Create League button hits bulk-provision workspace', async () => {
     window.confirm = vi.fn().mockReturnValue(true);
-    const fetchMock = vi
-      .fn()
-      // initial GET
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(GROUP_WITH_TWO),
-      })
-      // POST bulk-provision
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ succeeded: [1], failed: [] }),
-      })
-      // re-fetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(GROUP_WITH_TWO),
-      });
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (typeof url === 'string' && url.endsWith('/passphrase')) {
+        return Promise.resolve(passphraseNotFound());
+      }
+      if (typeof url === 'string' && url.endsWith('/bulk-provision') && opts?.method === 'POST') {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ succeeded: [1], failed: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(GROUP_WITH_TWO) });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     renderPanel();
@@ -235,21 +225,15 @@ describe('GroupDetailPanel', () => {
 
   it('Remove League button hits bulk-remove-all', async () => {
     window.confirm = vi.fn().mockReturnValue(true);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(GROUP_WITH_TWO),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ succeeded: [1], failed: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(GROUP_WITH_TWO),
-      });
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (typeof url === 'string' && url.endsWith('/passphrase')) {
+        return Promise.resolve(passphraseNotFound());
+      }
+      if (typeof url === 'string' && url.endsWith('/bulk-remove-all') && opts?.method === 'POST') {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ succeeded: [1], failed: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(GROUP_WITH_TWO) });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     renderPanel();

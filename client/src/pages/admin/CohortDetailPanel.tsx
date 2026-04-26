@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { PassphraseCard } from '../../components/PassphraseCard';
 
 interface ExternalAccount {
   type: string;
@@ -161,6 +162,15 @@ export default function CohortDetailPanel() {
           </button>
         </div>
       </div>
+
+      {/* Passphrase card */}
+      {Number.isFinite(numericId) && (
+        <PassphraseCard
+          scopeKind="cohort"
+          scopeId={numericId}
+          scopeName={data.cohort.name}
+        />
+      )}
 
       {/* Members table (read-only) */}
       <table style={tableStyle}>
