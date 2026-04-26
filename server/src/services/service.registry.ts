@@ -23,6 +23,7 @@ import { BulkGroupService } from './bulk-group.service';
 import { LlmProxyTokenService } from './llm-proxy-token.service';
 import { LlmProxyForwarderService } from './llm-proxy-forwarder.service';
 import { BulkLlmProxyService } from './bulk-llm-proxy.service';
+import { PassphraseService } from './passphrase.service';
 import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
@@ -82,6 +83,8 @@ export class ServiceRegistry {
   readonly llmProxyForwarder: LlmProxyForwarderService;
   /** Bulk grant/revoke of LLM proxy access scoped to a cohort or group (Sprint 013). */
   readonly bulkLlmProxy: BulkLlmProxyService;
+  /** Signup passphrase lifecycle for Group and Cohort scopes (Sprint 015). */
+  readonly passphrases: PassphraseService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -202,6 +205,9 @@ export class ServiceRegistry {
       defaultPrisma,
       this.llmProxyTokens,
     );
+
+    // PassphraseService — Sprint 015 T003.
+    this.passphrases = new PassphraseService(defaultPrisma, this.audit);
   }
 
   static create(
