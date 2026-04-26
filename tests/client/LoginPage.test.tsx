@@ -7,7 +7,6 @@ import Login from '../../client/src/pages/Login';
 // ---- Mock AuthContext ----
 
 const mockLoginWithCredentials = vi.fn();
-const mockNavigate = vi.fn();
 
 vi.mock('../../client/src/context/AuthContext', () => ({
   useAuth: () => ({
@@ -24,19 +23,32 @@ vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
   return {
     ...actual,
-    useNavigate: () => mockNavigate,
+    useNavigate: () => vi.fn(),
   };
+});
+
+// ---- Mock window.location.assign ----
+
+const mockLocationAssign = vi.fn();
+Object.defineProperty(window, 'location', {
+  value: { ...window.location, assign: mockLocationAssign },
+  writable: true,
 });
 
 // ---- Helpers ----
 
-/** Build a fetch mock that returns the given provider status from /api/integrations/status */
-function mockFetchStatus(status: {
-  github?: boolean;
-  google?: boolean;
-  pike13?: boolean;
-}) {
-  globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+/** Build a fetch mock that returns the given provider status from /api/integrations/status.
+ *  Additional handlers can be passed as an optional override function.
+ */
+function mockFetchStatus(
+  status: { github?: boolean; google?: boolean; pike13?: boolean },
+  overrides?: (url: string, init?: RequestInit) => Response | null,
+) {
+  globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (overrides) {
+      const result = overrides(url, init);
+      if (result !== null) return Promise.resolve(result);
+    }
     if (url === '/api/integrations/status') {
       return Promise.resolve({
         ok: true,
@@ -53,6 +65,14 @@ function mockFetchStatus(status: {
   });
 }
 
+function makeJsonResponse(status: number, body: object): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
+}
+
 function renderLogin() {
   return render(
     <MemoryRouter>
@@ -66,85 +86,285 @@ function renderLogin() {
 describe('Login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLocationAssign.mockClear();
     // Default: all providers unconfigured
     mockFetchStatus({});
   });
 
-  // -- Existing demo form tests --
+  // -- Login form field type and label tests --
 
-  it('renders form with username pre-filled as "user"', () => {
+  it('renders login passphrase input with type="text"', () => {
     renderLogin();
-    const usernameInput = screen.getByLabelText(/username/i) as HTMLInputElement;
-    expect(usernameInput.value).toBe('user');
+    const passphraseInput = screen.getByLabelText(/^passphrase$/i) as HTMLInputElement;
+    expect(passphraseInput.type).toBe('text');
   });
 
-  it('renders form with password pre-filled as "pass"', () => {
+  it('renders label "Passphrase" (not "Password") on login form', () => {
     renderLogin();
-    const passwordInput = screen.getByLabelText(/password/i) as HTMLInputElement;
-    expect(passwordInput.value).toBe('pass');
+    expect(screen.getByLabelText(/^passphrase$/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
   });
 
-  it('redirects to / on successful login', async () => {
+  it('renders form with username field', () => {
+    renderLogin();
+    expect(screen.getByLabelText(/^username$/i)).toBeInTheDocument();
+  });
+
+  // -- Login form submission tests --
+
+  it('submits login to /api/auth/login via loginWithCredentials', async () => {
     mockLoginWithCredentials.mockResolvedValue({ ok: true });
     const user = userEvent.setup();
 
     renderLogin();
 
-    await user.click(screen.getByRole('button', { name: /sign in/i }));
+    const usernameInput = screen.getByLabelText(/^username$/i);
+    const passphraseInput = screen.getByLabelText(/^passphrase$/i);
+
+    await user.type(usernameInput, 'student1');
+    await user.type(passphraseInput, 'green-dog-seven');
+
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => {
-      expect(mockLoginWithCredentials).toHaveBeenCalledWith('user', 'pass');
-      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+      expect(mockLoginWithCredentials).toHaveBeenCalledWith('student1', 'green-dog-seven');
     });
   });
 
-  it('shows error message on 401 (invalid credentials)', async () => {
+  it('calls window.location.assign("/account") on successful login', async () => {
+    mockLoginWithCredentials.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+
+    renderLogin();
+
+    const usernameInput = screen.getByLabelText(/^username$/i);
+    const passphraseInput = screen.getByLabelText(/^passphrase$/i);
+
+    await user.type(usernameInput, 'student1');
+    await user.type(passphraseInput, 'green-dog-seven');
+
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    await waitFor(() => {
+      expect(mockLocationAssign).toHaveBeenCalledWith('/account');
+    });
+  });
+
+  it('shows inline error on 401 from login', async () => {
+    mockLoginWithCredentials.mockResolvedValue({
+      ok: false,
+      error: 'Invalid username or password',
+    });
+    const user = userEvent.setup();
+
+    renderLogin();
+
+    const usernameInput = screen.getByLabelText(/^username$/i);
+    const passphraseInput = screen.getByLabelText(/^passphrase$/i);
+
+    await user.type(usernameInput, 'student1');
+    await user.type(passphraseInput, 'wrong');
+
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Invalid username or password');
+    });
+    expect(mockLocationAssign).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect when login credentials are invalid', async () => {
     mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid credentials' });
     const user = userEvent.setup();
 
     renderLogin();
 
-    await user.click(screen.getByRole('button', { name: /sign in/i }));
+    const usernameInput = screen.getByLabelText(/^username$/i);
+    const passphraseInput = screen.getByLabelText(/^passphrase$/i);
 
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Invalid credentials');
-    });
-    expect(mockNavigate).not.toHaveBeenCalled();
-  });
+    await user.type(usernameInput, 'student1');
+    await user.type(passphraseInput, 'bad');
 
-  it('does not redirect when credentials are invalid', async () => {
-    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid username or password' });
-    const user = userEvent.setup();
-
-    renderLogin();
-
-    await user.click(screen.getByRole('button', { name: /sign in/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockLocationAssign).not.toHaveBeenCalled();
   });
 
-  it('calls loginWithCredentials with typed credentials', async () => {
-    mockLoginWithCredentials.mockResolvedValue({ ok: true });
-    const user = userEvent.setup();
+  // -- Signup disclosure panel tests --
 
+  it('renders the signup disclosure panel with correct label', () => {
+    renderLogin();
+    expect(
+      screen.getByText(/new student\? sign up with a class passphrase/i),
+    ).toBeInTheDocument();
+  });
+
+  it('signup form is hidden by default', () => {
+    renderLogin();
+    expect(screen.queryByRole('button', { name: /^sign up$/i })).not.toBeInTheDocument();
+  });
+
+  it('expanding the disclosure reveals the signup form', async () => {
+    const user = userEvent.setup();
     renderLogin();
 
-    const usernameInput = screen.getByLabelText(/username/i);
-    const passwordInput = screen.getByLabelText(/password/i);
+    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
 
-    await user.clear(usernameInput);
-    await user.type(usernameInput, 'admin');
-    await user.clear(passwordInput);
-    await user.type(passwordInput, 'admin');
+    expect(screen.getByRole('button', { name: /^sign up$/i })).toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole('button', { name: /sign in/i }));
+  it('signup form has username and passphrase fields', async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
+
+    // After expanding, there should be two username/passphrase field pairs
+    const usernameInputs = screen.getAllByLabelText(/^username$/i);
+    expect(usernameInputs.length).toBeGreaterThanOrEqual(1);
+
+    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
+    expect(passphraseInputs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('signup passphrase input is type="text"', async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
+
+    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i) as HTMLInputElement[];
+    passphraseInputs.forEach((input) => {
+      expect(input.type).toBe('text');
+    });
+  });
+
+  it('submits signup form to /api/auth/passphrase-signup', async () => {
+    mockFetchStatus({}, (url) => {
+      if (url === '/api/auth/passphrase-signup') {
+        return makeJsonResponse(200, { ok: true });
+      }
+      return null;
+    });
+
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
+
+    const usernameInputs = screen.getAllByLabelText(/^username$/i);
+    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
+
+    // The signup form inputs are the last ones in the DOM
+    const signupUsername = usernameInputs[usernameInputs.length - 1];
+    const signupPassphrase = passphraseInputs[passphraseInputs.length - 1];
+
+    await user.type(signupUsername, 'newstudent');
+    await user.type(signupPassphrase, 'blue-fish-nine');
+
+    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
 
     await waitFor(() => {
-      expect(mockLoginWithCredentials).toHaveBeenCalledWith('admin', 'admin');
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/auth/passphrase-signup',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ username: 'newstudent', passphrase: 'blue-fish-nine' }),
+        }),
+      );
     });
+  });
+
+  it('calls window.location.assign("/account") on successful signup', async () => {
+    mockFetchStatus({}, (url) => {
+      if (url === '/api/auth/passphrase-signup') {
+        return makeJsonResponse(200, { ok: true });
+      }
+      return null;
+    });
+
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
+
+    const usernameInputs = screen.getAllByLabelText(/^username$/i);
+    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
+
+    const signupUsername = usernameInputs[usernameInputs.length - 1];
+    const signupPassphrase = passphraseInputs[passphraseInputs.length - 1];
+
+    await user.type(signupUsername, 'newstudent');
+    await user.type(signupPassphrase, 'blue-fish-nine');
+
+    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
+
+    await waitFor(() => {
+      expect(mockLocationAssign).toHaveBeenCalledWith('/account');
+    });
+  });
+
+  it('shows "Invalid or expired passphrase" on 401 from signup', async () => {
+    mockFetchStatus({}, (url) => {
+      if (url === '/api/auth/passphrase-signup') {
+        return makeJsonResponse(401, { error: 'Passphrase not found' });
+      }
+      return null;
+    });
+
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
+
+    const usernameInputs = screen.getAllByLabelText(/^username$/i);
+    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
+
+    const signupUsername = usernameInputs[usernameInputs.length - 1];
+    const signupPassphrase = passphraseInputs[passphraseInputs.length - 1];
+
+    await user.type(signupUsername, 'newstudent');
+    await user.type(signupPassphrase, 'wrong-phrase');
+
+    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Invalid or expired passphrase');
+    });
+    expect(mockLocationAssign).not.toHaveBeenCalled();
+  });
+
+  it('shows "That username is already taken" on 409 from signup', async () => {
+    mockFetchStatus({}, (url) => {
+      if (url === '/api/auth/passphrase-signup') {
+        return makeJsonResponse(409, { error: 'Username taken' });
+      }
+      return null;
+    });
+
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
+
+    const usernameInputs = screen.getAllByLabelText(/^username$/i);
+    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
+
+    const signupUsername = usernameInputs[usernameInputs.length - 1];
+    const signupPassphrase = passphraseInputs[passphraseInputs.length - 1];
+
+    await user.type(signupUsername, 'takenuser');
+    await user.type(signupPassphrase, 'valid-phrase');
+
+    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('That username is already taken');
+    });
+    expect(mockLocationAssign).not.toHaveBeenCalled();
   });
 
   // -- Provider button tests --
@@ -154,10 +374,12 @@ describe('Login', () => {
       mockFetchStatus({});
       renderLogin();
 
-      // Wait for the hook to resolve
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith('/api/integrations/status');
       });
+
+      // Give state update a moment to propagate
+      await new Promise((r) => setTimeout(r, 50));
 
       expect(screen.queryByText(/sign in with github/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/sign in with google/i)).not.toBeInTheDocument();
@@ -171,6 +393,8 @@ describe('Login', () => {
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith('/api/integrations/status');
       });
+
+      await new Promise((r) => setTimeout(r, 50));
 
       expect(screen.queryByText(/or sign in with/i)).not.toBeInTheDocument();
     });
@@ -238,21 +462,20 @@ describe('Login', () => {
       });
     });
 
-    it('demo form still renders when providers are configured', async () => {
+    it('login form still renders when providers are configured', async () => {
       mockFetchStatus({ github: true, google: true, pike13: true });
       renderLogin();
 
       // Form is present immediately (synchronous render)
-      expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+      expect(screen.getByLabelText(/^username$/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^passphrase$/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
     });
 
     it('shows no provider buttons when fetch fails (graceful failure)', async () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
       renderLogin();
 
-      // After the fetch failure resolves, loading becomes false but all are false
       await waitFor(() => {
         expect(fetch).toHaveBeenCalledWith('/api/integrations/status');
       });
