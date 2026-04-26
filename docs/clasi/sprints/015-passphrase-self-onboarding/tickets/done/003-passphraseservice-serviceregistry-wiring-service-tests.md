@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: PassphraseService + ServiceRegistry wiring + service tests
-status: in-progress
+status: done
 use-cases:
 - SUC-001
 - SUC-002

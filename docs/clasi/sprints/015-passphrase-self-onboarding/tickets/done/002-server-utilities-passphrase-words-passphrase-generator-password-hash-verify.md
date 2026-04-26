@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: "Server utilities \u2014 passphrase-words, passphrase generator, password hash/verify"
-status: in-progress
+status: done
 use-cases:
 - SUC-001
 - SUC-002

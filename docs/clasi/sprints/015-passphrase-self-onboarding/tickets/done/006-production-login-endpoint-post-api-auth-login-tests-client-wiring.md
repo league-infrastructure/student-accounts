@@ -1,7 +1,7 @@
 ---
 id: '006'
 title: Production login endpoint (POST /api/auth/login) + tests + client wiring
-status: in-progress
+status: done
 use-cases:
 - SUC-006
 depends-on:

@@ -2,7 +2,7 @@
 id: 008
 title: "Login.tsx \u2014 real login endpoint + passphrase-signup disclosure panel\
   \ + tests"
-status: in-progress
+status: done
 use-cases:
 - SUC-004
 - SUC-005
