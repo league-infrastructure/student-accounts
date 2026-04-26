@@ -146,8 +146,14 @@ export function configurePassport(
     try {
       const user = await userService.findById(id);
       done(null, user);
-    } catch (err) {
-      // NotFoundError or DB error — treat as unauthenticated
+    } catch (err: any) {
+      // NotFoundError → the user was deleted (or soft-deactivated)
+      // while their session was still alive. Treat the request as
+      // unauthenticated cleanly so the next request hits the login
+      // flow instead of crashing with "user not found".
+      if (err?.name === 'NotFoundError' || err?.statusCode === 404) {
+        return done(null, false);
+      }
       done(err, false);
     }
   });

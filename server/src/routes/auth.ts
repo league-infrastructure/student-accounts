@@ -16,6 +16,7 @@ import passport from 'passport';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { StaffOULookupError } from '../services/google-workspace/google-workspace-admin.client.js';
+import { PermanentlyDeniedError } from '../services/auth/sign-in.handler.js';
 import { AuditService } from '../services/audit.service.js';
 import { createLogger } from '../services/logger.js';
 
@@ -130,9 +131,18 @@ authRouter.get('/auth/me', async (req: Request, res: Response) => {
   const user = req.user as any;
   const realAdmin = (req as any).realAdmin as any | undefined;
 
-  // Re-fetch from DB to get fresh data
+  // Re-fetch from DB to get fresh data. If the user was deleted or
+  // soft-deactivated while the session was alive, blow the session
+  // away so the client redirects to the login flow instead of holding
+  // onto a phantom identity.
   const fresh = await prisma.user.findUnique({ where: { id: user.id } });
-  const effectiveUser = fresh ?? user;
+  if (!fresh || fresh.is_active === false) {
+    req.session.destroy(() => {
+      res.status(401).json({ error: 'Not authenticated' });
+    });
+    return;
+  }
+  const effectiveUser = fresh;
 
   res.json({
     id: effectiveUser.id,
@@ -279,6 +289,13 @@ authRouter.get(
             );
             return res.redirect('/?error=staff_lookup_failed');
           }
+          if (err instanceof PermanentlyDeniedError) {
+            logger.warn(
+              { userId: err.userId },
+              '[google-callback] PermanentlyDeniedError, redirecting'
+            );
+            return res.redirect('/login?error=permanently_denied');
+          }
           logger.error({}, '[google-callback] generic error, redirecting');
           return res.redirect('/?error=oauth_denied');
         }
@@ -312,6 +329,18 @@ authRouter.get(
           // 'linked' or 'already_linked' → success / idempotent.
           logger.info({}, '[google-callback] link succeeded, redirecting to /account');
           return res.redirect('/account');
+        }
+
+        // Approval gate: only auto-approved users (staff/admin via the
+        // /Staff OU) get a session at sign-in. Everyone else lands on
+        // the login page with a "pending approval" message and waits
+        // for an admin to approve them in the dashboard.
+        if ((user as any).approval_status === 'pending') {
+          logger.info(
+            { userId: (user as any).id, email: (user as any).primary_email },
+            '[google-callback] user is pending approval — denying session establishment'
+          );
+          return res.redirect('/login?error=pending_approval');
         }
 
         // Normal sign-in path.
@@ -415,11 +444,19 @@ authRouter.get(
           { hasErr: !!err, hasUser: !!user },
           '[github-callback] passport.authenticate callback fired'
         );
-        if (err || !user) {
-          logger.error(
-            { hasErr: !!err, hasUser: !!user },
-            '[github-callback] authentication failed'
-          );
+        if (err) {
+          logger.error({ err }, '[github-callback] authentication error');
+          if (err instanceof PermanentlyDeniedError) {
+            logger.warn(
+              { userId: err.userId },
+              '[github-callback] PermanentlyDeniedError, redirecting'
+            );
+            return res.redirect('/login?error=permanently_denied');
+          }
+          return res.redirect('/?error=oauth_denied');
+        }
+        if (!user) {
+          logger.error({}, '[github-callback] no user returned by passport');
           return res.redirect('/?error=oauth_denied');
         }
 
@@ -446,6 +483,16 @@ authRouter.get(
           // 'linked' or 'already_linked' → success / idempotent.
           logger.info({}, '[github-callback] link succeeded, redirecting to /account');
           return res.redirect('/account');
+        }
+
+        // Approval gate — same rule as Google: pending users wait for
+        // an admin to approve them.
+        if ((user as any).approval_status === 'pending') {
+          logger.info(
+            { userId: (user as any).id, email: (user as any).primary_email },
+            '[github-callback] user is pending approval — denying session establishment'
+          );
+          return res.redirect('/login?error=pending_approval');
         }
 
         // Normal sign-in path.

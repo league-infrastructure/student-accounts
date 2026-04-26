@@ -40,9 +40,9 @@ beforeEach(() => {
   mockLocationAssign.mockReset();
 });
 
-function renderLogin() {
+function renderLogin(initialEntry: string = '/login') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Login />
     </MemoryRouter>,
   );
@@ -157,5 +157,15 @@ describe('Login page', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(/username is already taken/i);
     });
+  });
+
+  it('shows the pending-approval message when ?error=pending_approval is present', () => {
+    renderLogin('/login?error=pending_approval');
+    expect(screen.getByRole('alert')).toHaveTextContent(/awaiting approval/i);
+  });
+
+  it('shows the permanently-denied message when ?error=permanently_denied is present', () => {
+    renderLogin('/login?error=permanently_denied');
+    expect(screen.getByRole('alert')).toHaveTextContent(/has been denied/i);
   });
 });

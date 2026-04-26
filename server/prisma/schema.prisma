@@ -98,6 +98,8 @@ enum ProvisioningStatus {
 enum UserApprovalStatus {
   approved
   pending
+  rejected
+  rejected_permanent
 }
 
 enum MergeStatus {

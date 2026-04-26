@@ -262,6 +262,11 @@ describe('Scenario 1: full session lifecycle — sign-in → protected route →
   it('establishes session on sign-in, allows access, then returns 401 after logout', async () => {
     const agent = request.agent(app);
 
+    // Pre-seed an approved user — under the post-Sprint-015 approval gate,
+    // brand-new social_login users are pending and never get a session.
+    // Step 3a of signInHandler matches the existing user by email.
+    await makeUser({ primary_email: 'lifecycle@example.com', display_name: 'Lifecycle User' });
+
     // Step 1: sign in via Google
     mockGoogleStrategy.setProfile({
       id: 'flow-uid-lifecycle',
@@ -330,6 +335,13 @@ describe('Scenario 1: full session lifecycle — sign-in → protected route →
 
 describe('Scenario 2: cross-provider — Google User A and GitHub User B are separate accounts', () => {
   it('creates two distinct User rows for the same real person using different providers', async () => {
+    // Pre-seed approved users — see Scenario 1 note.
+    await makeUser({ primary_email: 'crossperson@example.com', display_name: 'Cross Provider Google' });
+    await makeUser({
+      primary_email: 'crossperson-gh@example.com',
+      display_name: 'Cross Provider GitHub',
+    });
+
     // Google sign-in — creates User A
     mockGoogleStrategy.setProfile({
       id: 'cross-provider-google-uid',
@@ -388,6 +400,10 @@ describe('Scenario 2: cross-provider — Google User A and GitHub User B are sep
   });
 
   it('each cross-provider session carries its own distinct userId', async () => {
+    // Pre-seed approved users — see Scenario 1 note.
+    await makeUser({ primary_email: 'crosssession-google@example.com', display_name: 'Cross Session Google' });
+    await makeUser({ primary_email: 'crosssession-github@example.com', display_name: 'Cross Session GitHub' });
+
     const googleAgent = request.agent(app);
     const githubAgent = request.agent(app);
 
@@ -429,6 +445,12 @@ describe('Scenario 2: cross-provider — Google User A and GitHub User B are sep
 describe('Scenario 3: authenticated student hits admin route → 403 (not 401)', () => {
   it('returns 403 (not 401) when a student hits an admin-only route', async () => {
     const agent = request.agent(app);
+
+    // Pre-seed approved user — see Scenario 1 note.
+    await makeUser({
+      primary_email: 'student-admin-attempt@example.com',
+      display_name: 'Student Attempting Admin',
+    });
 
     // Sign in as a student
     mockGoogleStrategy.setProfile({
@@ -479,6 +501,12 @@ describe('Scenario 4: @students.jointheleague.org — OU lookup never invoked', 
   });
 
   it('does not invoke the Admin Directory client for @students.jointheleague.org', async () => {
+    // Pre-seed approved user — see Scenario 1 note.
+    await makeUser({
+      primary_email: 'jane@students.jointheleague.org',
+      display_name: 'Students Domain User',
+    });
+
     // A strict client that will fail the test if it is ever called.
     const strictClient = {
       getUserOU: async (email: string): Promise<string> => {
@@ -518,6 +546,12 @@ describe('Scenario 4: @students.jointheleague.org — OU lookup never invoked', 
   });
 
   it('assigns role=student (not staff) for @students.jointheleague.org regardless of client', async () => {
+    // Pre-seed approved user — see Scenario 1 note.
+    await makeUser({
+      primary_email: 'bob@students.jointheleague.org',
+      display_name: 'Students Domain User 2',
+    });
+
     // Double-check with a client that would return a staff OU if called.
     // The handler must ignore it because the domain does not match @jointheleague.org.
     let lookupCalled = false;
@@ -646,6 +680,12 @@ describe('Scenario 5: existing Login found — session established, no new recor
 
 describe('Scenario 6: session persistence across multiple requests via cookie jar', () => {
   it('remains authenticated across three consecutive requests', async () => {
+    // Pre-seed approved user — see Scenario 1 note.
+    await makeUser({
+      primary_email: 'session-persist@example.com',
+      display_name: 'Session Persist User',
+    });
+
     const agent = request.agent(app);
 
     // Sign in
@@ -673,6 +713,12 @@ describe('Scenario 6: session persistence across multiple requests via cookie ja
   });
 
   it('a new agent (no cookie jar) cannot access a protected route', async () => {
+    // Pre-seed approved user — see Scenario 1 note.
+    await makeUser({
+      primary_email: 'session-isolation@example.com',
+      display_name: 'Session Isolation User',
+    });
+
     // The authenticated agent's session is not shared with a plain request
     const agent = request.agent(app);
 

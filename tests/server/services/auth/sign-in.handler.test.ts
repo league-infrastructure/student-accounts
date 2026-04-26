@@ -20,6 +20,7 @@ import {
   _setAdminEmails,
   resolveStaffOuPath,
   DEFAULT_STAFF_OU_PATH,
+  PermanentlyDeniedError,
 } from '../../../../server/src/services/auth/sign-in.handler.js';
 import { StaffOULookupError } from '../../../../server/src/services/google-workspace/google-workspace-admin.client.js';
 import { FakeGoogleWorkspaceAdminClient } from '../../helpers/fake-google-workspace-admin.client.js';
@@ -1011,5 +1012,93 @@ describe('signInHandler — skips OU lookup when GOOGLE_STAFF_OU_PATH is unset',
     );
 
     expect(user.role).toBe('student');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Denied-account re-entry: rejected (re-tryable) vs rejected_permanent
+// ---------------------------------------------------------------------------
+
+describe('signInHandler — denied-account re-entry', () => {
+  it('reactivates a rejected (non-permanent) user back into the approval queue when they re-OAuth', async () => {
+    const denied = await makeUser({ primary_email: 'denied-reapply@example.com' });
+    await (prisma as any).user.update({
+      where: { id: denied.id },
+      data: { is_active: false, approval_status: 'rejected' },
+    });
+    await makeLogin(denied, {
+      provider: 'google',
+      provider_user_id: 'google-uid-denied-reapply',
+    });
+
+    const result = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-denied-reapply',
+        providerEmail: 'denied-reapply@example.com',
+        displayName: 'Denied Re-Apply',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+    );
+
+    expect(result.id).toBe(denied.id);
+    expect(result.is_active).toBe(true);
+    expect(result.approval_status).toBe('pending');
+  });
+
+  it('throws PermanentlyDeniedError for a rejected_permanent user re-OAuthing via existing Login', async () => {
+    const banned = await makeUser({ primary_email: 'banned-existing-login@example.com' });
+    await (prisma as any).user.update({
+      where: { id: banned.id },
+      data: { is_active: false, approval_status: 'rejected_permanent' },
+    });
+    await makeLogin(banned, {
+      provider: 'google',
+      provider_user_id: 'google-uid-banned-existing-login',
+    });
+
+    await expect(
+      signInHandler(
+        'google',
+        {
+          providerUserId: 'google-uid-banned-existing-login',
+          providerEmail: 'banned-existing-login@example.com',
+          displayName: 'Banned User',
+          providerUsername: null,
+        },
+        userService,
+        loginService,
+      ),
+    ).rejects.toBeInstanceOf(PermanentlyDeniedError);
+
+    // User row must remain banned — no reactivation
+    const after = await (prisma as any).user.findUnique({ where: { id: banned.id } });
+    expect(after.is_active).toBe(false);
+    expect(after.approval_status).toBe('rejected_permanent');
+  });
+
+  it('throws PermanentlyDeniedError for a rejected_permanent user matched only by email (no Login row yet)', async () => {
+    const banned = await makeUser({ primary_email: 'banned-by-email@example.com' });
+    await (prisma as any).user.update({
+      where: { id: banned.id },
+      data: { is_active: false, approval_status: 'rejected_permanent' },
+    });
+    // No Login row — the user reaches step 3a (lookup by email) instead of step 1.
+
+    await expect(
+      signInHandler(
+        'google',
+        {
+          providerUserId: 'google-uid-banned-by-email',
+          providerEmail: 'banned-by-email@example.com',
+          displayName: 'Banned By Email',
+          providerUsername: null,
+        },
+        userService,
+        loginService,
+      ),
+    ).rejects.toBeInstanceOf(PermanentlyDeniedError);
   });
 });
