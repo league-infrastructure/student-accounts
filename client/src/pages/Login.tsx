@@ -1,5 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  staff_only:
+    'Google sign-in is restricted to staff accounts. Make sure you used your @jointheleague.org account in the Staff organizational unit. Students should use a class passphrase instead.',
+  staff_lookup_failed:
+    "Couldn't verify your Google Workspace organizational unit. Try again, or contact an admin.",
+  oauth_denied: 'Sign-in was cancelled or failed. Try again.',
+  already_linked: 'That Google account is already linked to a different user.',
+};
 
 /**
  * Single sign-in form: username + passphrase.
@@ -15,10 +25,19 @@ import { useAuth } from '../context/AuthContext';
  */
 export default function Login() {
   const { loginWithCredentials } = useAuth();
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Surface OAuth-callback errors that came in via ?error=... query param.
+  useEffect(() => {
+    const code = searchParams.get('error');
+    if (code && OAUTH_ERROR_MESSAGES[code]) {
+      setError(OAUTH_ERROR_MESSAGES[code]);
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

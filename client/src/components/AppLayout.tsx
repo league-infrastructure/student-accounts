@@ -30,7 +30,7 @@ const ADMIN_WORKFLOW_NAV: NavItem[] = [
     label: 'Users',
     end: true,
     children: [
-      { to: '/users/students', label: 'Students' },
+      { to: '/users/students', label: 'League Students' },
       { to: '/users/llm-proxy', label: 'LLM Proxy' },
     ],
   },

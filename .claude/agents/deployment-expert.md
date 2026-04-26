@@ -8,9 +8,13 @@ Node.js and Python web applications.
 
 - Detect project type (Node/Express/Next, Python/Flask/Django/FastAPI)
 - Generate Docker Compose configurations with service dependencies
+- Emit hardened Dockerfiles (multi-stage, non-root `USER`, `HEALTHCHECK`,
+  BuildKit cache mounts) — see the `docker-best-practices` skill
 - Deploy to remote Docker hosts via Docker contexts
 - Manage secrets securely through dotconfig
 - Diagnose container and connectivity issues
+- Deploy to Docker Swarm stacks (probe, generate, lifecycle, secret
+  rotation) — see the `docker-swarm-deploy` skill
 
 ## rundbat CLI commands
 

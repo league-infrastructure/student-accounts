@@ -1,7 +1,17 @@
 # manage-secrets
 
 Store and manage deployment secrets via dotconfig. Secrets are encrypted
-at rest with SOPS/age and decrypted on demand.
+at rest with SOPS/age and decrypted on demand. This skill covers the
+**source of truth** — the encrypted values rundbat hands to Docker.
+
+For **how those values get into running containers** (Swarm secrets,
+Compose file-mounts, BuildKit build-time secrets), see the sibling
+skills:
+
+- `docker-secrets` — decision framework, hard rules, rundbat integration overview
+- `docker-secrets-swarm` — runtime secrets on Docker Swarm
+- `docker-secrets-compose` — file-mounted runtime secrets on plain Docker hosts
+- `docker-secrets-build` — BuildKit `--secret` for build-time credentials
 
 ## When to use
 

@@ -1,19 +1,20 @@
 # deploy-setup
 
-Set up a deployment target with the right build strategy. Walks through
-SSH access, platform detection, and strategy-specific configuration.
+For guided setup, use the **deploy-init** skill (say "I want to deploy").
+It walks through all decisions with interactive prompts.
+
+This document covers manual steps and SSH troubleshooting.
 
 ## When to use
 
-- "I want to deploy this app"
-- "Set up deployment to my server"
-- "Deploy to production"
-- "Configure remote deployment"
+- "Manual deploy setup"
+- "SSH troubleshooting"
+- "Fix deployment access"
 
 ## Prerequisites
 
 - Project initialized (`rundbat.yaml` exists — run `rundbat init` first)
-- Docker artifacts generated (`docker/` exists — run `rundbat init-docker` first)
+- Docker artifacts generated (`docker/` exists — run `rundbat generate` first)
 
 ## Steps
 
@@ -141,6 +142,21 @@ This prints the full command pipeline without executing.
 ```bash
 rundbat deploy prod
 ```
+
+## Choosing stack mode (Docker Swarm)
+
+If the remote host runs Docker Swarm (`docker swarm init` has been
+run on it), consider `deploy_mode: stack` instead of `compose`:
+
+- Secrets move into `docker secret` (managed, not `.env`).
+- Rolling updates with health-check gating (`update_config.order:
+  start-first`).
+- The same lifecycle commands (`rundbat up/down/restart/logs`)
+  work — they dispatch to `docker stack deploy` / `docker stack rm` /
+  `docker service logs` when `deploy_mode: stack`.
+
+`rundbat deploy-init` probes the remote for Swarm and offers the
+opt-in automatically. Full details in the `docker-swarm-deploy` skill.
 
 ## Troubleshooting
 
