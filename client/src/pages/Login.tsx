@@ -3,8 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  staff_only:
-    'Google sign-in is restricted to staff accounts. Make sure you used your @jointheleague.org account in the Staff organizational unit. Students should use a class passphrase instead.',
   staff_lookup_failed:
     "Couldn't verify your Google Workspace organizational unit. Try again, or contact an admin.",
   oauth_denied: 'Sign-in was cancelled or failed. Try again.',
