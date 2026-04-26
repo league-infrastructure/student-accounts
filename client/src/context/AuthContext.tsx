@@ -83,26 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: string,
     password: string,
   ): Promise<{ ok: boolean; error?: string }> {
-    // Dev-only shortcut. Maps template credentials to test-login payloads.
-    // user/pass → student, admin/admin → admin, anything else → 401.
-    const mapping: Record<string, { email: string; role: string }> = {
-      'user:pass': { email: 'user@example.com', role: 'student' },
-      'admin:admin': { email: 'eric.busboom@jointheleague.org', role: 'admin' },
-    };
-    const match = mapping[`${username}:${password}`];
-    if (!match) {
-      return { ok: false, error: 'Invalid credentials' };
-    }
     try {
-      const res = await fetch('/api/auth/test-login', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          email: match.email,
-          role: match.role,
-          displayName: username,
-        }),
+        body: JSON.stringify({ username, password }),
       });
       if (res.ok) {
         await fetchMe();
