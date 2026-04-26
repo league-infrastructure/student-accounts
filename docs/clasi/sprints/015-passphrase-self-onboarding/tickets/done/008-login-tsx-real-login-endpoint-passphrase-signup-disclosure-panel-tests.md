@@ -1,13 +1,14 @@
 ---
-id: '008'
-title: "Login.tsx — real login endpoint + passphrase-signup disclosure panel + tests"
-status: todo
+id: 008
+title: "Login.tsx \u2014 real login endpoint + passphrase-signup disclosure panel\
+  \ + tests"
+status: in-progress
 use-cases:
-  - SUC-004
-  - SUC-005
-  - SUC-006
+- SUC-004
+- SUC-005
+- SUC-006
 depends-on:
-  - '006'
+- '006'
 github-issue: ''
 todo: plan-passphrase-self-onboarding.md
 ---
@@ -23,22 +24,22 @@ Complete the client-side authentication UI. Ticket 006 already wired the main lo
 
 ### Login.tsx changes
 
-- [ ] Main login form (username + passphrase fields) POSTs to `/api/auth/login` (done in Ticket 006; verify in tests here).
-- [ ] Password/passphrase input is `type="text"` so students can see what they're typing.
-- [ ] Labels read "Username" and "Passphrase".
-- [ ] A disclosure/collapsible section below the OAuth buttons is labeled "New student? Sign up with a class passphrase".
-- [ ] Expanding the disclosure reveals a signup form with the same "Username" and "Passphrase" fields, POSTing to `POST /api/auth/passphrase-signup`.
-- [ ] Both forms share the same input component and validation feedback pattern.
-- [ ] On `200` from either form: `window.location.assign('/account')`.
-- [ ] On `401` (login form): inline error "Invalid username or password".
-- [ ] On `401` (signup form): inline error "Invalid or expired passphrase".
-- [ ] On `409` (signup form): inline error "That username is already taken".
-- [ ] On `400` (signup form): inline error from the server's `error` field.
-- [ ] Disclosure is closed by default; opening one form does not affect the other.
+- [x] Main login form (username + passphrase fields) POSTs to `/api/auth/login` (done in Ticket 006; verify in tests here).
+- [x] Password/passphrase input is `type="text"` so students can see what they're typing.
+- [x] Labels read "Username" and "Passphrase".
+- [x] A disclosure/collapsible section below the OAuth buttons is labeled "New student? Sign up with a class passphrase".
+- [x] Expanding the disclosure reveals a signup form with the same "Username" and "Passphrase" fields, POSTing to `POST /api/auth/passphrase-signup`.
+- [x] Both forms share the same input component and validation feedback pattern.
+- [x] On `200` from either form: `window.location.assign('/account')`.
+- [x] On `401` (login form): inline error "Invalid username or password".
+- [x] On `401` (signup form): inline error "Invalid or expired passphrase".
+- [x] On `409` (signup form): inline error "That username is already taken".
+- [x] On `400` (signup form): inline error from the server's `error` field.
+- [x] Disclosure is closed by default; opening one form does not affect the other.
 
 ### Tests
 
-- [ ] `tests/client/Login.test.tsx` extended or rewritten (per TODO) to cover:
+- [x] `tests/client/Login.test.tsx` extended or rewritten (per TODO) to cover:
   - Login form submits to `/api/auth/login` (not `test-login`).
   - Login form passphrase input has `type="text"`.
   - Login form 200 → `window.location.assign('/account')`.
@@ -49,8 +50,8 @@ Complete the client-side authentication UI. Ticket 006 already wired the main lo
   - Signup form 200 → `window.location.assign('/account')`.
   - Signup form 401 → inline "Invalid or expired passphrase".
   - Signup form 409 → inline "That username is already taken".
-- [ ] `npx tsc --noEmit` in `client/` shows no new errors.
-- [ ] `npm run test:client` passes with the updated suite included.
+- [x] `npx tsc --noEmit` in `client/` shows no new errors.
+- [x] `npm run test:client` passes with the updated suite included.
 
 ## Implementation Plan
 
