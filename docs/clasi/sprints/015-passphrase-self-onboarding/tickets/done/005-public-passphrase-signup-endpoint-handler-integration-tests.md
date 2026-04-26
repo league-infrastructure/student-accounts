@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: Public passphrase-signup endpoint + handler + integration tests
-status: in-progress
+status: done
 use-cases:
 - SUC-004
 - SUC-005

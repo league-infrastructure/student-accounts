@@ -1,7 +1,7 @@
 ---
 id: '004'
 title: Admin passphrase routes (cohorts + groups) + integration tests
-status: in-progress
+status: done
 use-cases:
 - SUC-001
 - SUC-002
