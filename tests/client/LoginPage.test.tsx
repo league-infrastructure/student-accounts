@@ -35,43 +35,10 @@ Object.defineProperty(window, 'location', {
   writable: true,
 });
 
-// ---- Helpers ----
-
-/** Build a fetch mock that returns the given provider status from /api/integrations/status.
- *  Additional handlers can be passed as an optional override function.
- */
-function mockFetchStatus(
-  status: { github?: boolean; google?: boolean; pike13?: boolean },
-  overrides?: (url: string, init?: RequestInit) => Response | null,
-) {
-  globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (overrides) {
-      const result = overrides(url, init);
-      if (result !== null) return Promise.resolve(result);
-    }
-    if (url === '/api/integrations/status') {
-      return Promise.resolve({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            github: { configured: !!status.github },
-            google: { configured: !!status.google },
-            pike13: { configured: !!status.pike13 },
-          }),
-      });
-    }
-    // Default: network error for unexpected fetches
-    return Promise.reject(new Error(`Unexpected fetch: ${url}`));
-  });
-}
-
-function makeJsonResponse(status: number, body: object): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
-}
+beforeEach(() => {
+  mockLoginWithCredentials.mockReset();
+  mockLocationAssign.mockReset();
+});
 
 function renderLogin() {
   return render(
@@ -81,436 +48,114 @@ function renderLogin() {
   );
 }
 
-// ---- Tests ----
-
-describe('Login', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockLocationAssign.mockClear();
-    // Default: all providers unconfigured
-    mockFetchStatus({});
+describe('Login page', () => {
+  it('renders one Username field and one Passphrase field, both visible', () => {
+    renderLogin();
+    const username = screen.getByLabelText(/username/i);
+    const passphrase = screen.getByLabelText(/passphrase/i);
+    expect(username).toBeInTheDocument();
+    expect(passphrase).toBeInTheDocument();
+    // Passphrase must NOT be type="password" — students need to verify
+    // what they typed against what's in Slack.
+    expect(passphrase).toHaveAttribute('type', 'text');
   });
 
-  // -- Login form field type and label tests --
-
-  it('renders login passphrase input with type="text"', () => {
+  it('always renders the Google and GitHub OAuth buttons', () => {
     renderLogin();
-    const passphraseInput = screen.getByLabelText(/^passphrase$/i) as HTMLInputElement;
-    expect(passphraseInput.type).toBe('text');
+    expect(screen.getByRole('link', { name: /sign in with google/i })).toHaveAttribute(
+      'href',
+      '/api/auth/google',
+    );
+    expect(screen.getByRole('link', { name: /sign in with github/i })).toHaveAttribute(
+      'href',
+      '/api/auth/github',
+    );
   });
 
-  it('renders label "Passphrase" (not "Password") on login form', () => {
+  it('does NOT render a separate signup form / disclosure', () => {
     renderLogin();
-    expect(screen.getByLabelText(/^passphrase$/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
-  });
-
-  it('renders form with username field', () => {
-    renderLogin();
-    expect(screen.getByLabelText(/^username$/i)).toBeInTheDocument();
-  });
-
-  // -- Login form submission tests --
-
-  it('submits login to /api/auth/login via loginWithCredentials', async () => {
-    mockLoginWithCredentials.mockResolvedValue({ ok: true });
-    const user = userEvent.setup();
-
-    renderLogin();
-
-    const usernameInput = screen.getByLabelText(/^username$/i);
-    const passphraseInput = screen.getByLabelText(/^passphrase$/i);
-
-    await user.type(usernameInput, 'student1');
-    await user.type(passphraseInput, 'green-dog-seven');
-
-    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
-
-    await waitFor(() => {
-      expect(mockLoginWithCredentials).toHaveBeenCalledWith('student1', 'green-dog-seven');
-    });
-  });
-
-  it('calls window.location.assign("/account") on successful login', async () => {
-    mockLoginWithCredentials.mockResolvedValue({ ok: true });
-    const user = userEvent.setup();
-
-    renderLogin();
-
-    const usernameInput = screen.getByLabelText(/^username$/i);
-    const passphraseInput = screen.getByLabelText(/^passphrase$/i);
-
-    await user.type(usernameInput, 'student1');
-    await user.type(passphraseInput, 'green-dog-seven');
-
-    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
-
-    await waitFor(() => {
-      expect(mockLocationAssign).toHaveBeenCalledWith('/account');
-    });
-  });
-
-  it('shows inline error on 401 from login', async () => {
-    mockLoginWithCredentials.mockResolvedValue({
-      ok: false,
-      error: 'Invalid username or password',
-    });
-    const user = userEvent.setup();
-
-    renderLogin();
-
-    const usernameInput = screen.getByLabelText(/^username$/i);
-    const passphraseInput = screen.getByLabelText(/^passphrase$/i);
-
-    await user.type(usernameInput, 'student1');
-    await user.type(passphraseInput, 'wrong');
-
-    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Invalid username or password');
-    });
-    expect(mockLocationAssign).not.toHaveBeenCalled();
-  });
-
-  it('does not redirect when login credentials are invalid', async () => {
-    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid credentials' });
-    const user = userEvent.setup();
-
-    renderLogin();
-
-    const usernameInput = screen.getByLabelText(/^username$/i);
-    const passphraseInput = screen.getByLabelText(/^passphrase$/i);
-
-    await user.type(usernameInput, 'student1');
-    await user.type(passphraseInput, 'bad');
-
-    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-    });
-    expect(mockLocationAssign).not.toHaveBeenCalled();
-  });
-
-  // -- Signup disclosure panel tests --
-
-  it('renders the signup disclosure panel with correct label', () => {
-    renderLogin();
+    // The single form is the only form. There should be exactly one
+    // submit button. (OAuth links are <a>, not buttons.)
+    const submits = screen.getAllByRole('button', { name: /sign in/i });
+    expect(submits).toHaveLength(1);
+    // No "Sign up" submit button or expandable disclosure.
+    expect(screen.queryByRole('button', { name: /sign up/i })).not.toBeInTheDocument();
     expect(
-      screen.getByText(/new student\? sign up with a class passphrase/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/new student\? sign up with a class passphrase/i),
+    ).not.toBeInTheDocument();
   });
 
-  it('signup form is hidden by default', () => {
+  it('successful login redirects to /account', async () => {
+    mockLoginWithCredentials.mockResolvedValue({ ok: true });
     renderLogin();
-    expect(screen.queryByRole('button', { name: /^sign up$/i })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
+    await userEvent.type(screen.getByLabelText(/passphrase/i), 'purple-cactus-river');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await waitFor(() =>
+      expect(mockLoginWithCredentials).toHaveBeenCalledWith('alice', 'purple-cactus-river'),
+    );
+    await waitFor(() => expect(mockLocationAssign).toHaveBeenCalledWith('/account'));
   });
 
-  it('expanding the disclosure reveals the signup form', async () => {
-    const user = userEvent.setup();
-    renderLogin();
-
-    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
-
-    expect(screen.getByRole('button', { name: /^sign up$/i })).toBeInTheDocument();
-  });
-
-  it('signup form has username and passphrase fields', async () => {
-    const user = userEvent.setup();
-    renderLogin();
-
-    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
-
-    // After expanding, there should be two username/passphrase field pairs
-    const usernameInputs = screen.getAllByLabelText(/^username$/i);
-    expect(usernameInputs.length).toBeGreaterThanOrEqual(1);
-
-    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
-    expect(passphraseInputs.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('signup passphrase input is type="text"', async () => {
-    const user = userEvent.setup();
-    renderLogin();
-
-    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
-
-    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i) as HTMLInputElement[];
-    passphraseInputs.forEach((input) => {
-      expect(input.type).toBe('text');
-    });
-  });
-
-  it('submits signup form to /api/auth/passphrase-signup', async () => {
-    mockFetchStatus({}, (url) => {
-      if (url === '/api/auth/passphrase-signup') {
-        return makeJsonResponse(200, { ok: true });
-      }
-      return null;
+  it('falls through to signup when login returns 401, and redirects on signup success', async () => {
+    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid' });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 42, username: 'bob' }),
     });
 
-    const user = userEvent.setup();
     renderLogin();
+    await userEvent.type(screen.getByLabelText(/username/i), 'bob');
+    await userEvent.type(screen.getByLabelText(/passphrase/i), 'orange-pencil-cloud');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
-
-    const usernameInputs = screen.getAllByLabelText(/^username$/i);
-    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
-
-    // The signup form inputs are the last ones in the DOM
-    const signupUsername = usernameInputs[usernameInputs.length - 1];
-    const signupPassphrase = passphraseInputs[passphraseInputs.length - 1];
-
-    await user.type(signupUsername, 'newstudent');
-    await user.type(signupPassphrase, 'blue-fish-nine');
-
-    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
-
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
         '/api/auth/passphrase-signup',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ username: 'newstudent', passphrase: 'blue-fish-nine' }),
+          body: JSON.stringify({ username: 'bob', passphrase: 'orange-pencil-cloud' }),
         }),
-      );
-    });
+      ),
+    );
+    await waitFor(() => expect(mockLocationAssign).toHaveBeenCalledWith('/account'));
   });
 
-  it('calls window.location.assign("/account") on successful signup', async () => {
-    mockFetchStatus({}, (url) => {
-      if (url === '/api/auth/passphrase-signup') {
-        return makeJsonResponse(200, { ok: true });
-      }
-      return null;
+  it('shows a generic error when both login and signup fail', async () => {
+    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid' });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'Invalid or expired passphrase' }),
     });
 
-    const user = userEvent.setup();
     renderLogin();
-
-    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
-
-    const usernameInputs = screen.getAllByLabelText(/^username$/i);
-    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
-
-    const signupUsername = usernameInputs[usernameInputs.length - 1];
-    const signupPassphrase = passphraseInputs[passphraseInputs.length - 1];
-
-    await user.type(signupUsername, 'newstudent');
-    await user.type(signupPassphrase, 'blue-fish-nine');
-
-    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
+    await userEvent.type(screen.getByLabelText(/username/i), 'unknown');
+    await userEvent.type(screen.getByLabelText(/passphrase/i), 'bad-words-here');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(mockLocationAssign).toHaveBeenCalledWith('/account');
-    });
-  });
-
-  it('shows "Invalid or expired passphrase" on 401 from signup', async () => {
-    mockFetchStatus({}, (url) => {
-      if (url === '/api/auth/passphrase-signup') {
-        return makeJsonResponse(401, { error: 'Passphrase not found' });
-      }
-      return null;
-    });
-
-    const user = userEvent.setup();
-    renderLogin();
-
-    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
-
-    const usernameInputs = screen.getAllByLabelText(/^username$/i);
-    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
-
-    const signupUsername = usernameInputs[usernameInputs.length - 1];
-    const signupPassphrase = passphraseInputs[passphraseInputs.length - 1];
-
-    await user.type(signupUsername, 'newstudent');
-    await user.type(signupPassphrase, 'wrong-phrase');
-
-    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Invalid or expired passphrase');
+      expect(screen.getByRole('alert')).toHaveTextContent(/invalid username or passphrase/i);
     });
     expect(mockLocationAssign).not.toHaveBeenCalled();
   });
 
-  it('shows "That username is already taken" on 409 from signup', async () => {
-    mockFetchStatus({}, (url) => {
-      if (url === '/api/auth/passphrase-signup') {
-        return makeJsonResponse(409, { error: 'Username taken' });
-      }
-      return null;
+  it('shows a username-taken error when signup returns 409', async () => {
+    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid' });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'That username is already taken' }),
     });
 
-    const user = userEvent.setup();
     renderLogin();
-
-    await user.click(screen.getByText(/new student\? sign up with a class passphrase/i));
-
-    const usernameInputs = screen.getAllByLabelText(/^username$/i);
-    const passphraseInputs = screen.getAllByLabelText(/^passphrase$/i);
-
-    const signupUsername = usernameInputs[usernameInputs.length - 1];
-    const signupPassphrase = passphraseInputs[passphraseInputs.length - 1];
-
-    await user.type(signupUsername, 'takenuser');
-    await user.type(signupPassphrase, 'valid-phrase');
-
-    await user.click(screen.getByRole('button', { name: /^sign up$/i }));
+    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
+    await userEvent.type(screen.getByLabelText(/passphrase/i), 'pen-paper-river');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('That username is already taken');
-    });
-    expect(mockLocationAssign).not.toHaveBeenCalled();
-  });
-
-  // -- Provider button tests --
-
-  describe('provider buttons', () => {
-    it('shows no provider buttons when all providers are unconfigured', async () => {
-      mockFetchStatus({});
-      renderLogin();
-
-      await waitFor(() => {
-        expect(fetch).toHaveBeenCalledWith('/api/integrations/status');
-      });
-
-      // Give state update a moment to propagate
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(screen.queryByText(/sign in with github/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/sign in with google/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/sign in with pike 13/i)).not.toBeInTheDocument();
-    });
-
-    it('hides the divider when no providers are configured', async () => {
-      mockFetchStatus({});
-      renderLogin();
-
-      await waitFor(() => {
-        expect(fetch).toHaveBeenCalledWith('/api/integrations/status');
-      });
-
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(screen.queryByText(/or sign in with/i)).not.toBeInTheDocument();
-    });
-
-    it('shows only the GitHub button when only GitHub is configured', async () => {
-      mockFetchStatus({ github: true });
-      renderLogin();
-
-      await waitFor(() => {
-        expect(screen.getByText(/sign in with github/i)).toBeInTheDocument();
-      });
-
-      expect(screen.queryByText(/sign in with google/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/sign in with pike 13/i)).not.toBeInTheDocument();
-    });
-
-    it('GitHub button links to /api/auth/github', async () => {
-      mockFetchStatus({ github: true });
-      renderLogin();
-
-      await waitFor(() => {
-        expect(screen.getByText(/sign in with github/i)).toBeInTheDocument();
-      });
-
-      const githubLink = screen.getByText(/sign in with github/i).closest('a');
-      expect(githubLink).toHaveAttribute('href', '/api/auth/github');
-    });
-
-    it('shows all three provider buttons when all are configured', async () => {
-      mockFetchStatus({ github: true, google: true, pike13: true });
-      renderLogin();
-
-      await waitFor(() => {
-        expect(screen.getByText(/sign in with github/i)).toBeInTheDocument();
-      });
-
-      expect(screen.getByText(/sign in with google/i)).toBeInTheDocument();
-      expect(screen.getByText(/sign in with pike 13/i)).toBeInTheDocument();
-    });
-
-    it('renders provider buttons in GitHub, Google, Pike 13 order', async () => {
-      mockFetchStatus({ github: true, google: true, pike13: true });
-      renderLogin();
-
-      await waitFor(() => {
-        expect(screen.getByText(/sign in with github/i)).toBeInTheDocument();
-      });
-
-      const links = screen.getAllByRole('link');
-      const providerLinks = links.filter((l) =>
-        /sign in with (github|google|pike 13)/i.test(l.textContent ?? ''),
-      );
-
-      expect(providerLinks[0]).toHaveTextContent(/github/i);
-      expect(providerLinks[1]).toHaveTextContent(/google/i);
-      expect(providerLinks[2]).toHaveTextContent(/pike 13/i);
-    });
-
-    it('shows the divider when at least one provider is configured', async () => {
-      mockFetchStatus({ google: true });
-      renderLogin();
-
-      await waitFor(() => {
-        expect(screen.getByText(/or sign in with/i)).toBeInTheDocument();
-      });
-    });
-
-    it('login form still renders when providers are configured', async () => {
-      mockFetchStatus({ github: true, google: true, pike13: true });
-      renderLogin();
-
-      // Form is present immediately (synchronous render)
-      expect(screen.getByLabelText(/^username$/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/^passphrase$/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
-    });
-
-    it('shows no provider buttons when fetch fails (graceful failure)', async () => {
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
-      renderLogin();
-
-      await waitFor(() => {
-        expect(fetch).toHaveBeenCalledWith('/api/integrations/status');
-      });
-
-      // Give the state update a moment to propagate
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(screen.queryByText(/sign in with github/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/sign in with google/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/sign in with pike 13/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/or sign in with/i)).not.toBeInTheDocument();
-    });
-
-    it('Google button links to /api/auth/google', async () => {
-      mockFetchStatus({ google: true });
-      renderLogin();
-
-      await waitFor(() => {
-        expect(screen.getByText(/sign in with google/i)).toBeInTheDocument();
-      });
-
-      const googleLink = screen.getByText(/sign in with google/i).closest('a');
-      expect(googleLink).toHaveAttribute('href', '/api/auth/google');
-    });
-
-    it('Pike 13 button links to /api/auth/pike13', async () => {
-      mockFetchStatus({ pike13: true });
-      renderLogin();
-
-      await waitFor(() => {
-        expect(screen.getByText(/sign in with pike 13/i)).toBeInTheDocument();
-      });
-
-      const pike13Link = screen.getByText(/sign in with pike 13/i).closest('a');
-      expect(pike13Link).toHaveAttribute('href', '/api/auth/pike13');
+      expect(screen.getByRole('alert')).toHaveTextContent(/username is already taken/i);
     });
   });
 });
