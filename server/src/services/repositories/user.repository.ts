@@ -13,10 +13,13 @@ export type CreateUserInput = {
   display_name: string;
   primary_email: string;
   role?: 'student' | 'staff' | 'admin';
-  created_via: 'social_login' | 'pike13_sync' | 'admin_created' | 'workspace_sync';
+  created_via: 'social_login' | 'pike13_sync' | 'admin_created' | 'workspace_sync' | 'passphrase_signup';
   cohort_id?: number | null;
   approval_status?: 'approved' | 'pending';
   onboarding_completed?: boolean;
+  username?: string | null;
+  password_hash?: string | null;
+  is_active?: boolean;
 };
 
 export type UpdateUserInput = Partial<{

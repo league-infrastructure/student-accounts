@@ -7,6 +7,7 @@ import pinoHttp from 'pino-http';
 import { createLogger } from './services/logger';
 import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
+import { passphraseSignupRouter } from './routes/auth/passphrase-signup';
 import { adminRouter } from './routes/admin';
 import { accountRouter } from './routes/account';
 import { staffDirectoryRouter } from './routes/staff/directory';
@@ -70,6 +71,8 @@ app.use(impersonateMiddleware);
 
 // Routes
 app.use('/api', healthRouter);
+// Public auth routes — mounted before requireAuth middleware
+app.use('/api/auth', passphraseSignupRouter);
 app.use('/api', authRouter);
 app.use('/api', adminRouter);
 app.use('/api', accountRouter);
