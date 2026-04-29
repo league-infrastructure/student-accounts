@@ -5,12 +5,12 @@ database_template: '{app}_{env}'
 deployments:
   dev:
     compose_file: docker/docker-compose.yml
-    docker_context: swarm1
+    docker_context: orbstack
   prod:
     compose_file: docker/docker-compose.prod.yml
-    docker_context: ''
+    docker_context: swarm1
     hostname: ''
   test:
     compose_file: docker/docker-compose.yml
-    docker_context: swarm1
+    docker_context: orbstack
 notes: []
