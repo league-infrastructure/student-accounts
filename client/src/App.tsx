@@ -34,6 +34,7 @@ import GroupDetailPanel from './pages/admin/GroupDetailPanel';
 import SyncPanel from './pages/admin/SyncPanel';
 import MergeQueuePanel from './pages/admin/MergeQueuePanel';
 import Dashboard from './pages/admin/Dashboard';
+import OAuthClients from './pages/admin/OAuthClients';
 
 import StaffLayout from './pages/staff/StaffLayout';
 import StaffDirectory from './pages/staff/StaffDirectory';
@@ -96,6 +97,7 @@ function App() {
 
               {/* Admin ops pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
+                <Route path="/admin/oauth-clients" element={<OAuthClients />} />
                 <Route path="/admin/users" element={<AdminUsersPanel />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />

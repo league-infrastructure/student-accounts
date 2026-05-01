@@ -1,11 +1,14 @@
 ---
-id: "007"
-title: "Admin UI page OAuthClients with secret-once modal"
-status: todo
-use-cases: [SUC-018-001, SUC-018-004]
-depends-on: ["006"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '007'
+title: Admin UI page OAuthClients with secret-once modal
+status: done
+use-cases:
+- SUC-018-001
+- SUC-018-004
+depends-on:
+- '006'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -48,13 +51,13 @@ Routing + discoverability:
 
 ## Acceptance Criteria
 
-- [ ] `client/src/pages/admin/OAuthClients.tsx` exists and renders the list/create/rotate/disable flow.
-- [ ] Route `/admin/oauth-clients` registered in `client/src/App.tsx`, admin-guarded.
-- [ ] Admin tile `oauth-clients` registered in `server/src/services/app-tiles.service.ts` (admin-only).
-- [ ] Plaintext secret is shown via a one-time modal with Copy button after create AND after rotate.
-- [ ] List refreshes after each mutation (React Query invalidation).
-- [ ] Non-admin users do not see the tile and are redirected away from the route.
-- [ ] No plaintext secret is logged, retained in component state beyond the modal, or reachable via list refetch.
+- [x] `client/src/pages/admin/OAuthClients.tsx` exists and renders the list/create/rotate/disable flow.
+- [x] Route `/admin/oauth-clients` registered in `client/src/App.tsx`, admin-guarded.
+- [x] Admin tile `oauth-clients` registered in `server/src/services/app-tiles.service.ts` (admin-only).
+- [x] Plaintext secret is shown via a one-time modal with Copy button after create AND after rotate.
+- [x] List refreshes after each mutation (React Query invalidation).
+- [x] Non-admin users do not see the tile and are redirected away from the route.
+- [x] No plaintext secret is logged, retained in component state beyond the modal, or reachable via list refetch.
 
 ## Testing
 

@@ -68,6 +68,15 @@ const TILE_GROUPS: AppTile = {
   icon: 'group',
 };
 
+// Sprint 018 — OAuth application registry (admin-only).
+const TILE_OAUTH_CLIENTS: AppTile = {
+  id: 'oauth-clients',
+  title: 'OAuth Clients',
+  description: 'Register and manage OAuth application credentials',
+  href: '/admin/oauth-clients',
+  icon: 'key',
+};
+
 // ---------------------------------------------------------------------------
 // Tile computation
 // ---------------------------------------------------------------------------
@@ -97,6 +106,7 @@ export function computeAppTiles({ role, llmProxyEnabled }: ComputeAppTilesInput)
   if (role === 'admin') {
     tiles.push(TILE_COHORTS);
     tiles.push(TILE_GROUPS);
+    tiles.push(TILE_OAUTH_CLIENTS);
   }
 
   return tiles;
