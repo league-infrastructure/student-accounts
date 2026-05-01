@@ -1,9 +1,13 @@
 ---
-id: "019"
-title: "OAuth Authorization-Code Provider Flow"
-status: planning
+id: 019
+title: OAuth Authorization-Code Provider Flow
+status: done
 branch: sprint/019-oauth-authorization-code-provider-flow
-use-cases: [SUC-019-001, SUC-019-002, SUC-019-003, SUC-019-004]
+use-cases:
+- SUC-019-001
+- SUC-019-002
+- SUC-019-003
+- SUC-019-004
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
