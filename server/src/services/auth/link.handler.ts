@@ -64,7 +64,7 @@ export interface LinkResult {
  *                           'conflict'      → /account?error=already_linked
  */
 export async function linkHandler(
-  provider: 'google' | 'github',
+  provider: 'google' | 'github' | 'pike13',
   profile: LinkProfile,
   currentUserId: number,
   loginService: LoginService,

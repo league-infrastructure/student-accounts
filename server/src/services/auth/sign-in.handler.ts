@@ -182,7 +182,7 @@ export interface SignInOptions {
  *         this as an access-denied signal and NOT establish a session.
  */
 export async function signInHandler(
-  provider: 'google' | 'github',
+  provider: 'google' | 'github' | 'pike13',
   profile: OAuthProfile,
   userService: UserService,
   loginService: LoginService,

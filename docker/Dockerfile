@@ -11,5 +11,5 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app ./
-EXPOSE ${PORT:-3000}
+EXPOSE ${PORT:-5201}
 CMD ["npm", "start"]

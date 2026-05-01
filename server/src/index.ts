@@ -8,7 +8,7 @@ import {
   WORKSPACE_DELETE_JOB_NAME,
 } from './jobs/workspace-delete.job.js';
 
-const port = parseInt(process.env.PORT || '3000', 10);
+const port = parseInt(process.env.PORT || '5201', 10);
 
 const registry = ServiceRegistry.create();
 

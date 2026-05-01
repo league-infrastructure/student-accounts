@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const apiTarget = process.env.VITE_API_URL || 'http://localhost:3000'
+const apiTarget = process.env.VITE_API_URL || 'http://localhost:5201'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -17,7 +17,7 @@ export default defineConfig({
         target: apiTarget,
         // Keep the browser's Host header (localhost:5173) so Passport
         // constructs OAuth callback URLs through the Vite proxy,
-        // not directly to the backend (localhost:3000).
+        // not directly to the backend (localhost:5201).
         changeOrigin: false,
       },
       // LLM proxy forwarder is mounted at /proxy (outside /api) so
