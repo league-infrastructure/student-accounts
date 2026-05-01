@@ -206,7 +206,7 @@ model UserGroup {
 model Login {
   id                Int      @id @default(autoincrement())
   user_id           Int
-  provider          String   // 'google' | 'github'
+  provider          String   // 'google' | 'github' | 'pike13'
   provider_user_id  String
   provider_email    String?
   provider_username String?  // GitHub username; null for Google logins

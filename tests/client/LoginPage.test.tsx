@@ -60,7 +60,7 @@ describe('Login page', () => {
     expect(passphrase).toHaveAttribute('type', 'text');
   });
 
-  it('always renders the Google and GitHub OAuth buttons', () => {
+  it('always renders the Google, GitHub, and Pike 13 OAuth buttons', () => {
     renderLogin();
     expect(screen.getByRole('link', { name: /sign in with google/i })).toHaveAttribute(
       'href',
@@ -69,6 +69,10 @@ describe('Login page', () => {
     expect(screen.getByRole('link', { name: /sign in with github/i })).toHaveAttribute(
       'href',
       '/api/auth/github',
+    );
+    expect(screen.getByRole('link', { name: /sign in with pike 13/i })).toHaveAttribute(
+      'href',
+      '/api/auth/pike13',
     );
   });
 

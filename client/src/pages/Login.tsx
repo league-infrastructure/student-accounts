@@ -1,6 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import pike13Logo from '../assets/pike13-logo.svg';
+
+// Brand SVGs are inlined so we don't need a network round-trip.
+// Google: official "G" mark (4-color). GitHub: official Octocat (single-color).
+function GoogleLogo({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8a12 12 0 1 1 7.9-21l5.7-5.7A20 20 0 1 0 24 44c11 0 20-9 20-20 0-1.3-.1-2.4-.4-3.5z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8A12 12 0 0 1 24 12c3 0 5.7 1.1 7.9 3l5.7-5.7A20 20 0 0 0 6.3 14.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3a12 12 0 0 1-7.3 2.5c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3a12 12 0 0 1-4.1 5.5l6.3 5.3c-.4.4 6.5-4.8 6.5-14.8 0-1.3-.1-2.4-.4-3.5z"/>
+    </svg>
+  );
+}
+
+function GitHubLogo({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.7-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.3-3.2-.1-.4-.6-1.6.1-3.3 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.3.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.3v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/>
+    </svg>
+  );
+}
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   pending_approval:
@@ -159,14 +181,23 @@ export default function Login() {
             href="/api/auth/google"
             className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
-            Sign in with Google
+            <GoogleLogo />
+            <span>Sign in with Google</span>
           </a>
           <a
             href="/api/auth/github"
             className="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
             style={{ background: '#24292e' }}
           >
-            Sign in with GitHub
+            <GitHubLogo />
+            <span>Sign in with GitHub</span>
+          </a>
+          <a
+            href="/api/auth/pike13"
+            className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <img src={pike13Logo} alt="Pike 13" className="h-4" />
+            <span>Sign in with Pike 13</span>
           </a>
         </div>
       </div>

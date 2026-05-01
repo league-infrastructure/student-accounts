@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Kill any processes listening on common dev ports
-for port in 3000 4 5 5173; do
+# Kill any processes listening on dev ports (server: 5201, client: 5173)
+for port in 5201 5173; do
   pids=$(lsof -ti ":$port" 2>/dev/null)
   if [ -n "$pids" ]; then
     echo "Killing processes on port $port: $pids"

@@ -21,4 +21,4 @@ esac
 
 exec npx concurrently -n server,client -c green,magenta \
   "cd server && npx prisma generate && $DB_CMD && npm run dev" \
-  "cd client && npx wait-on http://localhost:3000/api/health && npx vite --host"
+  "cd client && npx wait-on http://localhost:5201/api/health && npx vite --host"
