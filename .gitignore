@@ -46,3 +46,6 @@ data/
 # dotconfig — assembled env files contain decrypted secrets
 .env.*
 !.env.example
+
+# Per-deployment env files (contain secrets from dotconfig)
+docker/.*.env

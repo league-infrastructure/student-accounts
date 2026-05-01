@@ -66,6 +66,7 @@ enum CreatedVia {
   pike13_sync
   admin_created
   workspace_sync
+  passphrase_signup
 }
 
 enum ExternalAccountType {
@@ -97,6 +98,8 @@ enum ProvisioningStatus {
 enum UserApprovalStatus {
   approved
   pending
+  rejected
+  rejected_permanent
 }
 
 enum MergeStatus {
@@ -116,6 +119,12 @@ model Cohort {
   google_ou_path String?
   created_at     DateTime @default(now())
 
+  signup_passphrase                 String?
+  signup_passphrase_grant_llm_proxy Boolean   @default(false)
+  signup_passphrase_expires_at      DateTime?
+  signup_passphrase_created_at      DateTime?
+  signup_passphrase_created_by      Int?
+
   users          User[]
 }
 
@@ -131,6 +140,9 @@ model User {
   onboarding_completed Boolean  @default(true)
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
+
+  username       String?  @unique
+  password_hash  String?
 
   cohort            Cohort?           @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
   logins            Login[]
@@ -166,6 +178,12 @@ model Group {
   created_at  DateTime  @default(now())
   updated_at  DateTime  @updatedAt
 
+  signup_passphrase                 String?
+  signup_passphrase_grant_llm_proxy Boolean   @default(false)
+  signup_passphrase_expires_at      DateTime?
+  signup_passphrase_created_at      DateTime?
+  signup_passphrase_created_by      Int?
+
   users       UserGroup[]
 }
 
@@ -188,7 +206,7 @@ model UserGroup {
 model Login {
   id                Int      @id @default(autoincrement())
   user_id           Int
-  provider          String   // 'google' | 'github'
+  provider          String   // 'google' | 'github' | 'pike13'
   provider_user_id  String
   provider_email    String?
   provider_username String?  // GitHub username; null for Google logins

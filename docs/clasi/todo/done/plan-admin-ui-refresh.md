@@ -1,5 +1,6 @@
 ---
-status: pending
+status: done
+sprint: '014'
 ---
 
 # Plan: Admin UI Refresh

@@ -29,6 +29,28 @@ deployment package: Dockerfile, docker-compose.yml, Justfile, and
    - `Justfile` — deployment recipes (build, up, down, deploy, db ops)
    - `.env.example` — environment variable template
 
+## What you get in the Dockerfile
+
+rundbat's templates emit Dockerfiles that already meet Docker's High/Medium
+Build Best Practices:
+
+- **Multi-stage builds** — Node (2 stages), Python (2 stages, venv in
+  `/opt/venv`), Astro (3 stages)
+- **Non-root `USER`** — `USER node` (Node), `USER appuser` (Python, UID
+  1000), `nginxinc/nginx-unprivileged:alpine` runtime (Astro)
+- **`HEALTHCHECK`** — Node uses stdlib `http.get`, Python uses
+  `urllib.request`, Astro uses `wget --spider`. All hit `/` on the
+  container's exposed port.
+- **BuildKit cache mounts** — `--mount=type=cache,target=/root/.npm`
+  and `/root/.cache/pip` so repeated builds don't re-download packages.
+  The `# syntax=docker/dockerfile:1` header is emitted automatically.
+- **`COPY --chown=…`** in the runtime stage so files are owned by the
+  runtime user, not root.
+
+See `docker-best-practices` for the full checklist, including items
+rundbat does *not* enforce by default (digest pinning, OCI `LABEL`
+metadata) and when to add them.
+
 3. Test locally:
    ```bash
    docker compose -f docker/docker-compose.yml up -d

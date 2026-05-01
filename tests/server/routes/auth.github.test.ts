@@ -222,6 +222,9 @@ describe('GET /api/auth/github/callback — new user with email', () => {
   });
 
   it('redirects to /account on successful sign-in', async () => {
+    // Pre-seed approved user — post-Sprint-015 brand-new social_login users
+    // are pending and would land on /login?error=pending_approval.
+    await makeUser({ primary_email: 'newghuser@example.com', display_name: 'New GitHub User' });
     mockStrategy.setProfile(githubProfile);
 
     const res = await request(app).get('/api/auth/github/callback');
@@ -231,6 +234,8 @@ describe('GET /api/auth/github/callback — new user with email', () => {
   });
 
   it('sets session userId and role via req.login', async () => {
+    // Pre-seed approved user — see note above.
+    await makeUser({ primary_email: 'newghuser@example.com', display_name: 'New GitHub User' });
     mockStrategy.setProfile(githubProfile);
 
     const agent = request.agent(app);
@@ -291,6 +296,11 @@ describe('GET /api/auth/github/callback — new user without public email (RD-00
   });
 
   it('sign-in completes (redirects to /account) even when no email is provided', async () => {
+    // Pre-seed approved user — see note in the previous describe block.
+    await makeUser({
+      primary_email: 'noemailuser@github.invalid',
+      display_name: 'No Email GitHub User',
+    });
     mockStrategy.setProfile(githubProfileNoEmail);
 
     const res = await request(app).get('/api/auth/github/callback');
@@ -493,6 +503,11 @@ describe('GET /api/auth/github/callback — post-login redirect by role', () => 
   });
 
   it('redirects student to /account', async () => {
+    // Pre-seed approved user — see note in earlier describe blocks.
+    await makeUser({
+      primary_email: 'student-redirect-gh@example.com',
+      display_name: 'Student GH User',
+    });
     mockStrategy.setProfile({
       id: 'gh-uid-student-redirect',
       displayName: 'Student GH User',

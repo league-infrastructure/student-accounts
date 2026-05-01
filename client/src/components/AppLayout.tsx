@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { NavLink, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasAdminAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
+import { useAdminEventStream } from '../hooks/useAdminEventStream';
 
 /* ------------------------------------------------------------------ */
 /*  Navigation data                                                    */
@@ -29,7 +30,7 @@ const ADMIN_WORKFLOW_NAV: NavItem[] = [
     label: 'Users',
     end: true,
     children: [
-      { to: '/users/students', label: 'Students' },
+      { to: '/users/students', label: 'League Students' },
       { to: '/users/llm-proxy', label: 'LLM Proxy' },
     ],
   },
@@ -544,6 +545,13 @@ export default function AppLayout() {
 
   return (
     <div style={styles.wrapper}>
+      {/* Mount the admin SSE stream once per admin session, regardless
+          of which page is active. This is what makes the group / cohort
+          detail pages refresh in real time when a student joins via a
+          passphrase. The hook is in a child so it's only mounted when
+          the user is an admin (hooks themselves can't be conditional). */}
+      {isAdmin && <AdminEventStreamMount />}
+
       {/* Mobile overlay */}
       {isMobile && sidebarOpen && (
         <div style={styles.overlay} onClick={() => setSidebarOpen(false)} />
@@ -572,4 +580,14 @@ export default function AppLayout() {
       </div>
     </div>
   );
+}
+
+/**
+ * Subscribes to /api/admin/events for the lifetime of an admin's
+ * session. Lives in its own component so the hook can be mounted
+ * conditionally on user role without violating the rules of hooks.
+ */
+function AdminEventStreamMount() {
+  useAdminEventStream();
+  return null;
 }

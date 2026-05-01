@@ -16,6 +16,8 @@ import passport from 'passport';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { StaffOULookupError } from '../services/google-workspace/google-workspace-admin.client.js';
+import { PermanentlyDeniedError, signInHandler } from '../services/auth/sign-in.handler.js';
+import { linkHandler } from '../services/auth/link.handler.js';
 import { AuditService } from '../services/audit.service.js';
 import { createLogger } from '../services/logger.js';
 
@@ -130,9 +132,18 @@ authRouter.get('/auth/me', async (req: Request, res: Response) => {
   const user = req.user as any;
   const realAdmin = (req as any).realAdmin as any | undefined;
 
-  // Re-fetch from DB to get fresh data
+  // Re-fetch from DB to get fresh data. If the user was deleted or
+  // soft-deactivated while the session was alive, blow the session
+  // away so the client redirects to the login flow instead of holding
+  // onto a phantom identity.
   const fresh = await prisma.user.findUnique({ where: { id: user.id } });
-  const effectiveUser = fresh ?? user;
+  if (!fresh || fresh.is_active === false) {
+    req.session.destroy(() => {
+      res.status(401).json({ error: 'Not authenticated' });
+    });
+    return;
+  }
+  const effectiveUser = fresh;
 
   res.json({
     id: effectiveUser.id,
@@ -279,6 +290,13 @@ authRouter.get(
             );
             return res.redirect('/?error=staff_lookup_failed');
           }
+          if (err instanceof PermanentlyDeniedError) {
+            logger.warn(
+              { userId: err.userId },
+              '[google-callback] PermanentlyDeniedError, redirecting'
+            );
+            return res.redirect('/login?error=permanently_denied');
+          }
           logger.error({}, '[google-callback] generic error, redirecting');
           return res.redirect('/?error=oauth_denied');
         }
@@ -312,6 +330,18 @@ authRouter.get(
           // 'linked' or 'already_linked' → success / idempotent.
           logger.info({}, '[google-callback] link succeeded, redirecting to /account');
           return res.redirect('/account');
+        }
+
+        // Approval gate: only auto-approved users (staff/admin via the
+        // /Staff OU) get a session at sign-in. Everyone else lands on
+        // the login page with a "pending approval" message and waits
+        // for an admin to approve them in the dashboard.
+        if ((user as any).approval_status === 'pending') {
+          logger.info(
+            { userId: (user as any).id, email: (user as any).primary_email },
+            '[google-callback] user is pending approval — denying session establishment'
+          );
+          return res.redirect('/login?error=pending_approval');
         }
 
         // Normal sign-in path.
@@ -415,11 +445,19 @@ authRouter.get(
           { hasErr: !!err, hasUser: !!user },
           '[github-callback] passport.authenticate callback fired'
         );
-        if (err || !user) {
-          logger.error(
-            { hasErr: !!err, hasUser: !!user },
-            '[github-callback] authentication failed'
-          );
+        if (err) {
+          logger.error({ err }, '[github-callback] authentication error');
+          if (err instanceof PermanentlyDeniedError) {
+            logger.warn(
+              { userId: err.userId },
+              '[github-callback] PermanentlyDeniedError, redirecting'
+            );
+            return res.redirect('/login?error=permanently_denied');
+          }
+          return res.redirect('/?error=oauth_denied');
+        }
+        if (!user) {
+          logger.error({}, '[github-callback] no user returned by passport');
           return res.redirect('/?error=oauth_denied');
         }
 
@@ -446,6 +484,16 @@ authRouter.get(
           // 'linked' or 'already_linked' → success / idempotent.
           logger.info({}, '[github-callback] link succeeded, redirecting to /account');
           return res.redirect('/account');
+        }
+
+        // Approval gate — same rule as Google: pending users wait for
+        // an admin to approve them.
+        if ((user as any).approval_status === 'pending') {
+          logger.info(
+            { userId: (user as any).id, email: (user as any).primary_email },
+            '[github-callback] user is pending approval — denying session establishment'
+          );
+          return res.redirect('/login?error=pending_approval');
         }
 
         // Normal sign-in path.
@@ -486,6 +534,221 @@ authRouter.get(
         });
       },
     )(req, res, next);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Pike 13 OAuth 2.0 (manual flow — no Passport strategy)
+//
+// Pike 13 uses a standard authorization-code flow but doesn't have a
+// maintained Passport strategy, so the route handles the redirect, token
+// exchange, and profile fetch itself, then delegates to the same
+// signInHandler used by Google + GitHub.
+//
+// Endpoints:
+//   GET /api/auth/pike13           → redirect to Pike13 authorize endpoint
+//   GET /api/auth/pike13/callback  → exchange code, sign in, establish session
+//
+// Approval-gate, PermanentlyDeniedError, and link-mode behavior all mirror
+// the Google callback.
+// ---------------------------------------------------------------------------
+
+const PIKE13_AUTH_DOCS = 'https://developer.pike13.com/docs/authentication';
+
+function pike13AuthBase(): string {
+  const apiBase = process.env.PIKE13_API_BASE;
+  if (apiBase) return apiBase.replace('/api/v2/desk', '');
+  return 'https://pike13.com';
+}
+
+function pike13CallbackUrl(): string {
+  return (
+    process.env.PIKE13_CALLBACK_URL ||
+    'http://localhost:5173/api/auth/pike13/callback'
+  );
+}
+
+function pike13Configured(): boolean {
+  return !!(process.env.PIKE13_CLIENT_ID && process.env.PIKE13_CLIENT_SECRET);
+}
+
+async function pike13ExchangeCodeForToken(code: string): Promise<string> {
+  const response = await fetch(`${pike13AuthBase()}/oauth/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: pike13CallbackUrl(),
+      client_id: process.env.PIKE13_CLIENT_ID!,
+      client_secret: process.env.PIKE13_CLIENT_SECRET!,
+    }),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Pike 13 token exchange failed: ${response.status} ${detail}`);
+  }
+  const data: any = await response.json();
+  if (!data.access_token) {
+    throw new Error('Pike 13 token response missing access_token');
+  }
+  return data.access_token;
+}
+
+async function pike13FetchProfile(
+  accessToken: string,
+): Promise<{ id: string; email: string; name: string }> {
+  const authBase = pike13AuthBase();
+  let r = await fetch(`${authBase}/api/v2/front/people/me`, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  });
+  if (!r.ok) {
+    r = await fetch(`${authBase}/api/v2/me`, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    });
+  }
+  if (!r.ok) {
+    const body = await r.text();
+    throw new Error(`Pike 13 profile fetch failed: ${r.status} ${body}`);
+  }
+  const data: any = await r.json();
+  const person = data?.person ?? data?.people?.[0];
+  if (!person) {
+    throw new Error('Pike 13 profile response missing person data');
+  }
+  const id = String(person.id ?? '');
+  const email = (person.email ?? '').toLowerCase();
+  const name =
+    person.name ||
+    [person.first_name, person.last_name].filter(Boolean).join(' ') ||
+    email;
+  if (!id || !email) {
+    throw new Error(`Pike 13 profile missing required fields — id=${id} email=${email}`);
+  }
+  return { id, email, name };
+}
+
+authRouter.get('/auth/pike13', (req: Request, res: Response) => {
+  logger.info({}, '[pike13] route handler called');
+  if (!pike13Configured()) {
+    return res.status(501).json({
+      error: 'Pike 13 OAuth not configured',
+      detail: 'Set PIKE13_CLIENT_ID and PIKE13_CLIENT_SECRET',
+      docs: PIKE13_AUTH_DOCS,
+    });
+  }
+  // Link mode: ?link=1 binds the new identity to the current user.
+  if (req.query.link === '1') {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required to link an account' });
+    }
+    (req.session as any).link = true;
+  }
+  const params = new URLSearchParams({
+    client_id: process.env.PIKE13_CLIENT_ID!,
+    response_type: 'code',
+    redirect_uri: pike13CallbackUrl(),
+  });
+  res.redirect(`${pike13AuthBase()}/oauth/authorize?${params}`);
+});
+
+authRouter.get(
+  '/auth/pike13/callback',
+  async (req: Request, res: Response, next: NextFunction) => {
+    logger.info({}, '[pike13-callback] route handler called');
+    if (!pike13Configured()) {
+      return res.redirect('/?error=oauth_denied');
+    }
+
+    const code = req.query.code;
+    if (!code || typeof code !== 'string') {
+      logger.warn({}, '[pike13-callback] missing or invalid code, redirecting');
+      return res.redirect('/?error=oauth_denied');
+    }
+
+    const session = req.session as any;
+    const isLinkMode = !!(session.link && session.userId);
+    const linkUserId: number | undefined = session.userId;
+
+    try {
+      const token = await pike13ExchangeCodeForToken(code);
+      session.pike13AccessToken = token;
+      const profile = await pike13FetchProfile(token);
+
+      const { users, logins } = req.services;
+
+      // Link mode: attach the Pike13 identity to the currently signed-in user.
+      if (isLinkMode && linkUserId) {
+        const result = await linkHandler(
+          'pike13',
+          {
+            providerUserId: profile.id,
+            providerEmail: profile.email,
+            displayName: profile.name,
+            providerUsername: null,
+          },
+          linkUserId,
+          logins,
+        );
+        delete session.link;
+        delete session.linkReturnTo;
+        if (result.action === 'conflict') {
+          return res.redirect('/account?error=already_linked');
+        }
+        return res.redirect('/account');
+      }
+
+      // Normal sign-in path.
+      const user = await signInHandler(
+        'pike13',
+        {
+          providerUserId: profile.id,
+          providerEmail: profile.email,
+          displayName: profile.name,
+          providerUsername: null,
+        },
+        users,
+        logins,
+      );
+
+      // Approval gate — pending users get the same redirect as Google/GitHub.
+      if ((user as any).approval_status === 'pending') {
+        logger.info(
+          { userId: (user as any).id, email: (user as any).primary_email },
+          '[pike13-callback] user is pending approval — denying session establishment'
+        );
+        return res.redirect('/login?error=pending_approval');
+      }
+
+      req.login(user, (loginErr) => {
+        if (loginErr) {
+          logger.error({ loginErr }, '[pike13-callback] req.login failed');
+          return next(loginErr);
+        }
+        (req.session as any).userId = (user as any).id;
+        (req.session as any).role = (user as any).role;
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            logger.error({ saveErr }, '[pike13-callback] session.save failed');
+            return res.redirect('/?error=oauth_denied');
+          }
+          res.redirect(postLoginRedirect((user as any).role));
+        });
+      });
+    } catch (err) {
+      if (err instanceof PermanentlyDeniedError) {
+        logger.warn(
+          { userId: err.userId },
+          '[pike13-callback] PermanentlyDeniedError, redirecting'
+        );
+        return res.redirect('/login?error=permanently_denied');
+      }
+      logger.error({ err }, '[pike13-callback] unexpected error');
+      res.redirect('/?error=oauth_denied');
+    }
   },
 );
 

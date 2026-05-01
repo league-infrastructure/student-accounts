@@ -125,6 +125,122 @@ adminCohortsRouter.post('/cohorts/:id/sync-to-group', async (req, res, next) => 
 });
 
 // ---------------------------------------------------------------------------
+// POST /admin/cohorts/:id/passphrase
+// Creates or rotates the signup passphrase for a cohort.
+// Body: { plaintext?: string; grantLlmProxy: boolean }
+// Returns 201 { plaintext, expiresAt, grantLlmProxy, createdAt }
+// ---------------------------------------------------------------------------
+
+adminCohortsRouter.post('/cohorts/:id/passphrase', async (req, res, next) => {
+  try {
+    const cohortId = parseInt(req.params.id, 10);
+    if (isNaN(cohortId) || cohortId <= 0) {
+      return res.status(400).json({ error: 'Invalid cohort id' });
+    }
+
+    const cohort = await (prisma as any).cohort.findUnique({ where: { id: cohortId } });
+    if (!cohort) {
+      return res.status(404).json({ error: 'Cohort not found' });
+    }
+
+    const { plaintext, grantLlmProxy } = req.body as {
+      plaintext?: unknown;
+      grantLlmProxy?: unknown;
+    };
+
+    if (typeof grantLlmProxy !== 'boolean') {
+      return res.status(400).json({ error: 'grantLlmProxy must be a boolean' });
+    }
+
+    const actorId = (req.session as any).userId as number;
+    const record = await req.services.passphrases.create(
+      { kind: 'cohort', id: cohortId },
+      {
+        plaintext: typeof plaintext === 'string' ? plaintext : undefined,
+        grantLlmProxy,
+      },
+      actorId,
+    );
+
+    adminBus.notify('cohorts');
+
+    return res.status(201).json({
+      plaintext: record.plaintext,
+      expiresAt: record.expiresAt,
+      grantLlmProxy: record.grantLlmProxy,
+      createdAt: record.createdAt,
+    });
+  } catch (err: any) {
+    if (err instanceof AppError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/cohorts/:id/passphrase
+// Returns the active passphrase for a cohort, or 404 if none.
+// ---------------------------------------------------------------------------
+
+adminCohortsRouter.get('/cohorts/:id/passphrase', async (req, res, next) => {
+  try {
+    const cohortId = parseInt(req.params.id, 10);
+    if (isNaN(cohortId) || cohortId <= 0) {
+      return res.status(400).json({ error: 'Invalid cohort id' });
+    }
+
+    const cohort = await (prisma as any).cohort.findUnique({ where: { id: cohortId } });
+    if (!cohort) {
+      return res.status(404).json({ error: 'Cohort not found' });
+    }
+
+    const record = await req.services.passphrases.getActive({ kind: 'cohort', id: cohortId });
+    if (!record) {
+      return res.status(404).json({ error: 'No active passphrase' });
+    }
+
+    return res.json({
+      plaintext: record.plaintext,
+      expiresAt: record.expiresAt,
+      grantLlmProxy: record.grantLlmProxy,
+      createdAt: record.createdAt,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /admin/cohorts/:id/passphrase
+// Revokes the active passphrase for a cohort. Idempotent.
+// Returns 204.
+// ---------------------------------------------------------------------------
+
+adminCohortsRouter.delete('/cohorts/:id/passphrase', async (req, res, next) => {
+  try {
+    const cohortId = parseInt(req.params.id, 10);
+    if (isNaN(cohortId) || cohortId <= 0) {
+      return res.status(400).json({ error: 'Invalid cohort id' });
+    }
+
+    const cohort = await (prisma as any).cohort.findUnique({ where: { id: cohortId } });
+    if (!cohort) {
+      return res.status(404).json({ error: 'Cohort not found' });
+    }
+
+    const actorId = (req.session as any).userId as number;
+    await req.services.passphrases.revoke({ kind: 'cohort', id: cohortId }, actorId);
+
+    adminBus.notify('cohorts');
+
+    return res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /admin/cohorts/:id/members
 // Returns cohort + active users with externalAccounts. Powers the
 // read-only cohort detail view.

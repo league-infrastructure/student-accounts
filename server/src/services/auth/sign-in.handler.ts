@@ -24,6 +24,7 @@
 
 import { createLogger } from '../logger.js';
 import type { User } from '../../generated/prisma/client.js';
+import { prisma } from '../prisma.js';
 import type { UserService } from '../user.service.js';
 import type { LoginService } from '../login.service.js';
 import { AuditService } from '../audit.service.js';
@@ -102,6 +103,28 @@ export function _setAdminEmails(emails: Set<string>): void {
 }
 
 // ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown when a sign-in attempt comes from an account that an admin has
+ * permanently denied. Callers MUST NOT establish a session — the OAuth
+ * callback should redirect the browser to a clear error page.
+ *
+ * Distinct from a regular `rejected` (re-tryable) state: a `rejected` user
+ * who re-OAuths is reactivated as `pending` and re-enters the approval
+ * queue. `rejected_permanent` is terminal.
+ */
+export class PermanentlyDeniedError extends Error {
+  readonly userId: number;
+  constructor(userId: number) {
+    super('Account has been permanently denied');
+    this.name = 'PermanentlyDeniedError';
+    this.userId = userId;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
@@ -159,7 +182,7 @@ export interface SignInOptions {
  *         this as an access-denied signal and NOT establish a session.
  */
 export async function signInHandler(
-  provider: 'google' | 'github',
+  provider: 'google' | 'github' | 'pike13',
   profile: OAuthProfile,
   userService: UserService,
   loginService: LoginService,
@@ -187,15 +210,19 @@ export async function signInHandler(
 
   if (existingLogin) {
     // --- Step 2: Existing identity — load the User ---
+    // Use findByIdIncludingInactive: a denied user is inactive, but we still
+    // need to load them to decide between reactivation (rejected) and a hard
+    // refusal (rejected_permanent). applyDeniedReentry handles both cases.
     logger.info(
       { existingLoginId: existingLogin.id, userId: existingLogin.user_id },
       '[sign-in.handler] Step 2: existing login found, loading user'
     );
-    user = await userService.findById(existingLogin.user_id);
+    user = await userService.findByIdIncludingInactive(existingLogin.user_id);
     logger.info(
-      { userId: user.id, email: user.primary_email },
+      { userId: user.id, email: user.primary_email, isActive: user.is_active },
       '[sign-in.handler] Step 2: user loaded'
     );
+    user = await applyDeniedReentry(user);
   } else {
     // --- Step 3: New identity — attach Login to an existing User (matched
     // by primary email) or create a new User.
@@ -242,18 +269,15 @@ export async function signInHandler(
         { userId: existingUser.id, email: existingUser.primary_email },
         '[sign-in.handler] Step 3b: existing user found, attaching new login'
       );
-      user = existingUser;
+      user = await applyDeniedReentry(existingUser);
     } else {
-      // Sign-ins from non-League identities are created as pending — they
-      // see a "Your account is pending" screen until an admin approves.
-      // @*.jointheleague.org users are auto-approved because their presence
-      // in Google Workspace already proves membership.
-      const isLeagueIdentity = /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(
-        resolvedEmail,
-      );
+      // All Google/GitHub-created users start pending. Step 4 below
+      // promotes them to 'approved' if the staff OU check passes;
+      // anyone else stays pending and waits for an admin to approve
+      // them in the dashboard's pending-accounts widget.
       logger.info(
-        { resolvedEmail, isLeagueIdentity },
-        '[sign-in.handler] Step 3b: new user, creating with audit'
+        { resolvedEmail },
+        '[sign-in.handler] Step 3b: new user, creating with audit (pending)'
       );
       user = await userService.createWithAudit(
         {
@@ -261,30 +285,20 @@ export async function signInHandler(
           primary_email: resolvedEmail,
           role: 'student',
           created_via: 'social_login',
-          approval_status: isLeagueIdentity ? 'approved' : 'pending',
-          // League identities (whose presence in Workspace is the
-          // approval) skip onboarding. External sign-ins have to confirm
-          // their display name in the Onboarding page before entering
-          // the app.
-          onboarding_completed: isLeagueIdentity,
+          approval_status: 'pending',
+          onboarding_completed: false,
         },
         null, // system action; no acting user
       );
       logger.info(
         { userId: user.id, email: user.primary_email, approvalStatus: user.approval_status },
-        '[sign-in.handler] Step 3b: user created'
+        '[sign-in.handler] Step 3b: user created (pending)'
       );
 
-      // Notify admin dashboards: a new pending-approval row may have
-      // just appeared.
-      if (!isLeagueIdentity) {
-        logger.info(
-          { email: resolvedEmail },
-          '[sign-in.handler] external user, notifying pending-users bus'
-        );
-        adminBus.notify('pending-users');
-        adminBus.notify('users');
-      }
+      // Always notify the dashboard — every new sign-in starts in the
+      // approval queue.
+      adminBus.notify('pending-users');
+      adminBus.notify('users');
     }
 
     // 3b. Create Login with audit event (pass provider_username for GitHub)
@@ -407,11 +421,24 @@ export async function signInHandler(
           { email: providerEmail, ouPath, staffOuPath, currentRole: user.role },
           '[sign-in.handler] Step 4: OU matches staff path'
         );
-        if (user.role !== 'staff') {
-          user = await userService.updateRole(user.id, 'staff');
+        // Staff in /Staff get auto-approved — their Workspace
+        // membership is the proof. This is the only auto-approval
+        // path during a Google sign-in; everyone else stays pending.
+        // (admin role is short-circuited above; user.role is student|staff here.)
+        const needsRoleUpdate = user.role !== 'staff';
+        const needsApproval = user.approval_status !== 'approved';
+        if (needsRoleUpdate || needsApproval) {
+          user = (await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              ...(needsRoleUpdate ? { role: 'staff' } : {}),
+              ...(needsApproval ? { approval_status: 'approved' } : {}),
+              ...(user.onboarding_completed ? {} : { onboarding_completed: true }),
+            },
+          })) as any;
           logger.info(
-            { userId: user.id, newRole: 'staff' },
-            '[sign-in.handler] Step 4: role updated to staff'
+            { userId: user.id, role: user.role, approvalStatus: user.approval_status },
+            '[sign-in.handler] Step 4: staff promotion + approval'
           );
         }
       } else {
@@ -452,15 +479,25 @@ export async function signInHandler(
         { email: providerEmail },
         '[sign-in.handler] Step 5: email in ADMIN_EMAILS'
       );
-      if (user.role !== 'admin') {
-        const previousRole = user.role;
-        user = await userService.updateRole(user.id, 'admin');
+      const previousRole = user.role;
+      const needsRoleUpdate = user.role !== 'admin';
+      const needsApproval = user.approval_status !== 'approved';
+      if (needsRoleUpdate || needsApproval) {
+        user = (await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            ...(needsRoleUpdate ? { role: 'admin' } : {}),
+            ...(needsApproval ? { approval_status: 'approved' } : {}),
+            ...(user.onboarding_completed ? {} : { onboarding_completed: true }),
+          },
+        })) as any;
         logger.info(
-          { userId: user.id, previousRole, newRole: 'admin' },
-          '[sign-in.handler] Step 5: role updated to admin'
+          { userId: user.id, previousRole, newRole: user.role, approvalStatus: user.approval_status },
+          '[sign-in.handler] Step 5: admin promotion + approval'
         );
-        // Emit role_changed audit event (best-effort)
-        await _writeRoleChangedEvent(options, user.id, previousRole, 'admin');
+        if (needsRoleUpdate) {
+          await _writeRoleChangedEvent(options, user.id, previousRole, 'admin');
+        }
       }
     } else {
       logger.info(
@@ -520,6 +557,55 @@ async function _writeRoleChangedEvent(
       '[sign-in.handler] Failed to write role_changed audit event.',
     );
   }
+}
+
+/**
+ * Handle the inactive-account re-entry case for an existing user found
+ * during sign-in. Active users are returned unchanged.
+ *
+ *   is_active=false + approval_status === 'rejected_permanent'
+ *     → throw PermanentlyDeniedError. Caller MUST NOT establish a session.
+ *       Only an admin manually flipping the status can lift this.
+ *
+ *   is_active=false (any other status, e.g. 'rejected', 'pending', 'approved')
+ *     → reactivate the user (is_active=true, approval_status='pending'),
+ *       notify the admin queue, return the updated user. The user re-enters
+ *       the approval queue and the OAuth callback's pending-gate redirects
+ *       them to the "awaiting approval" message.
+ *
+ *       The catch-all (vs. requiring approval_status='rejected' specifically)
+ *       handles two cases:
+ *         - Legacy denied users created before the rejected/rejected_permanent
+ *           split: they have is_active=false but approval_status='pending'.
+ *         - Any future "deactivate user" path that doesn't set approval_status
+ *           explicitly. Forcing the user back through the approval queue is
+ *           the safe default.
+ */
+async function applyDeniedReentry(user: User): Promise<User> {
+  if (user.is_active) return user;
+
+  if (user.approval_status === 'rejected_permanent') {
+    logger.warn(
+      { userId: user.id, email: user.primary_email },
+      '[sign-in.handler] PermanentlyDeniedError: account permanently denied'
+    );
+    throw new PermanentlyDeniedError(user.id);
+  }
+
+  logger.info(
+    { userId: user.id, email: user.primary_email, previousStatus: user.approval_status },
+    '[sign-in.handler] reactivating inactive user back into the approval queue'
+  );
+  const updated = (await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      is_active: true,
+      approval_status: 'pending',
+    },
+  })) as User;
+  adminBus.notify('pending-users');
+  adminBus.notify('users');
+  return updated;
 }
 
 /**

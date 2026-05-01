@@ -41,47 +41,85 @@ Agent behavioral rules are in `.claude/rules/` (auto-loaded):
 - `setup.md` — First-time checkout, install script, dev server
 - `template-spec.md` — Technology decisions, project structure, conventions
 
+<!-- CLASI:START -->
 # CLASI Software Engineering Process
 
 This project uses the CLASI SE process. Your role and workflow are
 defined in `.claude/agents/team-lead/agent.md` — read it at session start.
 
 Available skills: run `/se` for a list.
+<!-- CLASI:END -->
 
 <!-- RUNDBAT:START -->
 ## rundbat — Deployment Expert
 
 This project uses **rundbat** to manage Docker-based deployment
-environments. rundbat is an MCP server that handles database provisioning,
-secret management, and environment configuration.
+environments. rundbat handles Docker Compose generation, per-deployment
+environment config (via dotconfig), secret management, and deployment
+to remote Docker hosts.
 
-**If you need a database, connection string, deployment environment, or
-anything involving Docker containers or dotconfig — use the rundbat MCP
-tools.** Do not run Docker or dotconfig commands directly.
+**If a task involves Docker containers, docker-compose, deployment,
+environment variables, secrets, or connection strings — use rundbat.**
 
-Run `rundbat mcp --help` for the full tool reference, or call
-`discover_system` to see what is available.
+Run `rundbat --instructions` for detailed agent-oriented instructions,
+including the full help text for every subcommand. `rundbat --help`
+shows the command list.
 
-### Quick Reference
+### Common commands
 
-| Tool | Purpose |
+| Command | Purpose |
 |---|---|
-| `discover_system` | Detect OS, Docker, dotconfig, Node.js |
-| `init_project` | Initialize rundbat in a project |
-| `create_environment` | Provision a database environment |
-| `get_environment_config` | Get connection string (auto-restarts containers) |
-| `set_secret` | Store encrypted secrets via dotconfig |
-| `start_database` / `stop_database` | Container lifecycle |
-| `health_check` | Verify database connectivity |
-| `validate_environment` | Full environment validation |
-| `check_config_drift` | Detect app name changes |
+| `rundbat init` | Set up rundbat in a project |
+| `rundbat generate` | Generate Docker artifacts from `config/rundbat.yaml` |
+| `rundbat up <env>` | Start a deployment (checks out env from dotconfig) |
+| `rundbat down <env>` | Stop a deployment |
+| `rundbat restart <env>` | Restart (down + up; `--build` to rebuild) |
+| `rundbat logs <env>` | Tail container logs |
+| `rundbat deploy <env>` | Deploy to a remote Docker host |
+| `rundbat deploy-init <env> --host ssh://...` | Register a remote target |
+
+Most commands support `--json` for machine-parseable output, and `-v`
+to print the shell commands they run.
 
 ### Configuration
 
-Configuration is managed by dotconfig. Run `dotconfig agent` for full
-documentation on how dotconfig works. Key locations:
+Configuration is managed by dotconfig — **never edit `config/` files
+or `docker/docker-compose.*.yml` directly**. Edit `config/rundbat.yaml`
+and re-run `rundbat generate`; use `dotconfig` for env vars and secrets.
 
-- `config/rundbat.yaml` — Project-wide rundbat config (app name, naming templates)
+Read merged config: `dotconfig load -d <env> --json --flat -S`
+
+Key locations:
+- `config/rundbat.yaml` — Project-wide config (app name, deployments)
+- `config/{env}/public.env` — Non-secret environment variables
 - `config/{env}/secrets.env` — SOPS-encrypted credentials
-- `config/keys/` — SSH keys (encrypted via dotconfig key management)
+
+### Reference files
+
+`rundbat init` installs these files into `.claude/` for task-specific
+guidance. Read them directly, or run `rundbat --instructions` for a
+consolidated view that also dumps every subcommand's help text.
+
+Rules:
+- `.claude/rules/rundbat.md`
+
+Agents:
+- `.claude/agents/deployment-expert.md`
+
+Skills (task-specific runbooks):
+- `.claude/skills/rundbat/astro-docker.md`
+- `.claude/skills/rundbat/deploy-init.md`
+- `.claude/skills/rundbat/deploy-setup.md`
+- `.claude/skills/rundbat/dev-database.md`
+- `.claude/skills/rundbat/diagnose.md`
+- `.claude/skills/rundbat/docker-best-practices.md`
+- `.claude/skills/rundbat/docker-secrets-build.md`
+- `.claude/skills/rundbat/docker-secrets-compose.md`
+- `.claude/skills/rundbat/docker-secrets-swarm.md`
+- `.claude/skills/rundbat/docker-secrets.md`
+- `.claude/skills/rundbat/docker-swarm-deploy.md`
+- `.claude/skills/rundbat/generate.md`
+- `.claude/skills/rundbat/github-deploy.md`
+- `.claude/skills/rundbat/init-docker.md`
+- `.claude/skills/rundbat/manage-secrets.md`
 <!-- RUNDBAT:END -->
