@@ -10,13 +10,15 @@
  * Transaction boundary: every multi-step write opens a prisma.$transaction.
  */
 
-import { ConflictError, NotFoundError } from '../errors.js';
+import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { LoginRepository } from './repositories/login.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { User } from '../generated/prisma/client.js';
 import type { FindAllUsersFilter } from './repositories/user.repository.js';
+import { hashPassword, verifyPassword } from '../utils/password.js';
+import { Prisma } from '../generated/prisma/client.js';
 
 export class UserService {
   constructor(
@@ -153,6 +155,98 @@ export class UserService {
     }
 
     await UserRepository.delete(this.prisma, userId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Credential update (Sprint 020 T003)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Update the user's own username and/or password.
+   *
+   * Rules:
+   *  - currentPassword is always required and verified against the stored hash.
+   *  - At least one of username or newPassword must be provided.
+   *  - Empty/whitespace-only newPassword is a ValidationError (400).
+   *  - Username uniqueness is enforced by the DB unique constraint (→ ConflictError).
+   *
+   * @returns { id, username } — never exposes password_hash.
+   */
+  async updateCredentials(
+    userId: number,
+    patch: {
+      username?: string;
+      currentPassword: string;
+      newPassword?: string;
+    },
+  ): Promise<{ id: number; username: string | null }> {
+    // 1. Load the user; not-found maps to 401 (actor is the signed-in user).
+    const user = await UserRepository.findById(this.prisma, userId);
+    if (!user) throw new UnauthorizedError('Session user not found');
+
+    // 2. Verify current password.
+    const stored = (user as any).password_hash as string | null;
+    if (!stored) throw new UnauthorizedError('Account has no password set');
+    const match = await verifyPassword(patch.currentPassword, stored);
+    if (!match) throw new UnauthorizedError('Current password is incorrect');
+
+    // 3. Validate the patch payload.
+    const hasNewPassword = patch.newPassword !== undefined;
+    const hasUsername = patch.username !== undefined;
+    if (!hasNewPassword && !hasUsername) {
+      throw new ValidationError('At least one of username or newPassword must be provided');
+    }
+    if (hasNewPassword) {
+      const trimmed = (patch.newPassword ?? '').trim();
+      if (trimmed.length === 0) {
+        throw new ValidationError('newPassword must not be empty');
+      }
+    }
+
+    // 4. Build the update payload.
+    const data: Record<string, unknown> = {};
+    if (hasNewPassword) {
+      data['password_hash'] = await hashPassword(patch.newPassword!);
+    }
+    if (hasUsername) {
+      const trimmed = (patch.username ?? '').trim().toLowerCase();
+      if (trimmed.length < 2 || trimmed.length > 32) {
+        throw new ValidationError('Username must be 2–32 characters');
+      }
+      if (!/^[a-z0-9._-]+$/.test(trimmed)) {
+        throw new ValidationError(
+          'Username must contain only letters, numbers, dots, dashes, underscores',
+        );
+      }
+      data['username'] = trimmed;
+    }
+
+    // 5. Update and record audit event atomically.
+    try {
+      return await this.prisma.$transaction(async (tx: any) => {
+        const updated = await tx.user.update({ where: { id: userId }, data });
+        await this.audit.record(tx, {
+          actor_user_id: userId,
+          action: 'account_credentials_updated',
+          target_user_id: userId,
+          target_entity_type: 'User',
+          target_entity_id: String(userId),
+          details: {
+            updated_username: hasUsername,
+            updated_password: hasNewPassword,
+          },
+        });
+        return { id: updated.id, username: (updated as any).username ?? null };
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictError('That username is already taken');
+      }
+      throw err;
+    }
   }
 
   // -------------------------------------------------------------------------

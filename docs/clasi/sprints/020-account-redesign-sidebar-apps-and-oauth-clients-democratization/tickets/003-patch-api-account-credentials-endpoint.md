@@ -1,12 +1,12 @@
 ---
-id: "003"
-title: "PATCH api account credentials endpoint"
-status: todo
+id: '003'
+title: PATCH api account credentials endpoint
+status: done
 use-cases:
-  - SUC-020-001
+- SUC-020-001
 depends-on: []
-github-issue: ""
-todo: "plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md"
+github-issue: ''
+todo: plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -68,15 +68,15 @@ on success — match the audit-event style of neighboring services.
 
 ## Acceptance Criteria
 
-- [ ] `PATCH /api/account/credentials` exists in `server/src/routes/account.ts`.
-- [ ] `userService.updateCredentials` exists in `server/src/services/user.service.ts`.
-- [ ] Wrong `currentPassword` → 401.
-- [ ] Username already taken → 409 (translated from Prisma P2002).
-- [ ] Empty / whitespace `newPassword`, or empty body, → 400.
-- [ ] Successful response shape is `{ id, username }`; no `password_hash` leaked.
-- [ ] Audit event written on success.
-- [ ] Reuses `hashPassword` / `verifyPassword` from `server/src/utils/password.ts` — no new scrypt code.
-- [ ] `npm run test:server` passes.
+- [x] `PATCH /api/account/credentials` exists in `server/src/routes/account.ts`.
+- [x] `userService.updateCredentials` exists in `server/src/services/user.service.ts`.
+- [x] Wrong `currentPassword` → 401.
+- [x] Username already taken → 409 (translated from Prisma P2002).
+- [x] Empty / whitespace `newPassword`, or empty body, → 400.
+- [x] Successful response shape is `{ id, username }`; no `password_hash` leaked.
+- [x] Audit event written on success.
+- [x] Reuses `hashPassword` / `verifyPassword` from `server/src/utils/password.ts` — no new scrypt code.
+- [x] `npm run test:server` passes.
 
 ## Testing
 
