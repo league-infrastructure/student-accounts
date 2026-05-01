@@ -1,13 +1,13 @@
 ---
-id: "004"
-title: "Account.tsx strip with UsernamePasswordSection and Pike13 button"
-status: todo
+id: '004'
+title: Account.tsx strip with UsernamePasswordSection and Pike13 button
+status: done
 use-cases:
-  - SUC-020-001
+- SUC-020-001
 depends-on:
-  - "003"
-github-issue: ""
-todo: "plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md"
+- '003'
+github-issue: ''
+todo: plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -56,13 +56,13 @@ providers the user already has linked, matching the stakeholder's
 
 ## Acceptance Criteria
 
-- [ ] `Account.tsx` no longer renders `ServicesSection`, `ClaudeCodeSection`, or `AccountLlmProxyCard`; their imports are removed.
-- [ ] `Account.tsx` continues to render `ProfileSection` and `LoginsSection` unchanged in behaviour.
-- [ ] `UsernamePasswordSection` renders iff the user has a username or password set; never for users without either.
-- [ ] Username/password form posts to `PATCH /api/account/credentials` and surfaces 400 / 401 / 409 errors inline.
-- [ ] `LoginsSection` has three Add buttons (Google, GitHub, Pike 13); the Pike 13 button targets `/api/auth/pike13?link=1`.
-- [ ] All three Add buttons are always visible regardless of currently-linked providers.
-- [ ] `npm run test:client` passes (modulo pre-existing baseline).
+- [x] `Account.tsx` no longer renders `ServicesSection`, `ClaudeCodeSection`, or `AccountLlmProxyCard`; their imports are removed.
+- [x] `Account.tsx` continues to render `ProfileSection` and `LoginsSection` unchanged in behaviour.
+- [x] `UsernamePasswordSection` renders iff the user has a username or password set; never for users without either.
+- [x] Username/password form posts to `PATCH /api/account/credentials` and surfaces 400 / 401 / 409 errors inline.
+- [x] `LoginsSection` has three Add buttons (Google, GitHub, Pike 13); the Pike 13 button targets `/api/auth/pike13?link=1`.
+- [x] All three Add buttons are always visible regardless of currently-linked providers.
+- [x] `npm run test:client` passes (modulo pre-existing baseline).
 
 ## Testing
 

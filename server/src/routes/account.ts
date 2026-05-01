@@ -74,6 +74,8 @@ accountRouter.get(
         createdAt: user.created_at,
         workspaceTempPassword,
         llmProxyEnabled,
+        username: (user as any).username ?? null,
+        has_password: ((user as any).password_hash ?? null) !== null,
       },
       logins: userLogins.map((l) => ({
         id: l.id,

@@ -4,11 +4,13 @@
  * Covers:
  *  - Admin: renders without redirecting; no tile sections.
  *  - Staff: renders without redirecting; no tile sections.
- *  - Student: renders profile and login sections; no tile sections.
+ *  - Student: renders profile and login sections; no tile/services sections.
+ *  - LoginsSection: three Add buttons (Google, GitHub, Pike 13); always visible.
+ *  - UsernamePasswordSection: visibility conditions and error surfaces.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Account from '../../../client/src/pages/Account';
@@ -47,7 +49,7 @@ function makeUser(
   };
 }
 
-const STUDENT_ACCOUNT_DATA = {
+const STUDENT_ACCOUNT_BASE = {
   profile: {
     id: 1,
     displayName: 'Test student',
@@ -57,6 +59,8 @@ const STUDENT_ACCOUNT_DATA = {
     approvalStatus: 'approved',
     createdAt: '2025-01-01T00:00:00Z',
     llmProxyEnabled: false,
+    username: null,
+    has_password: false,
   },
   logins: [
     {
@@ -71,18 +75,54 @@ const STUDENT_ACCOUNT_DATA = {
 };
 
 /** Build a fetch mock that returns appropriate data for each URL. */
-function makeFetch(includeStudentAccount = false) {
-  return vi.fn(async (url: string) => {
-    if (url === '/api/account' && includeStudentAccount) {
+function makeFetch(
+  includeStudentAccount = false,
+  accountOverrides: Record<string, unknown> = {},
+  credentialsResponse?: { status: number; body: unknown },
+) {
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    // PATCH /api/account/credentials
+    if (
+      url === '/api/account/credentials' &&
+      (init?.method ?? '').toUpperCase() === 'PATCH'
+    ) {
+      if (credentialsResponse) {
+        const { status, body } = credentialsResponse;
+        return {
+          ok: status >= 200 && status < 300,
+          status,
+          json: async () => body,
+        };
+      }
       return {
         ok: true,
-        json: async () => STUDENT_ACCOUNT_DATA,
+        status: 200,
+        json: async () => ({ id: 1, username: 'newuser' }),
+      };
+    }
+
+    if (url === '/api/account' && includeStudentAccount) {
+      const data = {
+        ...STUDENT_ACCOUNT_BASE,
+        ...accountOverrides,
+        profile: {
+          ...STUDENT_ACCOUNT_BASE.profile,
+          ...((accountOverrides.profile as object) ?? {}),
+        },
+      };
+      return {
+        ok: true,
+        json: async () => data,
       };
     }
     if (url === '/api/integrations/status') {
       return {
         ok: true,
-        json: async () => ({ github: false, google: true, pike13: false }),
+        json: async () => ({
+          github: { configured: true },
+          google: { configured: true },
+          pike13: { configured: true },
+        }),
       };
     }
     if (url === '/api/account/llm-proxy') {
@@ -169,6 +209,21 @@ describe('Account page — admin', () => {
     expect(screen.queryByText('Sign-in Methods')).not.toBeInTheDocument();
     expect(screen.queryByText('Services')).not.toBeInTheDocument();
   });
+
+  it('does NOT show Services or ClaudeCode or LLM Proxy sections for admin', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
+    (globalThis as any).fetch = makeFetch();
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Services')).not.toBeInTheDocument();
+    expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+    expect(screen.queryByText('LLM Proxy')).not.toBeInTheDocument();
+  });
 });
 
 // ===========================================================================
@@ -199,10 +254,25 @@ describe('Account page — staff', () => {
 
     expect(screen.queryByRole('heading', { name: /your applications/i })).not.toBeInTheDocument();
   });
+
+  it('does NOT show Services or ClaudeCode or LLM Proxy sections for staff', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
+    (globalThis as any).fetch = makeFetch();
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Services')).not.toBeInTheDocument();
+    expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+    expect(screen.queryByText('LLM Proxy')).not.toBeInTheDocument();
+  });
 });
 
 // ===========================================================================
-// Student
+// Student — basic rendering
 // ===========================================================================
 
 describe('Account page — student', () => {
@@ -232,5 +302,246 @@ describe('Account page — student', () => {
     });
 
     expect(screen.queryByRole('heading', { name: /your applications/i })).not.toBeInTheDocument();
+  });
+
+  it('does NOT show ServicesSection, ClaudeCodeSection or LLM Proxy for student', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true);
+
+    renderAccount();
+
+    await waitFor(() => {
+      const elements = screen.getAllByText('student@example.com');
+      expect(elements.length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByText('Services')).not.toBeInTheDocument();
+    expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+    // LLM Proxy heading should not appear (AccountLlmProxyCard is removed)
+    expect(screen.queryByText('LLM Proxy')).not.toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// LoginsSection — Add buttons
+// ===========================================================================
+
+describe('Account page — LoginsSection Add buttons', () => {
+  it('renders all three Add buttons when integrations are configured and user has no logins', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { logins: [] },
+      logins: [],
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    // All three buttons should be present
+    expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add Pike 13' })).toBeInTheDocument();
+  });
+
+  it('renders all three Add buttons even when user already has all three linked', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      logins: [
+        { id: 1, provider: 'google', providerEmail: 'x@x.com', providerUsername: null, createdAt: '2025-01-01T00:00:00Z' },
+        { id: 2, provider: 'github', providerEmail: null, providerUsername: 'ghuser', createdAt: '2025-01-01T00:00:00Z' },
+        { id: 3, provider: 'pike13', providerEmail: null, providerUsername: 'pike', createdAt: '2025-01-01T00:00:00Z' },
+      ],
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    // All three Add buttons should still be visible
+    expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add Pike 13' })).toBeInTheDocument();
+  });
+
+  it('Pike 13 button targets /api/auth/pike13?link=1', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    const pike13Link = screen.getByRole('link', { name: 'Add Pike 13' });
+    expect(pike13Link).toHaveAttribute('href', '/api/auth/pike13?link=1');
+  });
+});
+
+// ===========================================================================
+// UsernamePasswordSection — visibility
+// ===========================================================================
+
+describe('Account page — UsernamePasswordSection visibility', () => {
+  it('does NOT render for a user with no username and no password', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: null, has_password: false },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Username & Password')).not.toBeInTheDocument();
+  });
+
+  it('renders when user has a username', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: 'testuser', has_password: false },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+  });
+
+  it('renders when user has a password set (has_password: true)', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: null, has_password: true },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+  });
+
+  it('renders when user has both username and password', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: 'theuser', has_password: true },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+  });
+});
+
+// ===========================================================================
+// UsernamePasswordSection — form behaviour
+// ===========================================================================
+
+describe('Account page — UsernamePasswordSection form', () => {
+  it('shows a client-side error and does NOT call the API when new passwords do not match', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(true, {
+      profile: { username: 'testuser', has_password: true },
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+
+    // Fill in the form
+    fireEvent.change(screen.getByLabelText(/current password/i), {
+      target: { value: 'oldpass' },
+    });
+    fireEvent.change(screen.getByLabelText(/^new password/i), {
+      target: { value: 'newpass1' },
+    });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), {
+      target: { value: 'newpass2' }, // different!
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('New passwords do not match');
+    });
+
+    // API must NOT have been called with credentials
+    const credentialsCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit | undefined]) =>
+        url === '/api/account/credentials' && (init?.method ?? '').toUpperCase() === 'PATCH',
+    );
+    expect(credentialsCalls).toHaveLength(0);
+  });
+
+  it('surfaces "Username already taken" inline on 409 response', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(
+      true,
+      { profile: { username: 'testuser', has_password: true } },
+      { status: 409, body: { error: 'That username is already taken' } },
+    );
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/current password/i), {
+      target: { value: 'mypassword' },
+    });
+    // Change the username field so there is a diff to submit
+    fireEvent.change(screen.getByLabelText(/^username/i), {
+      target: { value: 'takenuser' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Username already taken');
+    });
+  });
+
+  it('surfaces "Current password is incorrect" inline on 401 response', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(
+      true,
+      { profile: { username: 'testuser', has_password: true } },
+      { status: 401, body: { error: 'Current password is incorrect' } },
+    );
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/current password/i), {
+      target: { value: 'wrongpass' },
+    });
+    fireEvent.change(screen.getByLabelText(/^username/i), {
+      target: { value: 'someotheruser' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Current password is incorrect');
+    });
   });
 });
