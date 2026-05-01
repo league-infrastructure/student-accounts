@@ -1,13 +1,13 @@
 ---
-id: "005"
-title: "New Services page consolidating Workspace Claude LLM zones"
-status: todo
+id: '005'
+title: New Services page consolidating Workspace Claude LLM zones
+status: done
 use-cases:
-  - SUC-020-004
+- SUC-020-004
 depends-on:
-  - "001"
-github-issue: ""
-todo: "plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md"
+- '001'
+github-issue: ''
+todo: plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -59,12 +59,12 @@ to `client/src/App.tsx` under the `AppLayout` wrapper (mirror how
 
 ## Acceptance Criteria
 
-- [ ] `client/src/pages/Services.tsx` exists, mounted at `/services` under `AppLayout` in `client/src/App.tsx`.
-- [ ] Workspace status, Claude Code, and LLM Proxy zones each render under the same conditions they did on `Account.tsx`.
-- [ ] Friendly empty state shows when none of the three zones apply.
-- [ ] Workspace temp-password first-view surfacing still works (regression check).
-- [ ] No new server endpoints; this is a pure client refactor.
-- [ ] `npm run test:client` passes; baseline holds.
+- [x] `client/src/pages/Services.tsx` exists, mounted at `/services` under `AppLayout` in `client/src/App.tsx`.
+- [x] Workspace status, Claude Code, and LLM Proxy zones each render under the same conditions they did on `Account.tsx`.
+- [x] Friendly empty state shows when none of the three zones apply.
+- [x] Workspace temp-password first-view surfacing still works (regression check).
+- [x] No new server endpoints; this is a pure client refactor.
+- [x] `npm run test:client` passes; baseline holds.
 
 ## Testing
 
