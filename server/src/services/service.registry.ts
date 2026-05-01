@@ -26,6 +26,7 @@ import { BulkLlmProxyService } from './bulk-llm-proxy.service';
 import { PassphraseService } from './passphrase.service';
 import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { OAuthClientService } from './oauth/oauth-client.service';
+import { OAuthTokenService } from './oauth/oauth-token.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -88,6 +89,8 @@ export class ServiceRegistry {
   readonly passphrases: PassphraseService;
   /** OAuth client registry — create, rotate, disable OAuth applications (Sprint 018). */
   readonly oauthClients: OAuthClientService;
+  /** OAuth access token issuance and validation (Sprint 018). */
+  readonly oauthTokens: OAuthTokenService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -214,6 +217,9 @@ export class ServiceRegistry {
 
     // OAuthClientService — Sprint 018.
     this.oauthClients = new OAuthClientService(defaultPrisma, this.audit);
+
+    // OAuthTokenService — Sprint 018.
+    this.oauthTokens = new OAuthTokenService(defaultPrisma, this.audit);
   }
 
   static create(

@@ -1,11 +1,13 @@
 ---
-id: "003"
-title: "POST /oauth/token client-credentials grant"
-status: todo
-use-cases: [SUC-018-002]
-depends-on: ["002"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '003'
+title: POST /oauth/token client-credentials grant
+status: done
+use-cases:
+- SUC-018-002
+depends-on:
+- '002'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -52,14 +54,14 @@ metadata = `{ oauth_client_id, scopes }`).
 
 ## Acceptance Criteria
 
-- [ ] `server/src/routes/oauth.ts` exists and is mounted at `/oauth` in `app.ts`.
-- [ ] `POST /oauth/token` accepts both Basic-auth and form-field credentials.
-- [ ] `grant_type` other than `client_credentials` → 400 with `unsupported_grant_type`.
-- [ ] Unknown client / wrong secret / disabled client → 401 with `invalid_client`.
-- [ ] Successful response shape matches the OAuth-spec example above; `expires_in` is 3600 (configurable constant ok).
-- [ ] Requested scopes are intersected with the client's `allowed_scopes`; an empty intersection → 400 `invalid_scope`.
-- [ ] `OAuthAccessToken` row is created with the SHA-256 hash; plaintext never persisted.
-- [ ] `oauth_token_issued` audit event is written on success.
+- [x] `server/src/routes/oauth.ts` exists and is mounted at `/oauth` in `app.ts`.
+- [x] `POST /oauth/token` accepts both Basic-auth and form-field credentials.
+- [x] `grant_type` other than `client_credentials` → 400 with `unsupported_grant_type`.
+- [x] Unknown client / wrong secret / disabled client → 401 with `invalid_client`.
+- [x] Successful response shape matches the OAuth-spec example above; `expires_in` is 3600 (configurable constant ok).
+- [x] Requested scopes are intersected with the client's `allowed_scopes`; an empty intersection → 400 `invalid_scope`.
+- [x] `OAuthAccessToken` row is created with the SHA-256 hash; plaintext never persisted.
+- [x] `oauth_token_issued` audit event is written on success.
 
 ## Testing
 

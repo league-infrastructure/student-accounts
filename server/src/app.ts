@@ -14,6 +14,7 @@ import { accountRouter } from './routes/account';
 import { accountAppsRouter } from './routes/account-apps';
 import { staffDirectoryRouter } from './routes/staff/directory';
 import { llmProxyRouter } from './routes/llm-proxy';
+import { oauthRouter } from './routes/oauth';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -86,6 +87,10 @@ app.use('/api', staffDirectoryRouter);
 // (Claude Code, VS Code extension) can set ANTHROPIC_BASE_URL to
 // <origin>/proxy and append /v1/messages themselves. See Sprint 013.
 app.use('/proxy/v1', llmProxyRouter);
+
+// OAuth provider — mounted at /oauth (NOT /api/oauth) per architecture-update.md.
+// External clients use standard OAuth endpoints without the /api prefix.
+app.use('/oauth', oauthRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());
