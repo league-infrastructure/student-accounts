@@ -2,10 +2,12 @@
  * AccountPage — identity management page (Sprint 020).
  *
  * Renders for all authenticated roles: student, staff, and admin.
- * Student-only sections (Profile, Logins, Services, Claude Code, LLM Proxy)
- * are shown only when role === 'student'.
+ * Student-only sections (Profile, Logins, UsernamePassword) are shown
+ * only when role === 'student'.
  *
- * Sprint 020: tile launchpad removed; sub-apps are now accessible via the sidebar.
+ * Sprint 020: ServicesSection, ClaudeCodeSection, and AccountLlmProxyCard
+ * have been removed. Those UIs are moving to the Services page (ticket 005).
+ * The tile launchpad (AppsZone) was removed in ticket 001.
  */
 
 import { useState } from 'react';
@@ -13,7 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useProviderStatus } from '../hooks/useProviderStatus';
 import { useAccountEventStream } from '../hooks/useAccountEventStream';
-import AccountLlmProxyCard from './account/AccountLlmProxyCard';
+import UsernamePasswordSection from './account/UsernamePasswordSection';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +34,10 @@ export interface AccountProfile {
   workspaceTempPassword?: string | null;
   /** True when the student has an active LLM proxy token. */
   llmProxyEnabled?: boolean;
+  /** Username for passphrase / local login, or null if not set. */
+  username?: string | null;
+  /** True when a password_hash is stored for this account. */
+  has_password?: boolean;
 }
 
 export interface AccountLogin {
@@ -97,15 +103,11 @@ async function patchDisplayName(displayName: string): Promise<void> {
 const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
   google: 'Google',
+  pike13: 'Pike 13',
 };
 
 function providerLabel(p: string): string {
   return PROVIDER_LABELS[p] ?? p.charAt(0).toUpperCase() + p.slice(1);
-}
-
-/** League emails are @jointheleague.org or any subdomain (e.g. students). */
-function isLeagueEmail(email: string): boolean {
-  return /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(email);
 }
 
 // ---------------------------------------------------------------------------
@@ -208,14 +210,6 @@ interface LoginsSectionProps {
 function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSectionProps) {
   const providerStatus = useProviderStatus();
 
-  const linkedProviderNames = new Set(logins.map((l) => l.provider));
-
-  // Only show "Add" links for providers that are: configured AND not yet linked.
-  // We only support google and github Add links (not pike13).
-  const addableProviders = (['google', 'github'] as const).filter(
-    (p) => providerStatus[p] && !linkedProviderNames.has(p),
-  );
-
   const canRemove = logins.length > 1;
 
   return (
@@ -265,195 +259,34 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
         <p role="alert" style={styles.inlineError}>{onRemoveError}</p>
       )}
 
-      {!providerStatus.loading && addableProviders.length > 0 && (
+      {/* Add buttons — always visible regardless of which providers are linked.
+          Google and GitHub are shown only when the provider is configured.
+          Pike 13 is always shown (the link-mode flow landed in Sprint 015). */}
+      {!providerStatus.loading && (
         <div style={styles.addRow}>
-          {addableProviders.map((provider) => (
+          {providerStatus.google && (
             <a
-              key={provider}
-              href={`/api/auth/${provider}?link=1`}
-              style={provider === 'github' ? styles.addButtonGitHub : styles.addButtonGoogle}
+              href="/api/auth/google?link=1"
+              style={styles.addButtonGoogle}
             >
-              Add {providerLabel(provider)}
+              Add Google
             </a>
-          ))}
+          )}
+          {providerStatus.github && (
+            <a
+              href="/api/auth/github?link=1"
+              style={styles.addButtonGitHub}
+            >
+              Add GitHub
+            </a>
+          )}
+          <a
+            href="/api/auth/pike13?link=1"
+            style={styles.addButtonPike13}
+          >
+            Add Pike 13
+          </a>
         </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ServicesSection — read-only status of the account's services. Requests
-// are no longer student-initiated; admins grant workspace, Claude, and
-// LLM proxy directly from the admin UI.
-// ---------------------------------------------------------------------------
-
-function ServicesSection({ data }: { data: AccountData }) {
-  if (data.profile.approvalStatus === 'pending') {
-    return (
-      <div style={styles.card}>
-        <h2 style={styles.sectionTitle}>Services</h2>
-        <div style={styles.pendingBanner} role="status">
-          <strong>Your account is pending approval.</strong>
-          <span>
-            {' '}An admin will review your sign-in shortly. Once approved, any
-            services they grant you will show up here.
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  const workspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
-  const claudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
-  const pike13Account = data.externalAccounts.find((a) => a.type === 'pike13');
-
-  const leagueEmailDisplay: string | null =
-    workspaceAccount?.externalId ??
-    (isLeagueEmail(data.profile.primaryEmail) ? data.profile.primaryEmail : null);
-
-  return (
-    <div style={styles.card}>
-      <h2 style={styles.sectionTitle}>Services</h2>
-      <p style={styles.helpText}>
-        Accounts are granted by an admin. If something you expect is
-        missing, reach out to your instructor.
-      </p>
-
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={styles.th}>Service</th>
-            <th style={styles.th}>Status</th>
-            <th style={styles.th}>Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr style={styles.tr}>
-            <td style={styles.td}>League Email</td>
-            <td style={styles.td}>{workspaceAccount?.status ?? 'None'}</td>
-            <td style={styles.td}>
-              {workspaceAccount && leagueEmailDisplay ? (
-                <div style={styles.emailColumn}>
-                  <span style={styles.emailValue}>{leagueEmailDisplay}</span>
-                  {data.profile.workspaceTempPassword && (
-                    <span
-                      style={styles.tempPasswordHint}
-                      title="Shared temp password — you'll be asked to change it on first sign-in"
-                    >
-                      password: <code style={styles.emailValue}>{data.profile.workspaceTempPassword}</code>
-                    </span>
-                  )}
-                </div>
-              ) : null}
-            </td>
-          </tr>
-
-          <tr style={styles.tr}>
-            <td style={styles.td}>Claude Seat</td>
-            <td style={styles.td}>{claudeAccount?.status ?? 'None'}</td>
-            <td style={styles.td}></td>
-          </tr>
-
-          <tr style={styles.tr}>
-            <td style={styles.td}>LLM Proxy</td>
-            <td style={styles.td}>
-              {data.profile.llmProxyEnabled ? 'active' : 'None'}
-            </td>
-            <td style={styles.td}></td>
-          </tr>
-
-          <tr style={styles.tr}>
-            <td style={styles.td}>Pike13</td>
-            <td style={styles.td}>{pike13Account?.status ?? 'None'}</td>
-            <td style={styles.td}>
-              <span style={styles.readOnlyHint}>Managed by staff</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ClaudeCodeSection — onboarding instructions once the student's Claude
-// invite is active. Anthropic's Admin API doesn't let us mint API keys on
-// another member's behalf, so instead we point the student at Claude Code's
-// built-in OAuth flow — `claude auth login` — which authenticates against
-// their org membership without any key handling.
-// ---------------------------------------------------------------------------
-
-function ClaudeCodeSection({ data }: { data: AccountData }) {
-  const claudeAccount = data.externalAccounts.find((a) => a.type === 'claude');
-  if (!claudeAccount) return null;
-
-  const active = claudeAccount.status === 'active';
-  const pending = claudeAccount.status === 'pending';
-
-  return (
-    <div style={styles.card}>
-      <h2 style={styles.sectionTitle}>Claude Code</h2>
-      {pending && (
-        <p style={styles.helpText}>
-          Your Claude invite is pending. Check your inbox for an email from
-          Anthropic and accept the invitation before continuing.
-        </p>
-      )}
-      {active && (
-        <>
-          <p style={styles.helpText}>
-            You can use <strong>Claude Code</strong> (the CLI) directly against
-            The League's Anthropic org — no API key needed. Usage is billed to
-            the school, not to you.
-          </p>
-          <ol style={styles.claudeSteps}>
-            <li>
-              <strong>Install Claude Code:</strong>{' '}
-              <code style={styles.code}>curl -fsSL https://claude.ai/install.sh | bash</code>{' '}
-              (or see{' '}
-              <a
-                href="https://docs.claude.com/claude-code"
-                target="_blank"
-                rel="noreferrer"
-                style={styles.helpLink}
-              >
-                the install guide
-              </a>
-              ).
-            </li>
-            <li>
-              <strong>Sign in:</strong>{' '}
-              <code style={styles.code}>claude auth login</code>
-              <div style={styles.claudeHint}>
-                A browser window opens. Sign in with your{' '}
-                <strong>{data.profile.primaryEmail}</strong> account — the one
-                invited into the League Anthropic org.
-              </div>
-            </li>
-            <li>
-              <strong>Verify:</strong>{' '}
-              <code style={styles.code}>claude "hello"</code>
-              <div style={styles.claudeHint}>
-                You should get a reply. If Claude Code asks for an API key,
-                you're signed into the wrong account — run{' '}
-                <code style={styles.codeInline}>claude auth logout</code> and
-                start over.
-              </div>
-            </li>
-          </ol>
-          <p style={styles.claudeFooter}>
-            Your tokens refresh automatically — you won't need to log in again
-            unless you switch machines.
-          </p>
-        </>
-      )}
-      {!active && !pending && (
-        <p style={styles.helpText}>
-          Claude access is not currently available on your account
-          ({claudeAccount.status}). Contact the League admin if this looks
-          wrong.
-        </p>
       )}
     </div>
   );
@@ -557,11 +390,16 @@ export default function Account() {
     );
   }
 
+  const hasCredentials =
+    isStudent &&
+    data != null &&
+    ((data.profile.username ?? null) !== null || data.profile.has_password === true);
+
   return (
     <div style={styles.container}>
       <h1 style={styles.pageTitle}>My Account</h1>
 
-      {/* Student-only sections: Profile, Logins, Services, Claude Code, LLM Proxy */}
+      {/* Student-only sections: Profile, Logins, UsernamePassword */}
       {isStudent && data && (
         <>
           <ProfileSection
@@ -587,17 +425,17 @@ export default function Account() {
             removingId={removeLoginMutation.isPending ? (removeLoginMutation.variables ?? null) : null}
           />
 
-          <div style={styles.spacer} />
-
-          <ServicesSection data={data} />
-
-          <div style={styles.spacer} />
-
-          <ClaudeCodeSection data={data} />
-
-          <div style={styles.spacer} />
-
-          <AccountLlmProxyCard />
+          {hasCredentials && (
+            <>
+              <div style={styles.spacer} />
+              <UsernamePasswordSection
+                username={data.profile.username ?? null}
+                onSuccess={() => {
+                  void queryClient.invalidateQueries({ queryKey: ['account'] });
+                }}
+              />
+            </>
+          )}
 
           <div style={styles.spacer} />
         </>
@@ -684,12 +522,6 @@ const styles: Record<string, React.CSSProperties> = {
   profileHeader: {
     marginBottom: '1.5rem',
   },
-  profileName: {
-    fontSize: '1.25rem',
-    fontWeight: 600,
-    color: '#1e293b',
-    marginBottom: 4,
-  },
   profileNameButton: {
     fontSize: '1.25rem',
     fontWeight: 600,
@@ -723,15 +555,6 @@ const styles: Record<string, React.CSSProperties> = {
   profileMeta: {
     fontSize: '0.9rem',
     color: '#64748b',
-    lineHeight: 1.5,
-  },
-  pendingBanner: {
-    padding: '14px 16px',
-    borderRadius: 8,
-    border: '1px solid #fcd34d',
-    background: '#fef3c7',
-    color: '#78350f',
-    fontSize: '0.9rem',
     lineHeight: 1.5,
   },
   table: {
@@ -807,38 +630,19 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     border: 'none',
   },
-  requestButton: {
-    fontSize: '0.82rem',
-    padding: '4px 12px',
-    borderRadius: 6,
-    border: '1px solid #4f46e5',
-    background: '#4f46e5',
-    color: '#fff',
-    cursor: 'pointer',
-    fontWeight: 500,
-  },
-  disabledHint: {
-    fontSize: '0.82rem',
-    color: '#94a3b8',
-    fontStyle: 'italic' as const,
-  },
-  emailValue: {
+  addButtonPike13: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '6px 14px',
+    borderRadius: 8,
     fontSize: '0.85rem',
-    color: '#1e293b',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  },
-  emailColumn: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 4,
-  },
-  tempPasswordHint: {
-    fontSize: '0.78rem',
-    color: '#64748b',
-  },
-  readOnlyHint: {
-    fontSize: '0.82rem',
-    color: '#94a3b8',
+    fontWeight: 600,
+    textDecoration: 'none',
+    cursor: 'pointer',
+    background: '#0ea5e9',
+    color: '#fff',
+    border: 'none',
   },
   inlineError: {
     fontSize: '0.85rem',
@@ -858,41 +662,5 @@ const styles: Record<string, React.CSSProperties> = {
   },
   helpLink: {
     color: '#4f46e5',
-  },
-  claudeSteps: {
-    fontSize: '0.9rem',
-    color: '#374151',
-    lineHeight: 1.8,
-    paddingLeft: '1.25rem',
-  } as const,
-  code: {
-    display: 'inline-block',
-    background: '#0f172a',
-    color: '#e2e8f0',
-    padding: '3px 8px',
-    borderRadius: 4,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '0.82rem',
-    userSelect: 'all' as const,
-  },
-  codeInline: {
-    background: '#f1f5f9',
-    color: '#0f172a',
-    padding: '1px 5px',
-    borderRadius: 3,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '0.82rem',
-  },
-  claudeHint: {
-    fontSize: '0.8rem',
-    color: '#64748b',
-    marginTop: 4,
-    marginLeft: 2,
-  },
-  claudeFooter: {
-    fontSize: '0.82rem',
-    color: '#64748b',
-    marginTop: 12,
-    fontStyle: 'italic',
   },
 };
