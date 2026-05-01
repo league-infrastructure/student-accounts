@@ -1,11 +1,14 @@
 ---
-id: "001"
-title: "app-tiles service + GET /api/account/apps route + integration tests"
-status: todo
-use-cases: [SUC-016-001, SUC-016-002, SUC-016-003]
+id: '001'
+title: app-tiles service + GET /api/account/apps route + integration tests
+status: done
+use-cases:
+- SUC-016-001
+- SUC-016-002
+- SUC-016-003
 depends-on: []
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -51,18 +54,18 @@ supports; treat the column as a free-form string key.)
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/app-tiles.service.ts` exists, exports `computeAppTiles({ role, llmProxyEnabled }): AppTile[]`, and is a pure function with no imports of prisma, express, or any I/O module.
-- [ ] `server/src/routes/account-apps.ts` exists and mounts `GET /apps` behind `requireAuth`.
-- [ ] The route is wired into `app.ts` (or `account.ts`) such that `GET /api/account/apps` is reachable.
-- [ ] Response shape: `{ tiles: AppTile[] }`. Each tile has `id, title, description, href, icon` strings.
-- [ ] Unauthenticated request returns 401.
-- [ ] Authenticated student without LLM token: tiles do NOT include `llm-proxy`, do NOT include `user-management`.
-- [ ] Authenticated student WITH active LLM token: tiles include `llm-proxy`.
-- [ ] Authenticated staff: tiles include `user-management`, `staff-directory`; do NOT include `cohorts` or `groups` (admin-only).
-- [ ] Authenticated admin: tiles include `user-management`, `staff-directory`, `cohorts`, `groups`.
-- [ ] Unit tests for `computeAppTiles` cover all five role/grant combinations.
-- [ ] Integration tests for `GET /api/account/apps` cover: 401 unauthenticated, student-no-token, student-with-token, staff, admin.
-- [ ] Pre-existing server suite still passes (1407 baseline, modulo the known SQLite ordering flake).
+- [x] `server/src/services/app-tiles.service.ts` exists, exports `computeAppTiles({ role, llmProxyEnabled }): AppTile[]`, and is a pure function with no imports of prisma, express, or any I/O module.
+- [x] `server/src/routes/account-apps.ts` exists and mounts `GET /apps` behind `requireAuth`.
+- [x] The route is wired into `app.ts` (or `account.ts`) such that `GET /api/account/apps` is reachable.
+- [x] Response shape: `{ tiles: AppTile[] }`. Each tile has `id, title, description, href, icon` strings.
+- [x] Unauthenticated request returns 401.
+- [x] Authenticated student without LLM token: tiles do NOT include `llm-proxy`, do NOT include `user-management`.
+- [x] Authenticated student WITH active LLM token: tiles include `llm-proxy`.
+- [x] Authenticated staff: tiles include `user-management`, `staff-directory`; do NOT include `cohorts` or `groups` (admin-only).
+- [x] Authenticated admin: tiles include `user-management`, `staff-directory`, `cohorts`, `groups`.
+- [x] Unit tests for `computeAppTiles` cover all five role/grant combinations.
+- [x] Integration tests for `GET /api/account/apps` cover: 401 unauthenticated, student-no-token, student-with-token, staff, admin.
+- [x] Pre-existing server suite still passes (1407 baseline, modulo the known SQLite ordering flake).
 
 ## Testing
 
