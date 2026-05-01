@@ -1,9 +1,13 @@
 ---
-id: "018"
-title: "OAuth Application Registry and Client-Credentials API"
-status: planning
+id: 018
+title: OAuth Application Registry and Client-Credentials API
+status: done
 branch: sprint/018-oauth-application-registry-and-client-credentials-api
-use-cases: [SUC-018-001, SUC-018-002, SUC-018-003, SUC-018-004]
+use-cases:
+- SUC-018-001
+- SUC-018-002
+- SUC-018-003
+- SUC-018-004
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
