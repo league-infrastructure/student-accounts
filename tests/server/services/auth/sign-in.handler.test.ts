@@ -1311,3 +1311,141 @@ describe('signInHandler — provider_payload and LoginEvent (Sprint 017)', () =>
     expect(events[0].user_agent).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 017 ticket 004: directory_metadata enrichment
+// ---------------------------------------------------------------------------
+
+describe('signInHandler — directory_metadata enrichment (Sprint 017 T004)', () => {
+  const STAFF_OU = '/League Staff';
+
+  beforeEach(() => {
+    process.env.GOOGLE_STAFF_OU_PATH = STAFF_OU;
+  });
+
+  afterEach(() => {
+    delete process.env.GOOGLE_STAFF_OU_PATH;
+  });
+
+  it('writes directory_metadata with ou_path and groups for @jointheleague.org sign-in', async () => {
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff/Engineering');
+    adminDirClient.configure('listUserGroups', [
+      { id: 'grp-1', name: 'Engineering', email: 'eng@jointheleague.org' },
+    ]);
+
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-dir-001',
+        providerEmail: 'dir001@jointheleague.org',
+        displayName: 'Dir User 001',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-dir-001' },
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    const login = await loginService.findByProvider('google', 'google-uid-dir-001');
+    expect(login).not.toBeNull();
+    const meta = login!.directory_metadata as any;
+    expect(meta).not.toBeNull();
+    expect(meta.ou_path).toBe('/League Staff/Engineering');
+    expect(meta.groups).toHaveLength(1);
+    expect(meta.groups[0].id).toBe('grp-1');
+  });
+
+  it('leaves directory_metadata null for non-@jointheleague.org Google sign-in', async () => {
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-dir-002',
+        providerEmail: 'student@students.jointheleague.org',
+        displayName: 'Student Domain',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-dir-002' },
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    const login = await loginService.findByProvider('google', 'google-uid-dir-002');
+    expect(login).not.toBeNull();
+    expect(login!.directory_metadata).toBeNull();
+  });
+
+  it('leaves directory_metadata null for non-Google provider sign-in', async () => {
+    await signInHandler(
+      'github',
+      {
+        providerUserId: 'github-uid-dir-003',
+        providerEmail: 'user@example.com',
+        displayName: 'GitHub User',
+        providerUsername: 'dir003',
+        rawProfile: { id: 'github-uid-dir-003' },
+      },
+      userService,
+      loginService,
+    );
+
+    const login = await loginService.findByProvider('github', 'github-uid-dir-003');
+    expect(login).not.toBeNull();
+    expect(login!.directory_metadata).toBeNull();
+  });
+
+  it('sign-in still completes when listUserGroups throws', async () => {
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff/Engineering');
+    adminDirClient.configureError('listUserGroups', new Error('Directory API unavailable'));
+
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-dir-004',
+        providerEmail: 'dir004@jointheleague.org',
+        displayName: 'Dir User 004',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-dir-004' },
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    // Sign-in should resolve successfully
+    expect(user).toBeDefined();
+    expect(user.id).toBeGreaterThan(0);
+  });
+
+  it('directory_metadata has groups: [] when listUserGroups throws', async () => {
+    const adminDirClient = new FakeGoogleWorkspaceAdminClient();
+    adminDirClient.configure('getUserOU', '/League Staff/Engineering');
+    adminDirClient.configureError('listUserGroups', new Error('API down'));
+
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-dir-005',
+        providerEmail: 'dir005@jointheleague.org',
+        displayName: 'Dir User 005',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-dir-005' },
+      },
+      userService,
+      loginService,
+      { adminDirClient },
+    );
+
+    const login = await loginService.findByProvider('google', 'google-uid-dir-005');
+    // directory_metadata should be written with empty groups (fail-soft)
+    const meta = login!.directory_metadata as any;
+    expect(meta).not.toBeNull();
+    expect(meta.ou_path).toBe('/League Staff/Engineering');
+    expect(meta.groups).toEqual([]);
+  });
+});

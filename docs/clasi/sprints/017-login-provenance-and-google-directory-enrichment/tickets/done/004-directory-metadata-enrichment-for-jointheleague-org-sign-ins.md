@@ -1,11 +1,14 @@
 ---
-id: "004"
-title: "Directory metadata enrichment for jointheleague.org sign-ins"
-status: todo
-use-cases: [SUC-017-002]
-depends-on: ["002", "003"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '004'
+title: Directory metadata enrichment for jointheleague.org sign-ins
+status: done
+use-cases:
+- SUC-017-002
+depends-on:
+- '002'
+- '003'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -50,11 +53,11 @@ throws or the prisma update fails. Catch and log; do not rethrow.
 
 ## Acceptance Criteria
 
-- [ ] After a Google sign-in for a `@jointheleague.org` user, `Login.directory_metadata` is set to `{ ou_path, groups }`.
-- [ ] Non-Google sign-ins leave `directory_metadata` null.
-- [ ] Non-`@jointheleague.org` Google sign-ins leave `directory_metadata` null.
-- [ ] When `listUserGroups` throws, sign-in still completes (302 redirect, session established) and `directory_metadata` may be `{ ou_path, groups: [] }` or null — either is acceptable.
-- [ ] When the prisma update for `directory_metadata` throws, sign-in still completes; the failure is logged.
+- [x] After a Google sign-in for a `@jointheleague.org` user, `Login.directory_metadata` is set to `{ ou_path, groups }`.
+- [x] Non-Google sign-ins leave `directory_metadata` null.
+- [x] Non-`@jointheleague.org` Google sign-ins leave `directory_metadata` null.
+- [x] When `listUserGroups` throws, sign-in still completes (302 redirect, session established) and `directory_metadata` may be `{ ou_path, groups: [] }` or null — either is acceptable.
+- [x] When the prisma update for `directory_metadata` throws, sign-in still completes; the failure is logged.
 
 ## Testing
 

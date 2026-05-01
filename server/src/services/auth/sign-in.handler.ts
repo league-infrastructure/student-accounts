@@ -32,6 +32,7 @@ import { adminBus } from '../change-bus.js';
 import { mergeScan } from './merge-scan.stub.js';
 import {
   type GoogleWorkspaceAdminClient,
+  type UserGroup,
   StaffOULookupError,
 } from '../google-workspace/google-workspace-admin.client.js';
 
@@ -411,6 +412,9 @@ export async function signInHandler(
     // Only call the Admin SDK if staffOuPath is set AND a client is injected.
     // Admin role is treated as manually granted (via the Users panel or
     // ADMIN_EMAILS) and is never overwritten by OU-based role resolution.
+    // ouPathResolved is set when getUserOU succeeds; used for directory_metadata below.
+    let ouPathResolved: string | null = null;
+
     if (staffOuPath !== null && adminDirClient && user.role !== 'admin') {
       logger.info(
         { email: providerEmail },
@@ -419,6 +423,7 @@ export async function signInHandler(
       let ouPath: string;
       try {
         ouPath = await adminDirClient.getUserOU(providerEmail);
+        ouPathResolved = ouPath;
         logger.info(
           { email: providerEmail, ouPath },
           '[sign-in.handler] Step 4: getUserOU succeeded'
@@ -470,6 +475,42 @@ export async function signInHandler(
           logger.info(
             { userId: user.id, newRole: 'student' },
             '[sign-in.handler] Step 4: role downgraded to student'
+          );
+        }
+      }
+
+      // --- Step 4b: directory_metadata enrichment ---
+      //
+      // After the OU is resolved, also call listUserGroups and persist
+      // { ou_path, groups } to Login.directory_metadata. Fail-soft: any
+      // error is logged but never blocks sign-in.
+      if (loginId !== null) {
+        let groups: UserGroup[] = [];
+        if (adminDirClient && typeof (adminDirClient as any).listUserGroups === 'function') {
+          try {
+            groups = await (adminDirClient as GoogleWorkspaceAdminClient).listUserGroups(providerEmail);
+          } catch (groupsErr) {
+            logger.warn(
+              { providerEmail, err: groupsErr },
+              '[sign-in.handler] listUserGroups failed — continuing without groups',
+            );
+          }
+        }
+
+        const directoryMetadata = { ou_path: ouPathResolved, groups };
+        try {
+          await prisma.login.update({
+            where: { id: loginId },
+            data: { directory_metadata: directoryMetadata as any },
+          });
+          logger.info(
+            { loginId, ouPath: ouPathResolved, groupCount: groups.length },
+            '[sign-in.handler] Step 4b: directory_metadata written',
+          );
+        } catch (metaErr) {
+          logger.error(
+            { loginId, err: metaErr },
+            '[sign-in.handler] Step 4b: Failed to write directory_metadata — sign-in still succeeds',
           );
         }
       }
