@@ -1,11 +1,13 @@
 ---
-id: "005"
-title: "login-payload typed accessor module"
-status: todo
-use-cases: [SUC-017-003]
-depends-on: ["001"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '005'
+title: login-payload typed accessor module
+status: done
+use-cases:
+- SUC-017-003
+depends-on:
+- '001'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -51,11 +53,11 @@ Each helper:
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/auth/login-payload.ts` exists with the four exports above.
-- [ ] Each helper is a pure function (no imports of `prisma`, no `await`).
-- [ ] Helpers handle `null` inputs gracefully — return `null` / `[]`.
-- [ ] Unit tests cover: populated, null, wrong-provider, malformed-json paths.
-- [ ] No new typecheck errors.
+- [x] `server/src/services/auth/login-payload.ts` exists with the four exports above.
+- [x] Each helper is a pure function (no imports of `prisma`, no `await`).
+- [x] Helpers handle `null` inputs gracefully — return `null` / `[]`.
+- [x] Unit tests cover: populated, null, wrong-provider, malformed-json paths.
+- [x] No new typecheck errors.
 
 ## Testing
 
