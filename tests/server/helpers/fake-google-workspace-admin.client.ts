@@ -45,6 +45,7 @@ import type {
   CreatedOU,
   WorkspaceUser,
   WorkspaceOU,
+  UserGroup,
 } from '../../../server/src/services/google-workspace/google-workspace-admin.client.js';
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,7 @@ import type {
 export interface FakeCallRecords {
   getUserOU: string[];
   listOUs: string[];
+  listUserGroups: string[];
   createUser: CreateUserParams[];
   createOU: string[];
   suspendUser: string[];
@@ -69,6 +71,7 @@ export interface FakeCallRecords {
 type MethodReturnOverrides = {
   getUserOU?: string;
   listOUs?: WorkspaceOU[];
+  listUserGroups?: UserGroup[];
   createUser?: CreatedUser;
   createOU?: CreatedOU;
   suspendUser?: void;
@@ -108,6 +111,7 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
   readonly calls: FakeCallRecords = {
     getUserOU: [],
     listOUs: [],
+    listUserGroups: [],
     createUser: [],
     createOU: [],
     suspendUser: [],
@@ -163,6 +167,7 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
   reset(): void {
     this.calls.getUserOU = [];
     this.calls.listOUs = [];
+    this.calls.listUserGroups = [];
     this.calls.createUser = [];
     this.calls.createOU = [];
     this.calls.suspendUser = [];
@@ -196,6 +201,14 @@ export class FakeGoogleWorkspaceAdminClient implements GoogleWorkspaceAdminClien
       return this.returnOverrides.listOUs;
     }
     return this.ouSeed.get(parentPath) ?? [];
+  }
+
+  async listUserGroups(email: string): Promise<UserGroup[]> {
+    this.calls.listUserGroups.push(email);
+    if (this.errorOverrides.listUserGroups) {
+      throw this.errorOverrides.listUserGroups;
+    }
+    return this.returnOverrides.listUserGroups ?? [];
   }
 
   // ---------------------------------------------------------------------------

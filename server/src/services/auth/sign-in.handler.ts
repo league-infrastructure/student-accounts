@@ -32,6 +32,7 @@ import { adminBus } from '../change-bus.js';
 import { mergeScan } from './merge-scan.stub.js';
 import {
   type GoogleWorkspaceAdminClient,
+  type UserGroup,
   StaffOULookupError,
 } from '../google-workspace/google-workspace-admin.client.js';
 
@@ -137,6 +138,12 @@ export interface OAuthProfile {
   displayName: string;
   /** Provider-specific username (GitHub login, etc). Null for Google. */
   providerUsername?: string | null;
+  /**
+   * Raw provider profile object as returned by Passport (or for Pike13, the
+   * profile returned by pike13FetchProfile). Stored as Login.provider_payload.
+   * Optional — callers that do not pass it will leave provider_payload unchanged.
+   */
+  rawProfile?: unknown;
 }
 
 /**
@@ -160,6 +167,15 @@ export interface SignInOptions {
    * object as its transaction argument, including the top-level client.
    */
   prisma?: any;
+  /**
+   * HTTP request context for logging provenance. Both fields are optional
+   * — sign-in still proceeds if they are absent or if the client is behind
+   * a proxy that strips headers.
+   */
+  requestContext?: {
+    ip?: string;
+    userAgent?: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +204,7 @@ export async function signInHandler(
   loginService: LoginService,
   options?: SignInOptions,
 ): Promise<User> {
-  const { providerUserId, providerEmail, displayName, providerUsername } = profile;
+  const { providerUserId, providerEmail, displayName, providerUsername, rawProfile } = profile;
 
   logger.info(
     { provider, providerUserId, providerEmail, displayName },
@@ -207,6 +223,9 @@ export async function signInHandler(
   );
 
   let user: User;
+  // loginId is resolved from either the existing Login (step 1) or the newly-
+  // created Login (step 3c). Used at the end to write provider_payload + LoginEvent.
+  let loginId: number | null = existingLogin?.id ?? null;
 
   if (existingLogin) {
     // --- Step 2: Existing identity — load the User ---
@@ -306,7 +325,7 @@ export async function signInHandler(
       { userId: user.id, provider, providerUserId },
       '[sign-in.handler] Step 3c: creating login'
     );
-    await loginService.create(
+    const newLogin = await loginService.create(
       user.id,
       provider,
       providerUserId,
@@ -314,8 +333,9 @@ export async function signInHandler(
       null, // system action
       providerUsername ?? null,
     );
+    loginId = newLogin.id;
     logger.info(
-      { userId: user.id, provider, providerUserId },
+      { userId: user.id, provider, providerUserId, loginId },
       '[sign-in.handler] Step 3c: login created'
     );
 
@@ -392,6 +412,9 @@ export async function signInHandler(
     // Only call the Admin SDK if staffOuPath is set AND a client is injected.
     // Admin role is treated as manually granted (via the Users panel or
     // ADMIN_EMAILS) and is never overwritten by OU-based role resolution.
+    // ouPathResolved is set when getUserOU succeeds; used for directory_metadata below.
+    let ouPathResolved: string | null = null;
+
     if (staffOuPath !== null && adminDirClient && user.role !== 'admin') {
       logger.info(
         { email: providerEmail },
@@ -400,6 +423,7 @@ export async function signInHandler(
       let ouPath: string;
       try {
         ouPath = await adminDirClient.getUserOU(providerEmail);
+        ouPathResolved = ouPath;
         logger.info(
           { email: providerEmail, ouPath },
           '[sign-in.handler] Step 4: getUserOU succeeded'
@@ -451,6 +475,42 @@ export async function signInHandler(
           logger.info(
             { userId: user.id, newRole: 'student' },
             '[sign-in.handler] Step 4: role downgraded to student'
+          );
+        }
+      }
+
+      // --- Step 4b: directory_metadata enrichment ---
+      //
+      // After the OU is resolved, also call listUserGroups and persist
+      // { ou_path, groups } to Login.directory_metadata. Fail-soft: any
+      // error is logged but never blocks sign-in.
+      if (loginId !== null) {
+        let groups: UserGroup[] = [];
+        if (adminDirClient && typeof (adminDirClient as any).listUserGroups === 'function') {
+          try {
+            groups = await (adminDirClient as GoogleWorkspaceAdminClient).listUserGroups(providerEmail);
+          } catch (groupsErr) {
+            logger.warn(
+              { providerEmail, err: groupsErr },
+              '[sign-in.handler] listUserGroups failed — continuing without groups',
+            );
+          }
+        }
+
+        const directoryMetadata = { ou_path: ouPathResolved, groups };
+        try {
+          await prisma.login.update({
+            where: { id: loginId },
+            data: { directory_metadata: directoryMetadata as any },
+          });
+          logger.info(
+            { loginId, ouPath: ouPathResolved, groupCount: groups.length },
+            '[sign-in.handler] Step 4b: directory_metadata written',
+          );
+        } catch (metaErr) {
+          logger.error(
+            { loginId, err: metaErr },
+            '[sign-in.handler] Step 4b: Failed to write directory_metadata — sign-in still succeeds',
           );
         }
       }
@@ -515,6 +575,40 @@ export async function signInHandler(
       { provider },
       '[sign-in.handler] Step 4-5: non-Google provider, skipping OU and admin checks'
     );
+  }
+
+  // --- Final step: Write provider_payload + LoginEvent (provenance) ---
+  //
+  // Best-effort: if rawProfile or loginId is absent, skip silently.
+  // Failure to write provenance must never block the sign-in path.
+  if (loginId !== null && rawProfile !== undefined) {
+    try {
+      const now = new Date();
+      await prisma.login.update({
+        where: { id: loginId },
+        data: {
+          provider_payload: rawProfile as any,
+          provider_payload_updated_at: now,
+        },
+      });
+      await prisma.loginEvent.create({
+        data: {
+          login_id: loginId,
+          payload: rawProfile as any,
+          ip: options?.requestContext?.ip ?? null,
+          user_agent: options?.requestContext?.userAgent ?? null,
+        },
+      });
+      logger.info(
+        { loginId, userId: user.id },
+        '[sign-in.handler] provenance written (provider_payload + LoginEvent)'
+      );
+    } catch (provenanceErr) {
+      logger.error(
+        { loginId, userId: user.id, err: provenanceErr },
+        '[sign-in.handler] Failed to write provenance — sign-in still succeeds'
+      );
+    }
   }
 
   logger.info(
