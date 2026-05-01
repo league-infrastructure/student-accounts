@@ -611,3 +611,70 @@ describe('GoogleWorkspaceAdminClientImpl domain guard with League defaults', () 
     expect(caught).not.toBeInstanceOf(WorkspaceWriteDisabledError);
   });
 });
+
+// ---------------------------------------------------------------------------
+// FakeGoogleWorkspaceAdminClient — listUserGroups (Sprint 017 T003)
+// ---------------------------------------------------------------------------
+
+import { FakeGoogleWorkspaceAdminClient } from '../../helpers/fake-google-workspace-admin.client.js';
+
+describe('FakeGoogleWorkspaceAdminClient — listUserGroups', () => {
+  let fake: FakeGoogleWorkspaceAdminClient;
+
+  beforeEach(() => {
+    fake = new FakeGoogleWorkspaceAdminClient();
+  });
+
+  it('returns [] by default when no override is configured', async () => {
+    const groups = await fake.listUserGroups('user@example.com');
+    expect(groups).toEqual([]);
+  });
+
+  it('returns the configured value when configure() is called', async () => {
+    const expected = [
+      { id: 'grp-001', name: 'Staff Team', email: 'staff@jointheleague.org' },
+    ];
+    fake.configure('listUserGroups', expected);
+
+    const groups = await fake.listUserGroups('user@jointheleague.org');
+    expect(groups).toEqual(expected);
+  });
+
+  it('records the email in calls.listUserGroups', async () => {
+    await fake.listUserGroups('alice@jointheleague.org');
+    expect(fake.calls.listUserGroups).toEqual(['alice@jointheleague.org']);
+  });
+
+  it('records multiple calls in order', async () => {
+    await fake.listUserGroups('alice@jointheleague.org');
+    await fake.listUserGroups('bob@jointheleague.org');
+    expect(fake.calls.listUserGroups).toEqual([
+      'alice@jointheleague.org',
+      'bob@jointheleague.org',
+    ]);
+  });
+
+  it('throws configured Error when configureError() is used', async () => {
+    const err = new Error('Admin SDK unavailable');
+    fake.configureError('listUserGroups', err);
+
+    await expect(fake.listUserGroups('user@example.com')).rejects.toThrow('Admin SDK unavailable');
+  });
+
+  it('throws a StaffOULookupError when configureError() with StaffOULookupError', async () => {
+    const err = new StaffOULookupError('lookup failed', 'API_ERROR', 'user@example.com');
+    fake.configureError('listUserGroups', err);
+
+    await expect(fake.listUserGroups('user@example.com')).rejects.toBeInstanceOf(StaffOULookupError);
+  });
+
+  it('resets calls and overrides on reset()', async () => {
+    fake.configure('listUserGroups', [{ id: 'g1', name: 'G1', email: 'g1@example.com' }]);
+    await fake.listUserGroups('user@example.com');
+    fake.reset();
+
+    expect(fake.calls.listUserGroups).toEqual([]);
+    const groups = await fake.listUserGroups('user@example.com');
+    expect(groups).toEqual([]);
+  });
+});

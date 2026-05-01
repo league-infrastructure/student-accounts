@@ -253,6 +253,19 @@ export interface WorkspaceOU {
   name: string;
 }
 
+/**
+ * A Google Workspace group that a user belongs to.
+ * Returned by listUserGroups.
+ */
+export interface UserGroup {
+  /** Immutable Google Workspace group ID. */
+  id: string;
+  /** Display name of the group. */
+  name: string;
+  /** Primary email address of the group. */
+  email: string;
+}
+
 // ---------------------------------------------------------------------------
 // GoogleWorkspaceAdminClient interface
 // ---------------------------------------------------------------------------
@@ -270,6 +283,9 @@ export interface GoogleWorkspaceAdminClient {
 
   // Read — new in Sprint 006 (T005)
   listOUs(parentPath: string): Promise<WorkspaceOU[]>;
+
+  // Read — new in Sprint 017 (T003)
+  listUserGroups(email: string): Promise<UserGroup[]>;
 
   // Write — new in Sprint 004
   createUser(params: CreateUserParams): Promise<CreatedUser>;
@@ -578,6 +594,57 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
         `Admin SDK listOUs failed for '${parentPath}': ${apiErr?.message ?? String(err)}`,
         'listOUs',
         statusCode,
+        err,
+      );
+    }
+  }
+
+  async listUserGroups(email: string): Promise<UserGroup[]> {
+    const auth = this.buildAuthClient(`listUserGroups:${email}`);
+
+    try {
+      const adminSdk = google.admin({ version: 'directory_v1', auth });
+      const groups: UserGroup[] = [];
+      let pageToken: string | undefined;
+      // Safety cap: typical staff users belong to far fewer than 1000 groups.
+      // The Admin SDK returns up to 200 per page by default; we iterate pages
+      // until exhausted or the cap is reached.
+      const MAX_GROUPS = 1000;
+
+      do {
+        const response = await adminSdk.groups.list({
+          userKey: email,
+          maxResults: 200,
+          pageToken,
+        });
+
+        const data = response.data;
+        for (const g of data.groups ?? []) {
+          if (g.id && g.name && g.email) {
+            groups.push({ id: g.id, name: g.name, email: g.email });
+          }
+          if (groups.length >= MAX_GROUPS) break;
+        }
+        pageToken = data.nextPageToken ?? undefined;
+      } while (pageToken && groups.length < MAX_GROUPS);
+
+      logger.info(
+        { email, count: groups.length },
+        '[google-workspace-admin] listUserGroups: completed.',
+      );
+
+      return groups;
+    } catch (err) {
+      if (err instanceof StaffOULookupError) {
+        throw err;
+      }
+      const apiErr = err as any;
+      const statusCode: number | undefined = apiErr?.response?.status ?? apiErr?.code;
+      logger.error({ email, err }, '[google-workspace-admin] listUserGroups failed.');
+      throw new StaffOULookupError(
+        `Admin Directory listUserGroups failed for ${email}: ${apiErr?.message ?? String(err)}`,
+        'API_ERROR',
+        email,
         err,
       );
     }
