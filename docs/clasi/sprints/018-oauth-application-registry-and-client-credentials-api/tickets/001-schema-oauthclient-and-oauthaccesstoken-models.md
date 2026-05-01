@@ -1,11 +1,13 @@
 ---
-id: "001"
-title: "Schema OAuthClient and OAuthAccessToken models"
-status: todo
-use-cases: [SUC-018-001, SUC-018-002]
+id: '001'
+title: Schema OAuthClient and OAuthAccessToken models
+status: done
+use-cases:
+- SUC-018-001
+- SUC-018-002
 depends-on: []
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -37,14 +39,14 @@ so the client types are available to ticket 002.
 
 ## Acceptance Criteria
 
-- [ ] `prisma/schema.prisma` contains `OAuthClient` and `OAuthAccessToken` models matching the field list in `architecture-update.md`.
-- [ ] String-array fields are typed as `Json` (SQLite-compatible) with a clear comment.
-- [ ] `OAuthClient.client_id` is unique-indexed.
-- [ ] `OAuthAccessToken.token_hash` is unique-indexed.
-- [ ] FK relations: `OAuthClient.created_by → User` (SetNull); `OAuthAccessToken.oauth_client_id → OAuthClient` (Cascade); `OAuthAccessToken.user_id → User` (nullable, SetNull).
-- [ ] `prisma db push` succeeds against the dev DB with no data loss on existing tables.
-- [ ] `prisma generate` produces TypeScript types that downstream tickets can import.
-- [ ] Existing `npm run test:server` suite still passes (no behavioral changes yet).
+- [x] `prisma/schema.prisma` contains `OAuthClient` and `OAuthAccessToken` models matching the field list in `architecture-update.md`.
+- [x] String-array fields are typed as `Json` (SQLite-compatible) with a clear comment.
+- [x] `OAuthClient.client_id` is unique-indexed.
+- [x] `OAuthAccessToken.token_hash` is unique-indexed.
+- [x] FK relations: `OAuthClient.created_by → User` (SetNull); `OAuthAccessToken.oauth_client_id → OAuthClient` (Cascade); `OAuthAccessToken.user_id → User` (nullable, SetNull).
+- [x] `prisma db push` succeeds against the dev DB with no data loss on existing tables.
+- [x] `prisma generate` produces TypeScript types that downstream tickets can import.
+- [x] Existing `npm run test:server` suite still passes (no behavioral changes yet).
 
 ## Testing
 

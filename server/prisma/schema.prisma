@@ -158,6 +158,8 @@ model User {
   merge_decisions        MergeSuggestion[]     @relation("MergeDecider")
   llm_proxy_tokens          LlmProxyToken[]
   llm_proxy_tokens_granted  LlmProxyToken[]     @relation("LlmProxyGranter")
+  oauth_clients_created     OAuthClient[]       @relation("OAuthClientCreator")
+  oauth_access_tokens       OAuthAccessToken[]  @relation("OAuthTokenUser")
 
   @@index([role])
   @@index([cohort_id])
@@ -305,6 +307,67 @@ model MergeSuggestion {
 
   @@unique([user_a_id, user_b_id])
   @@index([status, created_at])
+}
+
+// ---------------------------------------------------------------------------
+// OAuthClient — registry of third-party applications that can request OAuth
+// tokens via the client-credentials grant (Sprint 018).
+//
+// client_id is a public identifier; client_secret is only stored as a
+// SHA-256 hash (plaintext shown once at create/rotate, never persisted).
+//
+// SQLite limitation: Prisma's native String[] requires Postgres.
+// redirect_uris and allowed_scopes are stored as Json (string arrays serialised
+// to JSON). The service layer exposes them as string[].
+// ---------------------------------------------------------------------------
+model OAuthClient {
+  id                  Int       @id @default(autoincrement())
+  client_id           String    @unique
+  client_secret_hash  String
+  name                String
+  description         String?
+  // String[] stored as JSON — SQLite-compatible. Service layer reads/writes string[].
+  redirect_uris       Json
+  // String[] stored as JSON — SQLite-compatible. Service layer reads/writes string[].
+  allowed_scopes      Json
+  created_by          Int?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  disabled_at         DateTime?
+
+  creator             User?              @relation("OAuthClientCreator", fields: [created_by], references: [id], onDelete: SetNull)
+  access_tokens       OAuthAccessToken[]
+
+  @@index([client_id])
+}
+
+// ---------------------------------------------------------------------------
+// OAuthAccessToken — opaque bearer tokens minted by POST /oauth/token.
+//
+// token_hash is SHA-256 of the plaintext token (shown once in the response,
+// never stored). Supports client-credentials (user_id = null) and, in future
+// sprints, authorization-code tokens (user_id set).
+//
+// scopes stored as Json (string array) for SQLite compatibility (same pattern
+// as OAuthClient.allowed_scopes).
+// ---------------------------------------------------------------------------
+model OAuthAccessToken {
+  id              Int       @id @default(autoincrement())
+  oauth_client_id Int
+  user_id         Int?
+  token_hash      String    @unique
+  // String[] stored as JSON — SQLite-compatible.
+  scopes          Json
+  expires_at      DateTime
+  revoked_at      DateTime?
+  last_used_at    DateTime?
+  created_at      DateTime  @default(now())
+
+  oauth_client    OAuthClient @relation(fields: [oauth_client_id], references: [id], onDelete: Cascade)
+  user            User?       @relation("OAuthTokenUser", fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([token_hash])
+  @@index([oauth_client_id])
 }
 
 // ---------------------------------------------------------------------------
