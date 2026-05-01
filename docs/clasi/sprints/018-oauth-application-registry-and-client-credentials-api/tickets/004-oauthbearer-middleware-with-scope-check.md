@@ -1,11 +1,13 @@
 ---
-id: "004"
-title: "oauthBearer middleware with scope check"
-status: todo
-use-cases: [SUC-018-003]
-depends-on: ["003"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '004'
+title: oauthBearer middleware with scope check
+status: done
+use-cases:
+- SUC-018-003
+depends-on:
+- '003'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -53,14 +55,14 @@ a comparator.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/middleware/oauthBearer.ts` exists and exports `oauthBearer(requiredScope?)`.
-- [ ] Missing token → 401 `invalid_token`.
-- [ ] Unknown / expired / revoked token → 401 `invalid_token`.
-- [ ] Token belonging to a disabled client → 401 `invalid_token`.
-- [ ] Scope mismatch → 403 `insufficient_scope`.
-- [ ] On success `req.oauth` is populated and `last_used_at` is updated.
-- [ ] Type augmentation for `Request.oauth` lives in a `.d.ts` referenced from the server `tsconfig`.
-- [ ] No regressions in existing server tests.
+- [x] `server/src/middleware/oauthBearer.ts` exists and exports `oauthBearer(requiredScope?)`.
+- [x] Missing token → 401 `invalid_token`.
+- [x] Unknown / expired / revoked token → 401 `invalid_token`.
+- [x] Token belonging to a disabled client → 401 `invalid_token`.
+- [x] Scope mismatch → 403 `insufficient_scope`.
+- [x] On success `req.oauth` is populated and `last_used_at` is updated.
+- [x] Type augmentation for `Request.oauth` lives in a `.d.ts` referenced from the server `tsconfig`.
+- [x] No regressions in existing server tests.
 
 ## Testing
 
