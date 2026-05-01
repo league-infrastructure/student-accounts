@@ -1,12 +1,12 @@
 ---
-id: "002"
-title: "Move OAuth Clients router with ownership filtering and compat redirect"
-status: todo
+id: '002'
+title: Move OAuth Clients router with ownership filtering and compat redirect
+status: done
 use-cases:
-  - SUC-020-003
+- SUC-020-003
 depends-on: []
-github-issue: ""
-todo: "plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md"
+github-issue: ''
+todo: plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -73,14 +73,14 @@ Sprint 018.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/routes/oauth-clients.ts` exists; `server/src/routes/admin/oauth-clients.ts` is deleted.
-- [ ] Mounted at `/api/oauth-clients` (auth-only); `requireRole('admin')` removed from this surface.
-- [ ] `server/src/routes/admin/index.ts` no longer references the old admin oauth-clients router.
-- [ ] Compat router redirects `GET/POST/PATCH/DELETE /api/admin/oauth-clients[/...]` → `/api/oauth-clients[/...]` with HTTP 308, preserving query string.
-- [ ] `oauth-client.service.ts` `list` returns all for admin, only-own for others.
-- [ ] `findById`, `update`, `disable`, `rotateSecret` enforce admin-or-owner; non-owner non-admin gets a typed forbidden error mapped to 403.
-- [ ] `tests/server/routes/oauth-clients.test.ts` exists with renamed + new cases (see Testing).
-- [ ] `npm run test:server` passes; baseline ~1620 holds.
+- [x] `server/src/routes/oauth-clients.ts` exists; `server/src/routes/admin/oauth-clients.ts` is deleted.
+- [x] Mounted at `/api/oauth-clients` (auth-only); `requireRole('admin')` removed from this surface.
+- [x] `server/src/routes/admin/index.ts` no longer references the old admin oauth-clients router.
+- [x] Compat router redirects `GET/POST/PATCH/DELETE /api/admin/oauth-clients[/...]` → `/api/oauth-clients[/...]` with HTTP 308, preserving query string.
+- [x] `oauth-client.service.ts` `list` returns all for admin, only-own for others.
+- [x] `findById`, `update`, `disable`, `rotateSecret` enforce admin-or-owner; non-owner non-admin gets a typed forbidden error mapped to 403.
+- [x] `tests/server/routes/oauth-clients.test.ts` exists with renamed + new cases (see Testing).
+- [x] `npm run test:server` passes; baseline ~1620 holds.
 
 ## Testing
 

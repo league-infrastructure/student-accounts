@@ -1,12 +1,11 @@
 /**
- * Admin CRUD routes for OAuth clients — /api/admin/oauth-clients (Sprint 018).
+ * OAuth Clients CRUD routes — /api/oauth-clients (Sprint 020).
  *
- * All routes are guarded by requireRole('admin') (enforced at the admin router
- * level in routes/admin/index.ts — no need to repeat here, but actor extraction
- * still uses req.session.userId).
+ * Promoted out of /admin in Sprint 020. All authenticated users can register
+ * and manage their own OAuth clients. Admins see and can mutate all clients.
  *
  * Endpoints:
- *  GET    /oauth-clients                — list clients (no secrets)
+ *  GET    /oauth-clients                — list clients (filtered by ownership for non-admins)
  *  POST   /oauth-clients                — create (returns client + plaintext secret ONCE)
  *  PATCH  /oauth-clients/:id            — update name/description/redirect_uris/allowed_scopes
  *  POST   /oauth-clients/:id/rotate-secret — rotate secret (returns plaintext ONCE)
@@ -15,17 +14,66 @@
 
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { AppError } from '../../errors.js';
+import { requireAuth } from '../middleware/requireAuth.js';
+import type { ActorContext } from '../services/oauth/oauth-client.service.js';
 
-export const adminOAuthClientsRouter = Router();
+export const oauthClientsRouter = Router();
 
 // ---------------------------------------------------------------------------
-// GET /oauth-clients — list all clients (no secrets)
+// Compat redirect — /api/admin/oauth-clients → /api/oauth-clients (HTTP 308).
+//
+// Intentionally temporary: preserves backward compatibility with existing
+// curl scripts and admin-panel bookmarks that point to the old /api/admin
+// namespace. Drop this redirect in a future release once the ecosystem
+// migrates. See sprint.md "Out of Scope".
 // ---------------------------------------------------------------------------
 
-adminOAuthClientsRouter.get('/oauth-clients', async (req: Request, res: Response, next: NextFunction) => {
+export const oauthClientsCompatRouter = Router();
+
+oauthClientsCompatRouter.all(
+  '/admin/oauth-clients',
+  requireAuth,
+  (req: Request, res: Response) => {
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    res.redirect(308, `/api/oauth-clients${qs}`);
+  },
+);
+
+oauthClientsCompatRouter.all(
+  '/admin/oauth-clients/*',
+  requireAuth,
+  (req: Request, res: Response) => {
+    // Strip the /admin/oauth-clients prefix and preserve the rest.
+    const suffix = req.params[0] ? `/${req.params[0]}` : '';
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    res.redirect(308, `/api/oauth-clients${suffix}${qs}`);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Helper — extract actor context from the session.
+// ---------------------------------------------------------------------------
+
+function actorContext(req: Request): ActorContext {
+  return {
+    actorUserId: (req.session as any).userId as number,
+    actorRole: (req.session as any).role as string,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// All oauth-client routes require authentication (no admin role required).
+// ---------------------------------------------------------------------------
+
+oauthClientsRouter.use('/oauth-clients', requireAuth);
+
+// ---------------------------------------------------------------------------
+// GET /oauth-clients — list clients (filtered by ownership for non-admins)
+// ---------------------------------------------------------------------------
+
+oauthClientsRouter.get('/oauth-clients', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const clients = await req.services.oauthClients.list();
+    const clients = await req.services.oauthClients.list(actorContext(req));
     res.json(clients);
   } catch (err) {
     next(err);
@@ -36,9 +84,9 @@ adminOAuthClientsRouter.get('/oauth-clients', async (req: Request, res: Response
 // POST /oauth-clients — create (plaintext secret returned once)
 // ---------------------------------------------------------------------------
 
-adminOAuthClientsRouter.post('/oauth-clients', async (req: Request, res: Response, next: NextFunction) => {
+oauthClientsRouter.post('/oauth-clients', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const actorId = (req.session as any).userId as number;
+    const actor = actorContext(req);
     const { name, description, redirect_uris, allowed_scopes } = req.body as Record<string, unknown>;
 
     if (!name || typeof name !== 'string') {
@@ -58,7 +106,7 @@ adminOAuthClientsRouter.post('/oauth-clients', async (req: Request, res: Respons
         redirect_uris: redirect_uris as string[],
         allowed_scopes: allowed_scopes as string[],
       },
-      actorId,
+      actor.actorUserId,
     );
 
     // Return the client AND the plaintext secret (shown once, never again).
@@ -72,12 +120,12 @@ adminOAuthClientsRouter.post('/oauth-clients', async (req: Request, res: Respons
 // PATCH /oauth-clients/:id — update name/description/redirect_uris/allowed_scopes
 // ---------------------------------------------------------------------------
 
-adminOAuthClientsRouter.patch('/oauth-clients/:id', async (req: Request, res: Response, next: NextFunction) => {
+oauthClientsRouter.patch('/oauth-clients/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
 
-    const actorId = (req.session as any).userId as number;
+    const actor = actorContext(req);
     const body = req.body as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
 
@@ -104,7 +152,7 @@ adminOAuthClientsRouter.patch('/oauth-clients/:id', async (req: Request, res: Re
       patch.allowed_scopes = body.allowed_scopes as string[];
     }
 
-    const client = await req.services.oauthClients.update(id, patch as any, actorId);
+    const client = await req.services.oauthClients.update(id, patch as any, actor.actorUserId, actor);
     res.json(client);
   } catch (err: any) {
     if (err?.code === 'P2025') return res.status(404).json({ error: 'OAuth client not found' });
@@ -116,13 +164,13 @@ adminOAuthClientsRouter.patch('/oauth-clients/:id', async (req: Request, res: Re
 // POST /oauth-clients/:id/rotate-secret — rotate secret (plaintext returned once)
 // ---------------------------------------------------------------------------
 
-adminOAuthClientsRouter.post('/oauth-clients/:id/rotate-secret', async (req: Request, res: Response, next: NextFunction) => {
+oauthClientsRouter.post('/oauth-clients/:id/rotate-secret', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
 
-    const actorId = (req.session as any).userId as number;
-    const { plaintextSecret } = await req.services.oauthClients.rotateSecret(id, actorId);
+    const actor = actorContext(req);
+    const { plaintextSecret } = await req.services.oauthClients.rotateSecret(id, actor.actorUserId, actor);
     res.json({ client_secret: plaintextSecret });
   } catch (err: any) {
     if (err?.code === 'P2025') return res.status(404).json({ error: 'OAuth client not found' });
@@ -134,13 +182,13 @@ adminOAuthClientsRouter.post('/oauth-clients/:id/rotate-secret', async (req: Req
 // DELETE /oauth-clients/:id — soft delete (sets disabled_at); returns 204
 // ---------------------------------------------------------------------------
 
-adminOAuthClientsRouter.delete('/oauth-clients/:id', async (req: Request, res: Response, next: NextFunction) => {
+oauthClientsRouter.delete('/oauth-clients/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
 
-    const actorId = (req.session as any).userId as number;
-    await req.services.oauthClients.disable(id, actorId);
+    const actor = actorContext(req);
+    await req.services.oauthClients.disable(id, actor.actorUserId, actor);
     res.status(204).send();
   } catch (err: any) {
     if (err?.code === 'P2025') return res.status(404).json({ error: 'OAuth client not found' });
