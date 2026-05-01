@@ -1,11 +1,14 @@
 ---
-id: "002"
-title: "OAuthClient service create rotate disable"
-status: todo
-use-cases: [SUC-018-001, SUC-018-004]
-depends-on: ["001"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '002'
+title: OAuthClient service create rotate disable
+status: done
+use-cases:
+- SUC-018-001
+- SUC-018-004
+depends-on:
+- '001'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -49,14 +52,14 @@ as the actor. Register the service in
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/oauth/oauth-client.service.ts` exists and exports the five methods above.
-- [ ] Client secret generation uses the same entropy/encoding as the LlmProxyToken helper.
-- [ ] `client_secret_hash` is SHA-256 of the plaintext; plaintext never persisted.
-- [ ] `verifySecret` uses constant-time compare and rejects disabled clients.
-- [ ] `create` and `rotateSecret` return plaintext exactly once in the return value; no other code path can recover it.
-- [ ] Each mutating method writes an `AuditEvent` (`oauth_client_created`, `oauth_client_secret_rotated`, `oauth_client_disabled`).
-- [ ] Service registered in `service.registry.ts`.
-- [ ] JSON-array helpers correctly round-trip `string[]` for `redirect_uris` and `allowed_scopes`.
+- [x] `server/src/services/oauth/oauth-client.service.ts` exists and exports the five methods above.
+- [x] Client secret generation uses the same entropy/encoding as the LlmProxyToken helper.
+- [x] `client_secret_hash` is SHA-256 of the plaintext; plaintext never persisted.
+- [x] `verifySecret` uses constant-time compare and rejects disabled clients.
+- [x] `create` and `rotateSecret` return plaintext exactly once in the return value; no other code path can recover it.
+- [x] Each mutating method writes an `AuditEvent` (`oauth_client_created`, `oauth_client_secret_rotated`, `oauth_client_disabled`).
+- [x] Service registered in `service.registry.ts`.
+- [x] JSON-array helpers correctly round-trip `string[]` for `redirect_uris` and `allowed_scopes`.
 
 ## Testing
 

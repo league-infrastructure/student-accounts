@@ -25,6 +25,7 @@ import { LlmProxyForwarderService } from './llm-proxy-forwarder.service';
 import { BulkLlmProxyService } from './bulk-llm-proxy.service';
 import { PassphraseService } from './passphrase.service';
 import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
+import { OAuthClientService } from './oauth/oauth-client.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -85,6 +86,8 @@ export class ServiceRegistry {
   readonly bulkLlmProxy: BulkLlmProxyService;
   /** Signup passphrase lifecycle for Group and Cohort scopes (Sprint 015). */
   readonly passphrases: PassphraseService;
+  /** OAuth client registry — create, rotate, disable OAuth applications (Sprint 018). */
+  readonly oauthClients: OAuthClientService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -208,6 +211,9 @@ export class ServiceRegistry {
 
     // PassphraseService — Sprint 015 T003.
     this.passphrases = new PassphraseService(defaultPrisma, this.audit);
+
+    // OAuthClientService — Sprint 018.
+    this.oauthClients = new OAuthClientService(defaultPrisma, this.audit);
   }
 
   static create(
@@ -246,6 +252,10 @@ export class ServiceRegistry {
     // UserGroup has FK → User + Group (Cascade). Explicit delete keeps
     // teardown symmetry with other deleteMany calls.
     await (p as any).userGroup.deleteMany();
+    // OAuthAccessToken has FK → OAuthClient (Cascade). Delete before OAuthClient.
+    await (p as any).oAuthAccessToken.deleteMany();
+    // OAuthClient has FK → User (SetNull). Delete before User.
+    await (p as any).oAuthClient.deleteMany();
     // LlmProxyToken has FK → User (Cascade) + granter User? (SetNull).
     // Delete before User for the same teardown-symmetry reason.
     await (p as any).llmProxyToken.deleteMany();
