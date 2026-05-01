@@ -1,5 +1,6 @@
 ---
-status: pending
+status: done
+sprint: 019
 ---
 
 # Plan: Single Sign-On / OAuth Provider Migration
