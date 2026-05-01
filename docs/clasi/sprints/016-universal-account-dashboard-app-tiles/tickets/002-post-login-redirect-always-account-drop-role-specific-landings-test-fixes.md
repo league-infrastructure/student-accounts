@@ -1,11 +1,13 @@
 ---
-id: "002"
-title: "Post-login redirect — always /account, drop role-specific landings + test fixes"
-status: todo
-use-cases: [SUC-016-001]
+id: '002'
+title: "Post-login redirect \u2014 always /account, drop role-specific landings +\
+  \ test fixes"
+status: done
+use-cases:
+- SUC-016-001
 depends-on: []
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -48,10 +50,10 @@ test descriptions can be left as-is (or renamed to "redirects all roles to
 
 ## Acceptance Criteria
 
-- [ ] `postLoginRedirect()` in `server/src/routes/auth.ts` returns `/account` regardless of role.
-- [ ] No call site of `postLoginRedirect()` was missed (grep for the function name and confirm all callers still get `/account`).
-- [ ] All previously-passing OAuth callback tests are updated to expect `/account` and now pass.
-- [ ] Server test suite returns to a green baseline (1407 passing modulo the known SQLite ordering flake).
+- [x] `postLoginRedirect()` in `server/src/routes/auth.ts` returns `/account` regardless of role.
+- [x] No call site of `postLoginRedirect()` was missed (grep for the function name and confirm all callers still get `/account`).
+- [x] All previously-passing OAuth callback tests are updated to expect `/account` and now pass.
+- [x] Server test suite returns to a green baseline (1407 passing modulo the known SQLite ordering flake).
 
 ## Testing
 

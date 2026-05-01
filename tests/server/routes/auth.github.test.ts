@@ -446,11 +446,11 @@ describe('mergeScan — GitHub new user', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Post-login redirect: admin → '/', staff → '/staff/directory', student → '/account'
+// Post-login redirect: all roles → '/account' (Sprint 016 universal dashboard)
 // ---------------------------------------------------------------------------
 
 describe('GET /api/auth/github/callback — post-login redirect by role', () => {
-  it('redirects admin to / (dashboard root)', async () => {
+  it('redirects admin to /account', async () => {
     const adminUser = await makeUser({
       primary_email: 'admin-gh@jointheleague.org',
       display_name: 'Admin GH User',
@@ -473,10 +473,10 @@ describe('GET /api/auth/github/callback — post-login redirect by role', () => 
     const res = await request(app).get('/api/auth/github/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/');
+    expect(res.headers.location).toBe('/account');
   });
 
-  it('redirects staff to /staff/directory', async () => {
+  it('redirects staff to /account', async () => {
     const staffUser = await makeUser({
       primary_email: 'staff-gh@jointheleague.org',
       display_name: 'Staff GH User',
@@ -499,7 +499,7 @@ describe('GET /api/auth/github/callback — post-login redirect by role', () => 
     const res = await request(app).get('/api/auth/github/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/staff/directory');
+    expect(res.headers.location).toBe('/account');
   });
 
   it('redirects student to /account', async () => {
