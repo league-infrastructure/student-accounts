@@ -24,7 +24,6 @@ import { adminEventsRouter } from './events';
 import { adminGroupsRouter } from './groups';
 import { adminLlmProxyRouter } from './llm-proxy';
 import { adminUsersViewsRouter } from './users-views';
-import { adminOAuthClientsRouter } from './oauth-clients';
 
 export const adminRouter = Router();
 
@@ -60,4 +59,3 @@ adminRouter.use('/admin', anthropicSyncRouter);
 adminRouter.use('/admin', adminEventsRouter);
 adminRouter.use('/admin', adminGroupsRouter);
 adminRouter.use('/admin', adminLlmProxyRouter);
-adminRouter.use('/admin', adminOAuthClientsRouter);

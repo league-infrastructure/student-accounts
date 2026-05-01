@@ -25,7 +25,7 @@
 
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 
-import { AppError } from '../../errors.js';
+import { AppError, ForbiddenError } from '../../errors.js';
 import type { AuditService } from '../audit.service.js';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +111,16 @@ export type CreateResult = {
   plaintextSecret: string;
 };
 
+/**
+ * Actor context passed to ownership-aware methods.
+ * actorRole === 'admin' grants full access; all other roles are filtered
+ * to resources owned by actorUserId (created_by).
+ */
+export type ActorContext = {
+  actorUserId: number;
+  actorRole: string;
+};
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -166,7 +176,13 @@ export class OAuthClientService {
   async rotateSecret(
     id: number,
     actorUserId: number,
+    actor?: ActorContext,
   ): Promise<{ plaintextSecret: string }> {
+    if (actor) {
+      const existing = await this.prisma.oAuthClient.findUnique({ where: { id } });
+      if (existing) this.enforceOwnership(existing, actor);
+    }
+
     const plaintext = generatePlaintext();
     const secretHash = hashSecret(plaintext);
 
@@ -191,7 +207,12 @@ export class OAuthClientService {
   // Disable (soft delete)
   // --------------------------------------------------------------------
 
-  async disable(id: number, actorUserId: number): Promise<void> {
+  async disable(id: number, actorUserId: number, actor?: ActorContext): Promise<void> {
+    if (actor) {
+      const existing = await this.prisma.oAuthClient.findUnique({ where: { id } });
+      if (existing) this.enforceOwnership(existing, actor);
+    }
+
     const now = new Date();
     await this.prisma.$transaction(async (tx: any) => {
       const updated = await tx.oAuthClient.update({
@@ -216,7 +237,13 @@ export class OAuthClientService {
     id: number,
     patch: Partial<Pick<CreateOAuthClientInput, 'name' | 'description' | 'redirect_uris' | 'allowed_scopes'>>,
     actorUserId: number,
+    actor?: ActorContext,
   ): Promise<SanitizedOAuthClient> {
+    if (actor) {
+      const existing = await this.prisma.oAuthClient.findUnique({ where: { id } });
+      if (existing) this.enforceOwnership(existing, actor);
+    }
+
     const data: Record<string, unknown> = {};
     if (patch.name !== undefined) data.name = patch.name;
     if (patch.description !== undefined) data.description = patch.description;
@@ -246,12 +273,20 @@ export class OAuthClientService {
     return this.prisma.oAuthClient.findUnique({ where: { client_id: clientId } });
   }
 
-  async findById(id: number): Promise<OAuthClientRow | null> {
-    return this.prisma.oAuthClient.findUnique({ where: { id } });
+  async findById(id: number): Promise<OAuthClientRow | null>;
+  async findById(id: number, actor: ActorContext): Promise<OAuthClientRow | null>;
+  async findById(id: number, actor?: ActorContext): Promise<OAuthClientRow | null> {
+    const row = await this.prisma.oAuthClient.findUnique({ where: { id } });
+    if (actor && row) {
+      this.enforceOwnership(row, actor);
+    }
+    return row;
   }
 
-  async list(): Promise<SanitizedOAuthClient[]> {
+  async list({ actorUserId, actorRole }: ActorContext): Promise<SanitizedOAuthClient[]> {
+    const where = actorRole === 'admin' ? {} : { created_by: actorUserId };
     const rows: OAuthClientRow[] = await this.prisma.oAuthClient.findMany({
+      where,
       orderBy: { created_at: 'desc' },
     });
     return rows.map((r) => this.sanitize(r));
@@ -291,6 +326,16 @@ export class OAuthClientService {
   // --------------------------------------------------------------------
   // Internal helpers
   // --------------------------------------------------------------------
+
+  /**
+   * Throws ForbiddenError if the actor is not an admin and does not own the client.
+   */
+  private enforceOwnership(client: OAuthClientRow, actor: ActorContext): void {
+    if (actor.actorRole === 'admin') return;
+    if (client.created_by !== actor.actorUserId) {
+      throw new ForbiddenError('You do not own this OAuth client');
+    }
+  }
 
   sanitize(row: OAuthClientRow): SanitizedOAuthClient {
     const { client_secret_hash: _hash, ...rest } = row;
