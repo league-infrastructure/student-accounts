@@ -402,7 +402,7 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     const res = await request(app).get('/api/auth/google/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/staff/directory');
+    expect(res.headers.location).toBe('/account');
 
     const user = await (prisma as any).user.findFirst({
       where: { primary_email: 'staffuser@jointheleague.org' },
@@ -589,11 +589,11 @@ describe('GET /staff', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Post-login redirect: admin → '/', staff → '/staff/directory', student → '/account'
+// Post-login redirect: all roles → '/account' (Sprint 016 universal dashboard)
 // ---------------------------------------------------------------------------
 
 describe('GET /api/auth/google/callback — post-login redirect by role', () => {
-  it('redirects admin to / (dashboard root)', async () => {
+  it('redirects admin to /account', async () => {
     const adminUser = await makeUser({
       primary_email: 'admin@jointheleague.org',
       display_name: 'Admin User',
@@ -615,10 +615,10 @@ describe('GET /api/auth/google/callback — post-login redirect by role', () => 
     const res = await request(app).get('/api/auth/google/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/');
+    expect(res.headers.location).toBe('/account');
   });
 
-  it('redirects staff to /staff/directory', async () => {
+  it('redirects staff to /account', async () => {
     const staffUser = await makeUser({
       primary_email: 'staff@jointheleague.org',
       display_name: 'Staff User',
@@ -640,7 +640,7 @@ describe('GET /api/auth/google/callback — post-login redirect by role', () => 
     const res = await request(app).get('/api/auth/google/callback');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/staff/directory');
+    expect(res.headers.location).toBe('/account');
   });
 
   it('redirects pending student to /login?error=pending_approval (no session)', async () => {

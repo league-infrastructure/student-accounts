@@ -34,12 +34,10 @@ export const authRouter = Router();
 // ---------------------------------------------------------------------------
 
 /**
- * Return the appropriate post-login landing page for a given domain role.
- * Domain roles: 'admin', 'staff', 'student'.
+ * Return the post-login landing page.
+ * Sprint 016: all roles land on /account (universal dashboard).
  */
-function postLoginRedirect(role: string | undefined): string {
-  if (role === 'admin') return '/';
-  if (role === 'staff') return '/staff/directory';
+function postLoginRedirect(_role?: string): string {
   return '/account';
 }
 
