@@ -51,6 +51,14 @@ export type IssueTokenInput = {
   scopes: string[];
 };
 
+/** Input for issuing a user-context access token (authorization_code grant). */
+export type IssueUserTokenInput = {
+  oauthClientId: number;
+  clientId: string;
+  userId: number;
+  scopes: string[];
+};
+
 export type IssueTokenResult = {
   access_token: string;
   token_type: 'Bearer';
@@ -101,6 +109,47 @@ export class OAuthTokenService {
         target_entity_type: 'OAuthClient',
         target_entity_id: String(input.oauthClientId),
         details: { oauth_client_id: input.oauthClientId, client_id: input.clientId, scopes: input.scopes },
+      });
+    });
+
+    return {
+      access_token: plaintext,
+      token_type: 'Bearer',
+      expires_in: EXPIRY_SECONDS,
+      scope: input.scopes.join(' '),
+    };
+  }
+
+  /**
+   * Issue a user-context access token (authorization_code grant, Sprint 019).
+   * Same as issue() but with user_id set on the token row.
+   */
+  async issueForUser(input: IssueUserTokenInput): Promise<IssueTokenResult> {
+    const plaintext = generatePlaintext();
+    const tokenHash = hashToken(plaintext);
+    const expiresAt = new Date(Date.now() + EXPIRY_SECONDS * 1000);
+
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.oAuthAccessToken.create({
+        data: {
+          oauth_client_id: input.oauthClientId,
+          user_id: input.userId,
+          token_hash: tokenHash,
+          scopes: toJsonValue(input.scopes),
+          expires_at: expiresAt,
+        },
+      });
+      await this.audit.record(tx, {
+        actor_user_id: input.userId,
+        action: 'oauth_token_issued',
+        target_entity_type: 'OAuthClient',
+        target_entity_id: String(input.oauthClientId),
+        details: {
+          oauth_client_id: input.oauthClientId,
+          client_id: input.clientId,
+          user_id: input.userId,
+          scopes: input.scopes,
+        },
       });
     });
 
