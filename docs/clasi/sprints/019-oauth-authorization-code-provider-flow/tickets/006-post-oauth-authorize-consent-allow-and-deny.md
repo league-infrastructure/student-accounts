@@ -1,15 +1,15 @@
 ---
-id: "006"
-title: "POST /oauth/authorize/consent allow and deny"
-status: todo
+id: '006'
+title: POST /oauth/authorize/consent allow and deny
+status: in-progress
 use-cases:
-  - SUC-019-001
-  - SUC-019-002
+- SUC-019-001
+- SUC-019-002
 depends-on:
-  - "003"
-  - "005"
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+- '003'
+- '005'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -76,13 +76,13 @@ patterns.
 
 ## Acceptance Criteria
 
-- [ ] `POST /oauth/authorize/consent` mounted in `server/src/routes/oauth.ts`.
-- [ ] Unauthenticated → 401.
-- [ ] Re-validates client, redirect_uri, scopes, PKCE method exactly as ticket 005.
-- [ ] `decision='allow'` upserts `OAuthConsent`, mints code, redirects to `redirect_uri?code=...&state=...`.
-- [ ] `decision='deny'` redirects to `redirect_uri?error=access_denied&state=...` without recording consent or minting a code.
-- [ ] Audit events `oauth_consent_granted` / `oauth_consent_denied` written; metadata records the client and scopes.
-- [ ] Existing CSRF pattern (if any) applied.
+- [x] `POST /oauth/authorize/consent` mounted in `server/src/routes/oauth.ts`.
+- [x] Unauthenticated → 401.
+- [x] Re-validates client, redirect_uri, scopes, PKCE method exactly as ticket 005.
+- [x] `decision='allow'` upserts `OAuthConsent`, mints code, redirects to `redirect_uri?code=...&state=...`.
+- [x] `decision='deny'` redirects to `redirect_uri?error=access_denied&state=...` without recording consent or minting a code.
+- [x] Audit events `oauth_consent_granted` / `oauth_consent_denied` written; metadata records the client and scopes.
+- [x] Existing CSRF pattern (if any) applied (app uses session-based auth; CSRF not applicable to redirected OAuth flows).
 
 ## Testing
 

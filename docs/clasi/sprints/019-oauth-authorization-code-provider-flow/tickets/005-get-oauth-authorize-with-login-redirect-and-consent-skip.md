@@ -1,16 +1,16 @@
 ---
-id: "005"
-title: "GET /oauth/authorize with login-redirect and consent-skip"
-status: todo
+id: '005'
+title: GET /oauth/authorize with login-redirect and consent-skip
+status: done
 use-cases:
-  - SUC-019-001
-  - SUC-019-004
+- SUC-019-001
+- SUC-019-004
 depends-on:
-  - "001"
-  - "002"
-  - "003"
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+- '001'
+- '002'
+- '003'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -82,15 +82,15 @@ outcome }` where outcome is one of `redirect_to_login`,
 
 ## Acceptance Criteria
 
-- [ ] `GET /oauth/authorize` mounted in `server/src/routes/oauth.ts`.
-- [ ] All required query params are validated; missing/invalid params return 400 with OAuth-spec error names.
-- [ ] Unknown / disabled client → 401 `invalid_client` (rendered, not redirected).
-- [ ] `redirect_uri` not matching `client.redirect_uris` (via `matchesRedirectUri`) → 400 `invalid_request` rendered.
-- [ ] Unauthenticated → 302 to `/login?next=<encoded full authorize URL>`.
-- [ ] Authenticated + consent-on-file → 302 to `redirect_uri?code=...&state=...`; code is single-use.
-- [ ] Authenticated + no consent → 302 to `/oauth/consent?...` with all round-trip params.
-- [ ] `oauth-consent.service.ts` exists and `find` returns a hit only when stored scopes are a superset of requested.
-- [ ] Audit event `oauth_authorize_attempt` written with the right outcome.
+- [x] `GET /oauth/authorize` mounted in `server/src/routes/oauth.ts`.
+- [x] All required query params are validated; missing/invalid params return 400 with OAuth-spec error names.
+- [x] Unknown / disabled client → 401 `invalid_client` (rendered, not redirected).
+- [x] `redirect_uri` not matching `client.redirect_uris` (via `matchesRedirectUri`) → 400 `invalid_request` rendered.
+- [x] Unauthenticated → 302 to `/login?next=<encoded full authorize URL>`.
+- [x] Authenticated + consent-on-file → 302 to `redirect_uri?code=...&state=...`; code is single-use.
+- [x] Authenticated + no consent → 302 to `/oauth/consent?...` with all round-trip params.
+- [x] `oauth-consent.service.ts` exists and `find` returns a hit only when stored scopes are a superset of requested.
+- [x] Audit event `oauth_authorize_attempt` written with the right outcome.
 
 ## Testing
 

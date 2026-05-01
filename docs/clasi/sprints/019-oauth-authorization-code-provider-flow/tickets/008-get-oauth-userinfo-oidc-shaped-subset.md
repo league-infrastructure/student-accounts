@@ -1,12 +1,12 @@
 ---
-id: "008"
-title: "GET /oauth/userinfo OIDC-shaped subset"
-status: todo
+id: 008
+title: GET /oauth/userinfo OIDC-shaped subset
+status: in-progress
 use-cases:
-  - SUC-019-001
+- SUC-019-001
 depends-on: []
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -62,15 +62,15 @@ generated client name. Do not invent fields.
 
 ## Acceptance Criteria
 
-- [ ] `GET /oauth/userinfo` mounted in `server/src/routes/oauth.ts` behind `oauthBearer('profile')`.
-- [ ] Returns `{ sub, email, name, role }` for a valid user-context access token with `profile` scope.
-- [ ] `sub` is `String(user.id)`.
-- [ ] No `Authorization` header → 401.
-- [ ] Expired or revoked token → 401.
-- [ ] Token without `profile` scope → 403.
-- [ ] Token with `user_id = null` (client-credentials) → 404.
-- [ ] User has been deleted → 404.
-- [ ] Audit event `oauth_userinfo_call` written on success.
+- [x] `GET /oauth/userinfo` mounted in `server/src/routes/oauth.ts` behind `oauthBearer('profile')`.
+- [x] Returns `{ sub, email, name, role }` for a valid user-context access token with `profile` scope.
+- [x] `sub` is `String(user.id)`.
+- [x] No `Authorization` header → 401.
+- [x] Expired or revoked token → 401.
+- [x] Token without `profile` scope → 403.
+- [x] Token with `user_id = null` (client-credentials) → 404.
+- [x] User has been deleted → 404.
+- [x] Audit event `oauth_userinfo_call` written on success.
 
 ## Testing
 
