@@ -1,11 +1,18 @@
 ---
-id: "005"
-title: "Manual smoke pass stakeholder verification sweep"
-status: todo
-use-cases: [SUC-016-001, SUC-016-002, SUC-016-003]
-depends-on: ["001", "002", "003", "004"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '005'
+title: Manual smoke pass stakeholder verification sweep
+status: done
+use-cases:
+- SUC-016-001
+- SUC-016-002
+- SUC-016-003
+depends-on:
+- '001'
+- '002'
+- '003'
+- '004'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
