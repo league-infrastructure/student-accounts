@@ -1,19 +1,19 @@
 ---
-id: "015"
-title: "Passphrase Self-Onboarding"
-status: planning
+id: '015'
+title: Passphrase Self-Onboarding
+status: done
 branch: sprint/015-passphrase-self-onboarding
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
-  - SUC-008
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
+- SUC-008
 todos:
-  - plan-passphrase-self-onboarding.md
+- plan-passphrase-self-onboarding.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
