@@ -11,7 +11,6 @@ import { passphraseSignupRouter } from './routes/auth/passphrase-signup';
 import { loginRouter } from './routes/auth/login';
 import { adminRouter } from './routes/admin';
 import { accountRouter } from './routes/account';
-import { accountAppsRouter } from './routes/account-apps';
 import { staffDirectoryRouter } from './routes/staff/directory';
 import { llmProxyRouter } from './routes/llm-proxy';
 import { oauthRouter } from './routes/oauth';
@@ -81,7 +80,6 @@ app.use('/api/auth', loginRouter);
 app.use('/api', authRouter);
 app.use('/api', adminRouter);
 app.use('/api', accountRouter);
-app.use('/api', accountAppsRouter);
 app.use('/api', staffDirectoryRouter);
 
 // LLM proxy — mounted OUTSIDE /api so Anthropic-compatible clients

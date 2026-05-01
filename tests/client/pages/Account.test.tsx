@@ -1,14 +1,10 @@
 /**
- * Tests for the universal Account page — Sprint 016 ticket 003.
+ * Tests for the Account page — Sprint 020 (post tile-launchpad removal).
  *
  * Covers:
- *  - Admin: renders without redirecting; shows Apps zone with tiles.
- *  - Staff: renders without redirecting; shows Apps zone with tiles.
- *  - Student: renders all student sections AND the Apps zone.
- *  - Tiles appear and are linked to the correct href.
- *  - Empty apps state is handled gracefully.
- *
- * Fetch is mocked at the globalThis level. AuthContext is mocked via vi.mock.
+ *  - Admin: renders without redirecting; no tile sections.
+ *  - Staff: renders without redirecting; no tile sections.
+ *  - Student: renders profile and login sections; no tile sections.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -74,73 +70,9 @@ const STUDENT_ACCOUNT_DATA = {
   externalAccounts: [],
 };
 
-const ADMIN_TILES = [
-  {
-    id: 'user-management',
-    title: 'User Management',
-    description: 'Manage student, staff, and admin accounts',
-    href: '/admin/users',
-    icon: 'users',
-  },
-  {
-    id: 'staff-directory',
-    title: 'Staff Directory',
-    description: 'Look up League staff',
-    href: '/staff/directory',
-    icon: 'directory',
-  },
-  {
-    id: 'cohorts',
-    title: 'Cohorts',
-    description: 'Manage class cohorts',
-    href: '/admin/cohorts',
-    icon: 'cohort',
-  },
-  {
-    id: 'groups',
-    title: 'Groups',
-    description: 'Manage student groups',
-    href: '/admin/groups',
-    icon: 'group',
-  },
-];
-
-const STAFF_TILES = [
-  {
-    id: 'user-management',
-    title: 'User Management',
-    description: 'Manage student, staff, and admin accounts',
-    href: '/admin/users',
-    icon: 'users',
-  },
-  {
-    id: 'staff-directory',
-    title: 'Staff Directory',
-    description: 'Look up League staff',
-    href: '/staff/directory',
-    icon: 'directory',
-  },
-];
-
-const STUDENT_TILES = [
-  {
-    id: 'llm-proxy',
-    title: 'LLM Proxy',
-    description: 'Use Claude through your League proxy token',
-    href: '/account#llm-proxy',
-    icon: 'bot',
-  },
-];
-
 /** Build a fetch mock that returns appropriate data for each URL. */
-function makeFetch(tiles: typeof ADMIN_TILES, includeStudentAccount = false) {
+function makeFetch(includeStudentAccount = false) {
   return vi.fn(async (url: string) => {
-    if (url === '/api/account/apps') {
-      return {
-        ok: true,
-        json: async () => ({ tiles }),
-      };
-    }
     if (url === '/api/account' && includeStudentAccount) {
       return {
         ok: true,
@@ -201,7 +133,7 @@ afterEach(() => {
 describe('Account page — admin', () => {
   it('renders without redirecting to /', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch(ADMIN_TILES);
+    (globalThis as any).fetch = makeFetch();
 
     renderAccount();
 
@@ -211,40 +143,27 @@ describe('Account page — admin', () => {
     });
   });
 
-  it('shows the Apps zone heading', async () => {
+  it('does NOT show Apps zone heading (tile launchpad removed)', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch(ADMIN_TILES);
+    (globalThis as any).fetch = makeFetch();
 
     renderAccount();
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /your applications/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
     });
+
+    expect(screen.queryByRole('heading', { name: /your applications/i })).not.toBeInTheDocument();
   });
 
-  it('renders admin tiles (user-management, staff-directory, cohorts, groups)', async () => {
+  it('does not show student-only sections (Profile, Logins) for admin', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch(ADMIN_TILES);
+    (globalThis as any).fetch = makeFetch();
 
     renderAccount();
 
     await waitFor(() => {
-      expect(screen.getByText('User Management')).toBeInTheDocument();
-      expect(screen.getByText('Staff Directory')).toBeInTheDocument();
-      expect(screen.getByText('Cohorts')).toBeInTheDocument();
-      expect(screen.getByText('Groups')).toBeInTheDocument();
-    });
-  });
-
-  it('does not show student-only sections (Profile, Logins)', async () => {
-    mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch(ADMIN_TILES);
-
-    renderAccount();
-
-    // Wait for apps to load to ensure the render is complete
-    await waitFor(() => {
-      expect(screen.getByText('User Management')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
     });
 
     expect(screen.queryByText('Sign-in Methods')).not.toBeInTheDocument();
@@ -259,7 +178,7 @@ describe('Account page — admin', () => {
 describe('Account page — staff', () => {
   it('renders without redirecting', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
-    (globalThis as any).fetch = makeFetch(STAFF_TILES);
+    (globalThis as any).fetch = makeFetch();
 
     renderAccount();
 
@@ -268,30 +187,17 @@ describe('Account page — staff', () => {
     });
   });
 
-  it('shows staff tiles (user-management, staff-directory)', async () => {
+  it('does NOT show Apps zone for staff (removed in Sprint 020)', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
-    (globalThis as any).fetch = makeFetch(STAFF_TILES);
+    (globalThis as any).fetch = makeFetch();
 
     renderAccount();
 
     await waitFor(() => {
-      expect(screen.getByText('User Management')).toBeInTheDocument();
-      expect(screen.getByText('Staff Directory')).toBeInTheDocument();
-    });
-  });
-
-  it('does not show cohorts or groups tiles for staff', async () => {
-    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
-    (globalThis as any).fetch = makeFetch(STAFF_TILES);
-
-    renderAccount();
-
-    await waitFor(() => {
-      expect(screen.getByText('User Management')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
     });
 
-    expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
-    expect(screen.queryByText('Groups')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /your applications/i })).not.toBeInTheDocument();
   });
 });
 
@@ -300,20 +206,9 @@ describe('Account page — staff', () => {
 // ===========================================================================
 
 describe('Account page — student', () => {
-  it('renders all student sections plus the Apps zone', async () => {
+  it('renders student account sections', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
-    (globalThis as any).fetch = makeFetch(STUDENT_TILES, true);
-
-    renderAccount();
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /your applications/i })).toBeInTheDocument();
-    });
-  });
-
-  it('shows student account sections when data is loaded', async () => {
-    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
-    (globalThis as any).fetch = makeFetch(STUDENT_TILES, true);
+    (globalThis as any).fetch = makeFetch(true);
 
     renderAccount();
 
@@ -324,56 +219,18 @@ describe('Account page — student', () => {
     });
   });
 
-  it('shows the llm-proxy tile when student has a token', async () => {
+  it('does NOT show Apps zone for student (removed in Sprint 020)', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
-    (globalThis as any).fetch = makeFetch(STUDENT_TILES, true);
+    (globalThis as any).fetch = makeFetch(true);
 
     renderAccount();
 
     await waitFor(() => {
-      // "LLM Proxy" appears both in the tile and in AccountLlmProxyCard — use getAllByText
-      const llmProxyElements = screen.getAllByText('LLM Proxy');
-      expect(llmProxyElements.length).toBeGreaterThan(0);
-    });
-  });
-});
-
-// ===========================================================================
-// Tile navigation
-// ===========================================================================
-
-describe('AppTile navigation', () => {
-  it('tiles link to the correct href', async () => {
-    mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch(ADMIN_TILES);
-
-    renderAccount();
-
-    await waitFor(() => {
-      expect(screen.getByText('User Management')).toBeInTheDocument();
+      // Wait for data to load
+      const elements = screen.getAllByText('student@example.com');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
-    // The User Management tile should link to /admin/users
-    const links = screen.getAllByRole('link');
-    const umLink = links.find((l) => l.textContent?.includes('User Management'));
-    expect(umLink).toBeDefined();
-    expect(umLink).toHaveAttribute('href', '/admin/users');
-  });
-});
-
-// ===========================================================================
-// Empty state
-// ===========================================================================
-
-describe('Account page — empty apps state', () => {
-  it('shows empty-state message when no tiles are returned', async () => {
-    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
-    (globalThis as any).fetch = makeFetch([]);
-
-    renderAccount();
-
-    await waitFor(() => {
-      expect(screen.getByText(/no applications available/i)).toBeInTheDocument();
-    });
+    expect(screen.queryByRole('heading', { name: /your applications/i })).not.toBeInTheDocument();
   });
 });

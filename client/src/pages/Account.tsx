@@ -1,13 +1,11 @@
 /**
- * AccountPage — universal account dashboard (Sprint 016).
+ * AccountPage — identity management page (Sprint 020).
  *
  * Renders for all authenticated roles: student, staff, and admin.
- * All roles see the Apps zone (tiles from GET /api/account/apps).
  * Student-only sections (Profile, Logins, Services, Claude Code, LLM Proxy)
  * are shown only when role === 'student'.
  *
- * Previously, admins were redirected to / and staff saw an empty page.
- * Sprint 016 removes the admin redirect and adds the universal apps grid.
+ * Sprint 020: tile launchpad removed; sub-apps are now accessible via the sidebar.
  */
 
 import { useState } from 'react';
@@ -16,7 +14,6 @@ import { useAuth } from '../context/AuthContext';
 import { useProviderStatus } from '../hooks/useProviderStatus';
 import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import AccountLlmProxyCard from './account/AccountLlmProxyCard';
-import AppTile, { type AppTileProps } from '../components/AppTile';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,14 +89,6 @@ async function patchDisplayName(displayName: string): Promise<void> {
   }
 }
 
-async function fetchAccountApps(): Promise<{ tiles: AppTileProps[] }> {
-  const res = await fetch('/api/account/apps');
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `Failed to load apps (${res.status})`);
-  }
-  return res.json();
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -493,39 +482,6 @@ function HelpSection() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// AppsZone — app tiles grid (all roles)
-// ---------------------------------------------------------------------------
-
-function AppsZone() {
-  const {
-    data: appsData,
-    isLoading: appsLoading,
-  } = useQuery<{ tiles: AppTileProps[] }>({
-    queryKey: ['account-apps'],
-    queryFn: fetchAccountApps,
-  });
-
-  return (
-    <div style={styles.card}>
-      <h2 style={styles.sectionTitle}>Your Applications</h2>
-      {appsLoading ? (
-        <div style={styles.appsTileGrid} aria-busy="true" aria-label="Loading applications">
-          <div style={styles.skeletonTile} />
-          <div style={styles.skeletonTile} />
-        </div>
-      ) : !appsData || appsData.tiles.length === 0 ? (
-        <p style={styles.appsEmptyText}>No applications available.</p>
-      ) : (
-        <div style={styles.appsTileGrid}>
-          {appsData.tiles.map((tile) => (
-            <AppTile key={tile.id} {...tile} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // AccountPage — main component
@@ -646,11 +602,6 @@ export default function Account() {
           <div style={styles.spacer} />
         </>
       )}
-
-      {/* Apps zone — all authenticated roles */}
-      <AppsZone />
-
-      <div style={styles.spacer} />
 
       <HelpSection />
     </div>
@@ -943,21 +894,5 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#64748b',
     marginTop: 12,
     fontStyle: 'italic',
-  },
-  appsTileGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-    gap: '0.75rem',
-  },
-  skeletonTile: {
-    height: 72,
-    background: '#e2e8f0',
-    borderRadius: 12,
-    animation: 'pulse 1.5s ease-in-out infinite',
-  },
-  appsEmptyText: {
-    color: '#64748b',
-    fontSize: '0.9rem',
-    margin: 0,
   },
 };
