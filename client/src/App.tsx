@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -35,7 +35,7 @@ import GroupDetailPanel from './pages/admin/GroupDetailPanel';
 import SyncPanel from './pages/admin/SyncPanel';
 import MergeQueuePanel from './pages/admin/MergeQueuePanel';
 import Dashboard from './pages/admin/Dashboard';
-import OAuthClients from './pages/admin/OAuthClients';
+import OAuthClients from './pages/OAuthClients';
 
 import OAuthConsent from './pages/OAuthConsent';
 
@@ -79,6 +79,9 @@ function App() {
               <Route path="/account" element={<Account />} />
               <Route path="/services" element={<Services />} />
               <Route path="/mcp-setup" element={<McpSetup />} />
+              <Route path="/oauth-clients" element={<OAuthClients />} />
+              {/* Redirect old admin path to new canonical path */}
+              <Route path="/admin/oauth-clients" element={<Navigate to="/oauth-clients" replace />} />
 
               {/* Staff pages — role-gated by StaffLayout */}
               <Route element={<StaffLayout />}>
@@ -105,7 +108,6 @@ function App() {
 
               {/* Admin ops pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
-                <Route path="/admin/oauth-clients" element={<OAuthClients />} />
                 <Route path="/admin/users" element={<AdminUsersPanel />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />

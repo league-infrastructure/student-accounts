@@ -1,14 +1,14 @@
 ---
-id: "006"
-title: "OAuthClients page move out of admin and scope checkbox UI"
-status: todo
+id: '006'
+title: OAuthClients page move out of admin and scope checkbox UI
+status: done
 use-cases:
-  - SUC-020-002
-  - SUC-020-003
+- SUC-020-002
+- SUC-020-003
 depends-on:
-  - "002"
-github-issue: ""
-todo: "plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md"
+- '002'
+github-issue: ''
+todo: plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -63,14 +63,14 @@ invent server-side gating in this ticket.
 
 ## Acceptance Criteria
 
-- [ ] `client/src/pages/OAuthClients.tsx` exists; `client/src/pages/admin/OAuthClients.tsx` is deleted.
-- [ ] Route `/oauth-clients` mounted under `AppLayout` in `client/src/App.tsx`.
-- [ ] `/admin/oauth-clients` redirects (client-side) to `/oauth-clients`.
-- [ ] Page calls `/api/oauth-clients[...]` everywhere — no `/api/admin/oauth-clients` strings remain.
-- [ ] Scope input is a checkbox group with exactly two options: `profile`, `users:read`.
-- [ ] Submitted payload uses `allowed_scopes: string[]`.
-- [ ] Editing an existing client pre-checks the boxes for currently-granted scopes.
-- [ ] `npm run test:client` passes (modulo baseline).
+- [x] `client/src/pages/OAuthClients.tsx` exists; `client/src/pages/admin/OAuthClients.tsx` is deleted.
+- [x] Route `/oauth-clients` mounted under `AppLayout` in `client/src/App.tsx`.
+- [x] `/admin/oauth-clients` redirects (client-side) to `/oauth-clients`.
+- [x] Page calls `/api/oauth-clients[...]` everywhere — no `/api/admin/oauth-clients` strings remain.
+- [x] Scope input is a checkbox group with exactly two options: `profile`, `users:read`.
+- [x] Submitted payload uses `allowed_scopes: string[]`.
+- [x] Editing an existing client pre-checks the boxes for currently-granted scopes.
+- [x] `npm run test:client` passes (modulo baseline).
 
 ## Testing
 
