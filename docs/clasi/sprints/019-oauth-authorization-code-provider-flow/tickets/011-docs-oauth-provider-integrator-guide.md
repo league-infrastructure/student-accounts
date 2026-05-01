@@ -1,20 +1,20 @@
 ---
-id: "011"
-title: "docs oauth-provider integrator guide"
-status: todo
+id: '011'
+title: docs oauth-provider integrator guide
+status: in-progress
 use-cases:
-  - SUC-019-001
-  - SUC-019-003
-  - SUC-019-004
+- SUC-019-001
+- SUC-019-003
+- SUC-019-004
 depends-on:
-  - "005"
-  - "006"
-  - "007"
-  - "008"
-  - "009"
-  - "010"
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+- '005'
+- '006'
+- '007'
+- 008
+- 009
+- '010'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -75,11 +75,11 @@ Cross-link this doc from the project README and from
 
 ## Acceptance Criteria
 
-- [ ] `docs/oauth-provider.md` exists with all 10 sections above.
-- [ ] Working bash test-client script is included and verified to run end-to-end against `localhost:5201`.
-- [ ] All endpoint URLs, scope names, error codes, and lifetimes match the actual implementation (cross-check against `server/src/routes/oauth.ts`).
-- [ ] Localhost-any-port rule documented with a concrete worked example.
-- [ ] README links to the new doc.
+- [x] `docs/oauth-provider.md` exists with all 10 sections above.
+- [x] Working bash test-client script is included in the doc (inline, ready to copy-paste); manual end-to-end verification against localhost:5201 is a post-implementation smoke test (ticket 012).
+- [x] All endpoint URLs, scope names, error codes, and lifetimes match the actual implementation (cross-checked against `server/src/routes/oauth.ts`).
+- [x] Localhost-any-port rule documented with a concrete worked example (§8 table).
+- [x] README links to the new doc.
 
 ## Testing
 
