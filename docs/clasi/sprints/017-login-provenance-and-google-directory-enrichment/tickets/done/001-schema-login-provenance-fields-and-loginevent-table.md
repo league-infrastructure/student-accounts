@@ -1,11 +1,12 @@
 ---
-id: "001"
-title: "Schema Login provenance fields and LoginEvent table"
-status: todo
-use-cases: [SUC-017-001]
+id: '001'
+title: Schema Login provenance fields and LoginEvent table
+status: done
+use-cases:
+- SUC-017-001
 depends-on: []
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -46,12 +47,12 @@ Prisma client.
 
 ## Acceptance Criteria
 
-- [ ] `Login.provider_payload`, `provider_payload_updated_at`, `directory_metadata` exist on the schema.
-- [ ] `LoginEvent` model exists with cascade-delete relation.
-- [ ] `prisma db push` succeeds against `data/dev.db`.
-- [ ] `prisma generate` regenerates the client; new types visible.
-- [ ] Server typechecks (no new errors beyond 21 baseline).
-- [ ] Existing test suite still green.
+- [x] `Login.provider_payload`, `provider_payload_updated_at`, `directory_metadata` exist on the schema.
+- [x] `LoginEvent` model exists with cascade-delete relation.
+- [x] `prisma db push` succeeds against `data/dev.db`.
+- [x] `prisma generate` regenerates the client; new types visible.
+- [x] Server typechecks (no new errors beyond 21 baseline).
+- [x] Existing test suite still green.
 
 ## Testing
 

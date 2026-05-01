@@ -204,18 +204,35 @@ model UserGroup {
 }
 
 model Login {
-  id                Int      @id @default(autoincrement())
-  user_id           Int
-  provider          String   // 'google' | 'github' | 'pike13'
-  provider_user_id  String
-  provider_email    String?
-  provider_username String?  // GitHub username; null for Google logins
-  created_at        DateTime @default(now())
+  id                          Int       @id @default(autoincrement())
+  user_id                     Int
+  provider                    String    // 'google' | 'github' | 'pike13'
+  provider_user_id            String
+  provider_email              String?
+  provider_username           String?   // GitHub username; null for Google logins
+  provider_payload            Json?
+  provider_payload_updated_at DateTime?
+  directory_metadata          Json?
+  created_at                  DateTime  @default(now())
 
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  user                        User         @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  events                      LoginEvent[]
 
   @@unique([provider, provider_user_id])
   @@index([user_id])
+}
+
+model LoginEvent {
+  id          Int      @id @default(autoincrement())
+  login_id    Int
+  occurred_at DateTime @default(now())
+  payload     Json
+  ip          String?
+  user_agent  String?
+
+  login Login @relation(fields: [login_id], references: [id], onDelete: Cascade)
+
+  @@index([login_id])
 }
 
 // Note: A partial unique index on (user_id, type) WHERE status IN ('pending','active')
