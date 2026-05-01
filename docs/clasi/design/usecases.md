@@ -778,6 +778,81 @@ numbers from `specification.md`.
 **Postconditions:**
 - Administrator viewed matching audit records. No changes to any records.
 
+---
+
+## UC-024: User Views Personal Dashboard
+
+**Actor:** Authenticated user (student, staff, or admin)
+
+**Preconditions:**
+- User is signed in via any supported sign-in method.
+- User has role=student, role=staff, or role=admin.
+
+**Main Flow:**
+1. User navigates to `/account` (or is redirected there after sign-in).
+2. App calls `GET /api/account/apps` with the user's session.
+3. Server computes the tile list from the user's role and LLM proxy grant
+   status (see `app-tiles.service.ts`).
+4. Client renders a tile grid with one card per entitled sub-application.
+   Each card shows an icon, title, description, and link.
+5. User clicks a tile to navigate to the corresponding sub-application.
+
+**Postconditions:**
+- User is on the sub-application page they selected.
+- No records are modified by viewing the dashboard.
+
+**Error Flows:**
+- Unauthenticated request to `/api/account/apps`: server returns 401.
+- No tiles available (e.g., a student without an LLM proxy token): app
+  renders an empty-state message.
+
+---
+
+## UC-025: Admin Opens User Management Sub-App
+
+**Actor:** Administrator
+
+**Preconditions:**
+- Administrator is signed in (role=admin).
+- Administrator is on the `/account` dashboard.
+
+**Main Flow:**
+1. Administrator sees the User Management tile in the Apps zone.
+2. Administrator clicks the tile.
+3. App navigates to `/admin/users`.
+4. Administrator manages student, staff, and admin accounts as before.
+
+**Postconditions:**
+- Administrator is on `/admin/users` and can perform user management.
+
+**Error Flows:**
+- Non-admin attempts to access `/admin/users` directly: returns 403.
+
+---
+
+## UC-026: Student Opens LLM Proxy Sub-App
+
+**Actor:** Student with an active LLM proxy token
+
+**Preconditions:**
+- Student is signed in (role=student).
+- Student has an active (non-revoked, non-expired) LlmProxyToken.
+- Student is on the `/account` dashboard.
+
+**Main Flow:**
+1. Student sees the LLM Proxy tile in the Apps zone (tile appears because
+   the server detected an active token).
+2. Student clicks the tile.
+3. App navigates to `/account#llm-proxy`.
+4. Student views proxy endpoint URL and token information.
+
+**Postconditions:**
+- Student viewed their LLM proxy configuration.
+
+**Error Flows:**
+- Student has no active token: LLM Proxy tile is not shown; `/account#llm-proxy`
+  section shows the "not enabled" state if navigated to directly.
+
 **Error Flows:**
 - No records match the filter: app displays an empty result with a message.
 - Query performance degrades on large datasets: addressed in the build spec

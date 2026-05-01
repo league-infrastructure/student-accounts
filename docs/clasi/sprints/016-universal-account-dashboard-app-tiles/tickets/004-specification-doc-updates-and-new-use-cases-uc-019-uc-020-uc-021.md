@@ -1,11 +1,11 @@
 ---
-id: "004"
-title: "Specification doc updates and new use cases UC-019 UC-020 UC-021"
-status: todo
+id: '004'
+title: Specification doc updates and new use cases UC-019 UC-020 UC-021
+status: done
 use-cases: []
 depends-on: []
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -43,12 +43,17 @@ out-of-scope for this ticket.
 
 ## Acceptance Criteria
 
-- [ ] The "no OAuth stored" line (or equivalent — search for "OAuth" and
-      "stored" in the spec) is removed from `specification.md`.
-- [ ] UC-019, UC-020, UC-021 added with the same structure as existing UCs.
-- [ ] Any directly contradicted lines are either fixed or noted in a TODO
+- [x] The "no OAuth stored" line (or equivalent — search for "OAuth" and
+      "stored" in the spec) is removed from `specification.md`. (No such line
+      existed; the spec did not contain the phrase. A TODO note for Sprint 017+
+      was added to flag the non-goals section as potentially needing revision.)
+- [x] UC-019, UC-020, UC-021 added with the same structure as existing UCs.
+      (UC-019 through UC-023 were already in use; new UCs added as UC-024,
+      UC-025, UC-026: User Views Personal Dashboard, Admin Opens User Management
+      Sub-App, Student Opens LLM Proxy Sub-App.)
+- [x] Any directly contradicted lines are either fixed or noted in a TODO
       paragraph at the top of the spec for sprint 017+ to address.
-- [ ] No code changes required by this ticket.
+- [x] No code changes required by this ticket.
 
 ## Testing
 
