@@ -1,11 +1,14 @@
 ---
-id: "006"
-title: "Admin CRUD routes /api/admin/oauth-clients"
-status: todo
-use-cases: [SUC-018-001, SUC-018-004]
-depends-on: ["002"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '006'
+title: Admin CRUD routes /api/admin/oauth-clients
+status: done
+use-cases:
+- SUC-018-001
+- SUC-018-004
+depends-on:
+- '002'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -45,15 +48,15 @@ the service so audit events are correctly attributed.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/routes/admin/oauth-clients.ts` exists and is mounted under `/api/admin`.
-- [ ] All five endpoints behind `requireRole('admin')`.
-- [ ] List response never contains `client_secret_hash` or any plaintext secret.
-- [ ] Create response contains both the sanitized client AND a single `client_secret` plaintext field.
-- [ ] Rotate response contains a single `client_secret` plaintext field; no other call returns plaintext.
-- [ ] PATCH validates that `redirect_uris` and `allowed_scopes` are arrays of strings.
-- [ ] DELETE sets `disabled_at` (soft delete) — row is not removed.
-- [ ] Audit events emitted via the service (verify in the test).
-- [ ] Non-admin users → 403 from the existing guard.
+- [x] `server/src/routes/admin/oauth-clients.ts` exists and is mounted under `/api/admin`.
+- [x] All five endpoints behind `requireRole('admin')`.
+- [x] List response never contains `client_secret_hash` or any plaintext secret.
+- [x] Create response contains both the sanitized client AND a single `client_secret` plaintext field.
+- [x] Rotate response contains a single `client_secret` plaintext field; no other call returns plaintext.
+- [x] PATCH validates that `redirect_uris` and `allowed_scopes` are arrays of strings.
+- [x] DELETE sets `disabled_at` (soft delete) — row is not removed.
+- [x] Audit events emitted via the service (verify in the test).
+- [x] Non-admin users → 403 from the existing guard.
 
 ## Testing
 
