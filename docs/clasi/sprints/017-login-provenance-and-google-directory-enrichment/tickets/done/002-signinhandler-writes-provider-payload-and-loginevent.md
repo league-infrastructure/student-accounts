@@ -1,11 +1,13 @@
 ---
-id: "002"
-title: "signInHandler writes provider_payload and LoginEvent"
-status: todo
-use-cases: [SUC-017-001]
-depends-on: ["001"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '002'
+title: signInHandler writes provider_payload and LoginEvent
+status: done
+use-cases:
+- SUC-017-001
+depends-on:
+- '001'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -35,12 +37,12 @@ For Pike13 (manual flow in `auth.ts`): pass the `profile` object returned by `pi
 
 ## Acceptance Criteria
 
-- [ ] After a successful sign-in (any provider), the user's `Login.provider_payload` is non-null and equals the raw provider profile.
-- [ ] `Login.provider_payload_updated_at` reflects the most recent sign-in time.
-- [ ] One `LoginEvent` row exists per sign-in event with `login_id`, `payload`, optional `ip`, optional `user_agent`.
-- [ ] Sign-in still proceeds when `req.ip` or `user-agent` are missing — both are optional.
-- [ ] `signInHandler` signature change is backwards-compatible (new params are optional); all existing callers compile.
-- [ ] All sign-in tests still pass; new tests cover the payload + LoginEvent writes for Google, GitHub, and Pike13.
+- [x] After a successful sign-in (any provider), the user's `Login.provider_payload` is non-null and equals the raw provider profile.
+- [x] `Login.provider_payload_updated_at` reflects the most recent sign-in time.
+- [x] One `LoginEvent` row exists per sign-in event with `login_id`, `payload`, optional `ip`, optional `user_agent`.
+- [x] Sign-in still proceeds when `req.ip` or `user-agent` are missing — both are optional.
+- [x] `signInHandler` signature change is backwards-compatible (new params are optional); all existing callers compile.
+- [x] All sign-in tests still pass; new tests cover the payload + LoginEvent writes for Google, GitHub, and Pike13.
 
 ## Testing
 

@@ -1102,3 +1102,212 @@ describe('signInHandler — denied-account re-entry', () => {
     ).rejects.toBeInstanceOf(PermanentlyDeniedError);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 017 ticket 002: provider_payload + LoginEvent writes
+// ---------------------------------------------------------------------------
+
+async function countLoginEvents(): Promise<number> {
+  return (prisma as any).loginEvent.count();
+}
+
+describe('signInHandler — provider_payload and LoginEvent (Sprint 017)', () => {
+  const RAW_GOOGLE_PROFILE = {
+    id: 'google-uid-prov-001',
+    displayName: 'Provenance User',
+    emails: [{ value: 'prov@example.com' }],
+    _json: { hd: 'example.com' },
+  };
+
+  it('writes provider_payload on new Google sign-in', async () => {
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-prov-001',
+        providerEmail: 'prov@example.com',
+        displayName: 'Provenance User',
+        providerUsername: null,
+        rawProfile: RAW_GOOGLE_PROFILE,
+      },
+      userService,
+      loginService,
+    );
+
+    const login = await loginService.findByProvider('google', 'google-uid-prov-001');
+    expect(login).not.toBeNull();
+    expect(login!.provider_payload).toMatchObject({ id: 'google-uid-prov-001' });
+  });
+
+  it('sets provider_payload_updated_at on new Google sign-in', async () => {
+    const before = new Date();
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-prov-002',
+        providerEmail: 'prov2@example.com',
+        displayName: 'Prov User 2',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-prov-002' },
+      },
+      userService,
+      loginService,
+    );
+
+    const login = await loginService.findByProvider('google', 'google-uid-prov-002');
+    expect(login).not.toBeNull();
+    expect(login!.provider_payload_updated_at).not.toBeNull();
+    expect(new Date(login!.provider_payload_updated_at as any).getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
+
+  it('creates one LoginEvent on new Google sign-in', async () => {
+    const before = await countLoginEvents();
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-prov-003',
+        providerEmail: 'prov3@example.com',
+        displayName: 'Prov User 3',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-prov-003' },
+      },
+      userService,
+      loginService,
+      { requestContext: { ip: '1.2.3.4', userAgent: 'Mozilla/5.0' } },
+    );
+
+    expect(await countLoginEvents()).toBe(before + 1);
+    const login = await loginService.findByProvider('google', 'google-uid-prov-003');
+    const events = await (prisma as any).loginEvent.findMany({
+      where: { login_id: login!.id },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].ip).toBe('1.2.3.4');
+    expect(events[0].user_agent).toBe('Mozilla/5.0');
+  });
+
+  it('creates one LoginEvent on new GitHub sign-in', async () => {
+    const before = await countLoginEvents();
+    await signInHandler(
+      'github',
+      {
+        providerUserId: 'github-uid-prov-004',
+        providerEmail: 'prov4@example.com',
+        displayName: 'GitHub Prov User',
+        providerUsername: 'prov4',
+        rawProfile: { id: 'github-uid-prov-004', login: 'prov4' },
+      },
+      userService,
+      loginService,
+    );
+
+    expect(await countLoginEvents()).toBe(before + 1);
+  });
+
+  it('creates one LoginEvent on new Pike13 sign-in', async () => {
+    const before = await countLoginEvents();
+    await signInHandler(
+      'pike13',
+      {
+        providerUserId: 'pike13-uid-prov-005',
+        providerEmail: 'prov5@example.com',
+        displayName: 'Pike13 Prov User',
+        providerUsername: null,
+        rawProfile: { id: 'pike13-uid-prov-005' },
+      },
+      userService,
+      loginService,
+    );
+
+    expect(await countLoginEvents()).toBe(before + 1);
+  });
+
+  it('appends a second LoginEvent on returning user sign-in and advances provider_payload_updated_at', async () => {
+    // First sign-in
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-prov-006',
+        providerEmail: 'prov6@example.com',
+        displayName: 'Returning Prov',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-prov-006', v: 1 },
+      },
+      userService,
+      loginService,
+    );
+
+    const login = await loginService.findByProvider('google', 'google-uid-prov-006');
+    const firstUpdatedAt = login!.provider_payload_updated_at;
+
+    // Small delay to ensure timestamps differ
+    await new Promise((r) => setTimeout(r, 5));
+
+    // Second sign-in (returning user)
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-prov-006',
+        providerEmail: 'prov6@example.com',
+        displayName: 'Returning Prov',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-prov-006', v: 2 },
+      },
+      userService,
+      loginService,
+    );
+
+    const loginAfter = await loginService.findByProvider('google', 'google-uid-prov-006');
+    expect(loginAfter!.provider_payload_updated_at!.getTime()).toBeGreaterThanOrEqual(
+      new Date(firstUpdatedAt as any).getTime(),
+    );
+
+    const events = await (prisma as any).loginEvent.findMany({
+      where: { login_id: login!.id },
+      orderBy: { id: 'asc' },
+    });
+    expect(events).toHaveLength(2);
+    expect((events[0].payload as any).v).toBe(1);
+    expect((events[1].payload as any).v).toBe(2);
+  });
+
+  it('sign-in still succeeds when rawProfile is not provided (no LoginEvent written)', async () => {
+    const before = await countLoginEvents();
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-prov-007',
+        providerEmail: 'prov7@example.com',
+        displayName: 'No Raw Profile',
+        providerUsername: null,
+        // rawProfile intentionally omitted
+      },
+      userService,
+      loginService,
+    );
+
+    expect(user).toBeDefined();
+    expect(await countLoginEvents()).toBe(before); // no new event
+  });
+
+  it('ip and user_agent are null when requestContext is not provided', async () => {
+    await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-prov-008',
+        providerEmail: 'prov8@example.com',
+        displayName: 'No Context',
+        providerUsername: null,
+        rawProfile: { id: 'google-uid-prov-008' },
+      },
+      userService,
+      loginService,
+      // requestContext intentionally omitted
+    );
+
+    const login = await loginService.findByProvider('google', 'google-uid-prov-008');
+    const events = await (prisma as any).loginEvent.findMany({ where: { login_id: login!.id } });
+    expect(events).toHaveLength(1);
+    expect(events[0].ip).toBeNull();
+    expect(events[0].user_agent).toBeNull();
+  });
+});

@@ -707,9 +707,16 @@ authRouter.get(
           providerEmail: profile.email,
           displayName: profile.name,
           providerUsername: null,
+          rawProfile: profile,
         },
         users,
         logins,
+        {
+          requestContext: {
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+          },
+        },
       );
 
       // Approval gate — pending users get the same redirect as Google/GitHub.
