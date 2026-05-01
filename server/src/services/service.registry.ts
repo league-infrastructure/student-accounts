@@ -258,6 +258,11 @@ export class ServiceRegistry {
     // UserGroup has FK → User + Group (Cascade). Explicit delete keeps
     // teardown symmetry with other deleteMany calls.
     await (p as any).userGroup.deleteMany();
+    // Sprint 019: authorization codes, refresh tokens, consents cascade from
+    // OAuthClient and User — delete before OAuthClient and User.
+    await (p as any).oAuthAuthorizationCode.deleteMany();
+    await (p as any).oAuthRefreshToken.deleteMany();
+    await (p as any).oAuthConsent.deleteMany();
     // OAuthAccessToken has FK → OAuthClient (Cascade). Delete before OAuthClient.
     await (p as any).oAuthAccessToken.deleteMany();
     // OAuthClient has FK → User (SetNull). Delete before User.
