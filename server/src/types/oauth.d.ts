@@ -16,6 +16,8 @@ declare global {
       oauth?: {
         /** The OAuth client's client_id string. */
         client_id: string;
+        /** The OAuth client's numeric primary key. */
+        oauth_client_id: number;
         /** The token's associated user_id (null for client-credentials tokens). */
         user_id: number | null;
         /** Scopes granted to this token. */

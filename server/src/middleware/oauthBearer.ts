@@ -65,6 +65,7 @@ export function oauthBearer(requiredScope?: string): RequestHandler {
     // Attach OAuth context to the request.
     req.oauth = {
       client_id: validation.client_id,
+      oauth_client_id: validation.oauth_client_id,
       user_id: validation.user_id,
       scopes: validation.scopes,
     };

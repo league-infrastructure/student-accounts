@@ -158,8 +158,11 @@ model User {
   merge_decisions        MergeSuggestion[]     @relation("MergeDecider")
   llm_proxy_tokens          LlmProxyToken[]
   llm_proxy_tokens_granted  LlmProxyToken[]     @relation("LlmProxyGranter")
-  oauth_clients_created     OAuthClient[]       @relation("OAuthClientCreator")
-  oauth_access_tokens       OAuthAccessToken[]  @relation("OAuthTokenUser")
+  oauth_clients_created       OAuthClient[]            @relation("OAuthClientCreator")
+  oauth_access_tokens         OAuthAccessToken[]       @relation("OAuthTokenUser")
+  oauth_authorization_codes   OAuthAuthorizationCode[]
+  oauth_refresh_tokens        OAuthRefreshToken[]
+  oauth_consents              OAuthConsent[]
 
   @@index([role])
   @@index([cohort_id])
@@ -335,8 +338,11 @@ model OAuthClient {
   updated_at          DateTime  @updatedAt
   disabled_at         DateTime?
 
-  creator             User?              @relation("OAuthClientCreator", fields: [created_by], references: [id], onDelete: SetNull)
-  access_tokens       OAuthAccessToken[]
+  creator               User?                    @relation("OAuthClientCreator", fields: [created_by], references: [id], onDelete: SetNull)
+  access_tokens         OAuthAccessToken[]
+  authorization_codes   OAuthAuthorizationCode[]
+  refresh_tokens        OAuthRefreshToken[]
+  consents              OAuthConsent[]
 
   @@index([client_id])
 }
@@ -368,6 +374,83 @@ model OAuthAccessToken {
 
   @@index([token_hash])
   @@index([oauth_client_id])
+}
+
+// ---------------------------------------------------------------------------
+// OAuthAuthorizationCode — short-lived one-time-use code (Sprint 019).
+//
+// code_hash is SHA-256 of the plaintext code (shown once in the response).
+// code_challenge stores the PKCE challenge (method always "S256").
+// consumed_at is set atomically at exchange time — a non-null value means
+// the code has already been used.
+// ---------------------------------------------------------------------------
+model OAuthAuthorizationCode {
+  id                    Int       @id @default(autoincrement())
+  code_hash             String    @unique
+  oauth_client_id       Int
+  user_id               Int
+  redirect_uri          String
+  // String[] stored as JSON — SQLite-compatible.
+  scopes                Json
+  code_challenge        String
+  code_challenge_method String
+  expires_at            DateTime
+  consumed_at           DateTime?
+  created_at            DateTime  @default(now())
+
+  oauth_client          OAuthClient @relation(fields: [oauth_client_id], references: [id], onDelete: Cascade)
+  user                  User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([oauth_client_id])
+}
+
+// ---------------------------------------------------------------------------
+// OAuthRefreshToken — long-lived rotation chain (Sprint 019).
+//
+// token_hash is SHA-256 of the plaintext token (shown once in the response).
+// replaced_by_id forms a linked list: when a token is rotated the old row
+// gets replaced_by_id = new row's id. Reuse detection walks this chain.
+// ---------------------------------------------------------------------------
+model OAuthRefreshToken {
+  id              Int       @id @default(autoincrement())
+  token_hash      String    @unique
+  oauth_client_id Int
+  user_id         Int
+  // String[] stored as JSON — SQLite-compatible.
+  scopes          Json
+  expires_at      DateTime
+  revoked_at      DateTime?
+  replaced_by_id  Int?
+  created_at      DateTime  @default(now())
+  last_used_at    DateTime?
+
+  oauth_client    OAuthClient       @relation(fields: [oauth_client_id], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  replaced_by     OAuthRefreshToken?  @relation("RefreshChain", fields: [replaced_by_id], references: [id])
+  predecessors    OAuthRefreshToken[] @relation("RefreshChain")
+
+  @@index([oauth_client_id])
+}
+
+// ---------------------------------------------------------------------------
+// OAuthConsent — record that user X granted scopes Y to client Z (Sprint 019).
+//
+// Unique on (user_id, oauth_client_id) — re-consent UPSERTS over the row.
+// The find check uses ⊇ so the consent screen is only shown when the
+// existing consent does not cover all requested scopes.
+// ---------------------------------------------------------------------------
+model OAuthConsent {
+  id              Int      @id @default(autoincrement())
+  user_id         Int
+  oauth_client_id Int
+  // String[] stored as JSON — SQLite-compatible.
+  scopes          Json
+  granted_at      DateTime @default(now())
+
+  user            User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  oauth_client    OAuthClient @relation(fields: [oauth_client_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, oauth_client_id])
 }
 
 // ---------------------------------------------------------------------------

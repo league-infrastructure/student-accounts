@@ -27,6 +27,9 @@ import { PassphraseService } from './passphrase.service';
 import { AnthropicSyncService } from './anthropic/anthropic-sync.service';
 import { OAuthClientService } from './oauth/oauth-client.service';
 import { OAuthTokenService } from './oauth/oauth-token.service';
+import { OAuthCodeService } from './oauth/oauth-code.service';
+import { OAuthRefreshService } from './oauth/oauth-refresh.service';
+import { OAuthConsentService } from './oauth/oauth-consent.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -91,6 +94,12 @@ export class ServiceRegistry {
   readonly oauthClients: OAuthClientService;
   /** OAuth access token issuance and validation (Sprint 018). */
   readonly oauthTokens: OAuthTokenService;
+  /** OAuth authorization code mint/consume with PKCE (Sprint 019). */
+  readonly oauthCodes: OAuthCodeService;
+  /** OAuth refresh token rotation chain (Sprint 019). */
+  readonly oauthRefreshTokens: OAuthRefreshService;
+  /** OAuth consent recording and lookup (Sprint 019). */
+  readonly oauthConsents: OAuthConsentService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -220,6 +229,15 @@ export class ServiceRegistry {
 
     // OAuthTokenService — Sprint 018.
     this.oauthTokens = new OAuthTokenService(defaultPrisma, this.audit);
+
+    // OAuthCodeService — Sprint 019.
+    this.oauthCodes = new OAuthCodeService(defaultPrisma, this.audit);
+
+    // OAuthRefreshService — Sprint 019.
+    this.oauthRefreshTokens = new OAuthRefreshService(defaultPrisma, this.audit, this.oauthTokens);
+
+    // OAuthConsentService — Sprint 019.
+    this.oauthConsents = new OAuthConsentService(defaultPrisma);
   }
 
   static create(
@@ -258,6 +276,11 @@ export class ServiceRegistry {
     // UserGroup has FK → User + Group (Cascade). Explicit delete keeps
     // teardown symmetry with other deleteMany calls.
     await (p as any).userGroup.deleteMany();
+    // Sprint 019: authorization codes, refresh tokens, consents cascade from
+    // OAuthClient and User — delete before OAuthClient and User.
+    await (p as any).oAuthAuthorizationCode.deleteMany();
+    await (p as any).oAuthRefreshToken.deleteMany();
+    await (p as any).oAuthConsent.deleteMany();
     // OAuthAccessToken has FK → OAuthClient (Cascade). Delete before OAuthClient.
     await (p as any).oAuthAccessToken.deleteMany();
     // OAuthClient has FK → User (SetNull). Delete before User.
