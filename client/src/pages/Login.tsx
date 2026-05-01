@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { isSafeNext } from './login/isSafeNext';
 
 // Brand SVGs inlined so the buttons render without a network round-trip.
 // Each is recolored to fit on its own brand-colored button background.
@@ -81,10 +82,15 @@ export default function Login() {
     setSubmitting(true);
     setError(null);
 
+    // Determine post-login redirect destination. The `next` param is
+    // validated by isSafeNext to prevent open-redirect attacks (019-009).
+    const nextParam = searchParams.get('next');
+    const destination = isSafeNext(nextParam) ? nextParam! : '/account';
+
     // Try logging in first — works for any returning user.
     const login = await loginWithCredentials(username.trim(), passphrase);
     if (login.ok) {
-      window.location.assign('/account');
+      window.location.assign(destination);
       return;
     }
 
@@ -98,7 +104,7 @@ export default function Login() {
         body: JSON.stringify({ username: username.trim(), passphrase }),
       });
       if (res.ok) {
-        window.location.assign('/account');
+        window.location.assign(destination);
         return;
       }
       const body = await res.json().catch(() => ({}));

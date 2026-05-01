@@ -31,7 +31,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    include: [path.resolve(repoRoot, 'tests/client/**/*.test.tsx')],
+    include: [
+      path.resolve(repoRoot, 'tests/client/**/*.test.tsx'),
+      path.resolve(repoRoot, 'tests/client/**/*.test.ts'),
+    ],
     setupFiles: [path.resolve(__dirname, 'vitest.setup.ts')],
   },
 });

@@ -1,12 +1,12 @@
 ---
-id: "009"
-title: "Login page next param honors same-origin redirects"
-status: todo
+id: 009
+title: Login page next param honors same-origin redirects
+status: in-progress
 use-cases:
-  - SUC-019-001
+- SUC-019-001
 depends-on: []
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -62,11 +62,11 @@ and the open-redirect risk noted in `architecture-update.md`.
 
 ## Acceptance Criteria
 
-- [ ] `client/src/pages/Login.tsx` reads `next` from URL and uses it on success when `isSafeNext(next)` returns true.
-- [ ] `isSafeNext` is exported as a standalone pure helper that can be unit-tested without rendering the page.
-- [ ] If the server login route also issues redirects, the same validation applies there.
-- [ ] All attack-vector tests pass (see Testing).
-- [ ] No regression in the existing post-login redirect to `/account` when `next` is absent or invalid.
+- [x] `client/src/pages/Login.tsx` reads `next` from URL and uses it on success when `isSafeNext(next)` returns true.
+- [x] `isSafeNext` is exported as a standalone pure helper that can be unit-tested without rendering the page.
+- [x] If the server login route also issues redirects, the same validation applies there. (Server returns JSON; no redirect issued — no change needed.)
+- [x] All attack-vector tests pass (see Testing).
+- [x] No regression in the existing post-login redirect to `/account` when `next` is absent or invalid.
 
 ## Testing
 
