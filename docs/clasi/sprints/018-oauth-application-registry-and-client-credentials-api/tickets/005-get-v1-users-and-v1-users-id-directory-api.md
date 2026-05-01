@@ -1,11 +1,13 @@
 ---
-id: "005"
-title: "GET /v1/users and /v1/users/:id directory API"
-status: todo
-use-cases: [SUC-018-003]
-depends-on: ["004"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '005'
+title: GET /v1/users and /v1/users/:id directory API
+status: done
+use-cases:
+- SUC-018-003
+depends-on:
+- '004'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -41,15 +43,15 @@ used.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/routes/v1-directory.ts` exists and is mounted at `/v1`.
-- [ ] Both routes are wrapped in `oauthBearer('users:read')`.
-- [ ] List response uses pagination shape consistent with existing admin endpoints; `per_page` capped at 200; defaults `page=1`, `per_page=50`.
-- [ ] List item fields are exactly `id`, `display_name`, `primary_email`, `role`, `is_active`.
-- [ ] Detail response adds `cohort_id` and `created_at`.
-- [ ] Missing token → 401 (delivered by middleware).
-- [ ] Token without `users:read` → 403 (delivered by middleware).
-- [ ] `oauth_directory_call` audit event written for every successful call (and 404).
-- [ ] Sensitive columns (password hashes etc.) never serialized.
+- [x] `server/src/routes/v1-directory.ts` exists and is mounted at `/v1`.
+- [x] Both routes are wrapped in `oauthBearer('users:read')`.
+- [x] List response uses pagination shape consistent with existing admin endpoints; `per_page` capped at 200; defaults `page=1`, `per_page=50`.
+- [x] List item fields are exactly `id`, `display_name`, `primary_email`, `role`, `is_active`.
+- [x] Detail response adds `cohort_id` and `created_at`.
+- [x] Missing token → 401 (delivered by middleware).
+- [x] Token without `users:read` → 403 (delivered by middleware).
+- [x] `oauth_directory_call` audit event written for every successful call (and 404).
+- [x] Sensitive columns (password hashes etc.) never serialized.
 
 ## Testing
 
