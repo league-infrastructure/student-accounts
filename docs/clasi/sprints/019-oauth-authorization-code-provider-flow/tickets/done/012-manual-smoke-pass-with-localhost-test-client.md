@@ -1,26 +1,26 @@
 ---
-id: "012"
-title: "Manual smoke pass with localhost test client"
-status: todo
+id: '012'
+title: Manual smoke pass with localhost test client
+status: done
 use-cases:
-  - SUC-019-001
-  - SUC-019-002
-  - SUC-019-003
-  - SUC-019-004
+- SUC-019-001
+- SUC-019-002
+- SUC-019-003
+- SUC-019-004
 depends-on:
-  - "001"
-  - "002"
-  - "003"
-  - "004"
-  - "005"
-  - "006"
-  - "007"
-  - "008"
-  - "009"
-  - "010"
-  - "011"
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
+- '007'
+- 008
+- 009
+- '010'
+- '011'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
