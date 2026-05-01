@@ -1,12 +1,12 @@
 ---
-id: "001"
-title: "Delete AppTile API and component"
-status: todo
+id: '001'
+title: Delete AppTile API and component
+status: done
 use-cases:
-  - SUC-020-001
+- SUC-020-001
 depends-on: []
-github-issue: ""
-todo: "plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md"
+github-issue: ''
+todo: plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
