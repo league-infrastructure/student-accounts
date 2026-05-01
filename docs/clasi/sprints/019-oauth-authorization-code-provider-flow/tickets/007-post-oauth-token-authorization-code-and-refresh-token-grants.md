@@ -1,15 +1,15 @@
 ---
-id: "007"
-title: "POST /oauth/token authorization-code and refresh-token grants"
-status: todo
+id: '007'
+title: POST /oauth/token authorization-code and refresh-token grants
+status: in-progress
 use-cases:
-  - SUC-019-001
-  - SUC-019-003
+- SUC-019-001
+- SUC-019-003
 depends-on:
-  - "003"
-  - "004"
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+- '003'
+- '004'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -92,18 +92,18 @@ itself does not need to emit additional events.
 
 ## Acceptance Criteria
 
-- [ ] `POST /oauth/token` with `grant_type=authorization_code` returns the documented response shape with both access and refresh tokens.
-- [ ] PKCE verifier mismatch → 400 `invalid_grant`.
-- [ ] Replayed code → 400 `invalid_grant`.
-- [ ] Mismatched `redirect_uri` between authorize and token → 400 `invalid_grant`.
-- [ ] Code from one client spent by a different authenticated client → 400 `invalid_grant`.
-- [ ] `grant_type=refresh_token` happy path returns rotated access + refresh tokens.
-- [ ] Replayed refresh token → 400 `invalid_grant` AND entire chain is revoked (assert via DB read).
-- [ ] Refresh token from disabled client → 401 `invalid_client`.
-- [ ] Refresh token rotated by a different client → 400 `invalid_grant`.
-- [ ] Missing required fields → 400 `invalid_request`.
-- [ ] Unknown `grant_type` → 400 `unsupported_grant_type`.
-- [ ] `client_credentials` grant from sprint 018 still works unchanged.
+- [x] `POST /oauth/token` with `grant_type=authorization_code` returns the documented response shape with both access and refresh tokens.
+- [x] PKCE verifier mismatch → 400 `invalid_grant`.
+- [x] Replayed code → 400 `invalid_grant`.
+- [x] Mismatched `redirect_uri` between authorize and token → 400 `invalid_grant`.
+- [x] Code from one client spent by a different authenticated client → 400 `invalid_grant` (cross-client check in route).
+- [x] `grant_type=refresh_token` happy path returns rotated access + refresh tokens.
+- [x] Replayed refresh token → 400 `invalid_grant` AND entire chain is revoked (assert via DB read).
+- [x] Refresh token from disabled client → 401 `invalid_client`.
+- [x] Refresh token rotated by a different client → 400 `invalid_grant` (verifySecret fails for wrong client).
+- [x] Missing required fields → 400 `invalid_request`.
+- [x] Unknown `grant_type` → 400 `unsupported_grant_type`.
+- [x] `client_credentials` grant from sprint 018 still works unchanged.
 
 ## Testing
 
