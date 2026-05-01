@@ -1,9 +1,12 @@
 ---
-id: "016"
-title: "Universal Account Dashboard + App Tiles"
-status: planning
+id: '016'
+title: Universal Account Dashboard + App Tiles
+status: done
 branch: sprint/016-universal-account-dashboard-app-tiles
-use-cases: [SUC-016-001, SUC-016-002, SUC-016-003]
+use-cases:
+- SUC-016-001
+- SUC-016-002
+- SUC-016-003
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
