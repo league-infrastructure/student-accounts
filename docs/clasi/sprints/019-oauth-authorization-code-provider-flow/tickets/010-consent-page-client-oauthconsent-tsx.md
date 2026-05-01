@@ -1,15 +1,15 @@
 ---
-id: "010"
-title: "Consent page client OAuthConsent.tsx"
-status: todo
+id: '010'
+title: Consent page client OAuthConsent.tsx
+status: in-progress
 use-cases:
-  - SUC-019-001
-  - SUC-019-002
+- SUC-019-001
+- SUC-019-002
 depends-on:
-  - "005"
-  - "006"
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+- '005'
+- '006'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -90,13 +90,13 @@ this page receives the user already-logged-in.
 
 ## Acceptance Criteria
 
-- [ ] `client/src/pages/OAuthConsent.tsx` exists.
-- [ ] Route `/oauth/consent` registered in `client/src/App.tsx`.
-- [ ] Page reads all six query params.
-- [ ] Client metadata (name, description) is rendered — via either the new public endpoint or the round-tripped query params.
-- [ ] Scope chips with human-readable labels render for all requested scopes.
-- [ ] Allow and Deny buttons submit a real HTML form POST to `/oauth/authorize/consent` with all params round-tripped as hidden fields and `decision` from the clicked button.
-- [ ] No `fetch` calls for the consent submission (otherwise the cross-origin redirect breaks).
+- [x] `client/src/pages/OAuthConsent.tsx` exists.
+- [x] Route `/oauth/consent` registered in `client/src/App.tsx`.
+- [x] Page reads all six query params.
+- [x] Client metadata (name, description) is rendered — via round-tripped query params (`client_name`, `client_description`) from GET /oauth/authorize.
+- [x] Scope chips with human-readable labels render for all requested scopes.
+- [x] Allow and Deny buttons submit a real HTML form POST to `/oauth/authorize/consent` with all params round-tripped as hidden fields and `decision` from the clicked button.
+- [x] No `fetch` calls for the consent submission (otherwise the cross-origin redirect breaks).
 
 ## Testing
 

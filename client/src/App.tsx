@@ -36,6 +36,8 @@ import MergeQueuePanel from './pages/admin/MergeQueuePanel';
 import Dashboard from './pages/admin/Dashboard';
 import OAuthClients from './pages/admin/OAuthClients';
 
+import OAuthConsent from './pages/OAuthConsent';
+
 import StaffLayout from './pages/staff/StaffLayout';
 import StaffDirectory from './pages/staff/StaffDirectory';
 
@@ -62,6 +64,10 @@ function App() {
           <Routes>
             {/* Standalone pages (no AppLayout) */}
             <Route path="/login" element={<Login />} />
+
+            {/* OAuth consent screen — public, no AppLayout, no auth gate.
+                Authentication for this flow is handled upstream at /oauth/authorize. */}
+            <Route path="/oauth/consent" element={<OAuthConsent />} />
 
             {/* Admin login (standalone, no layout) */}
             <Route path="/admin" element={<AdminLogin />} />
