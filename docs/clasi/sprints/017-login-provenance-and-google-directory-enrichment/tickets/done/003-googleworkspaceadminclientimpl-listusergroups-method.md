@@ -1,11 +1,12 @@
 ---
-id: "003"
-title: "GoogleWorkspaceAdminClientImpl listUserGroups method"
-status: todo
-use-cases: [SUC-017-002]
+id: '003'
+title: GoogleWorkspaceAdminClientImpl listUserGroups method
+status: done
+use-cases:
+- SUC-017-002
 depends-on: []
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -46,12 +47,12 @@ Also expose the same on the `FakeGoogleWorkspaceAdminClient` test helper
 
 ## Acceptance Criteria
 
-- [ ] Interface `GoogleWorkspaceAdminClient` declares `listUserGroups(email)`.
-- [ ] `GoogleWorkspaceAdminClientImpl.listUserGroups` calls the Admin SDK and returns the array.
-- [ ] Pagination handled (or commented why it's safe to skip — typical staff users have <200 groups).
-- [ ] Error path throws a typed error (sibling of `StaffOULookupError`).
-- [ ] `FakeGoogleWorkspaceAdminClient` supports `configure('listUserGroups', …)` returning value or throwing.
-- [ ] Unit tests for the fake; integration test only via consumer in ticket 004.
+- [x] Interface `GoogleWorkspaceAdminClient` declares `listUserGroups(email)`.
+- [x] `GoogleWorkspaceAdminClientImpl.listUserGroups` calls the Admin SDK and returns the array.
+- [x] Pagination handled (or commented why it's safe to skip — typical staff users have <200 groups).
+- [x] Error path throws a typed error (sibling of `StaffOULookupError`).
+- [x] `FakeGoogleWorkspaceAdminClient` supports `configure('listUserGroups', …)` returning value or throwing.
+- [x] Unit tests for the fake; integration test only via consumer in ticket 004.
 
 ## Testing
 
