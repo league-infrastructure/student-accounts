@@ -1,19 +1,19 @@
 ---
-id: '009'
-title: "Manual smoke pass — stakeholder verification sweep"
-status: todo
+id: 009
+title: "Manual smoke pass \u2014 stakeholder verification sweep"
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
-  - SUC-008
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
+- SUC-008
 depends-on:
-  - '007'
-  - '008'
+- '007'
+- 008
 github-issue: ''
 todo: plan-passphrase-self-onboarding.md
 ---
