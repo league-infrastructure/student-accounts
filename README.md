@@ -59,6 +59,7 @@ npm run test:e2e      # End-to-end (Playwright)
 | Guide | Contents |
 |-------|----------|
 | [docs/testing.md](docs/testing.md) | Test strategy and guidelines |
+| [docs/oauth-provider.md](docs/oauth-provider.md) | OAuth 2.0 provider — integrator guide |
 | `.claude/rules/setup.md` | Detailed setup and troubleshooting |
 | `.claude/rules/deployment.md` | Production deployment |
 | `.claude/rules/template-spec.md` | Architecture and conventions |
