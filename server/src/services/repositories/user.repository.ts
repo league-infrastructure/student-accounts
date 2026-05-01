@@ -30,6 +30,8 @@ export type UpdateUserInput = Partial<{
   is_active: boolean;
   approval_status: 'approved' | 'pending';
   onboarding_completed: boolean;
+  username: string | null;
+  password_hash: string | null;
 }>;
 
 export type FindAllUsersFilter = {
