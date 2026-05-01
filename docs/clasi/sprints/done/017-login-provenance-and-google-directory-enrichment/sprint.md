@@ -1,9 +1,12 @@
 ---
-id: "017"
-title: "Login Provenance and Google Directory Enrichment"
-status: planning
+id: '017'
+title: Login Provenance and Google Directory Enrichment
+status: done
 branch: sprint/017-login-provenance-and-google-directory-enrichment
-use-cases: [SUC-017-001, SUC-017-002, SUC-017-003]
+use-cases:
+- SUC-017-001
+- SUC-017-002
+- SUC-017-003
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
