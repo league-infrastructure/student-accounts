@@ -1,11 +1,15 @@
 ---
-id: "003"
-title: "AppTile component + Account.tsx Apps zone refactor (allow all roles) + client tests"
-status: todo
-use-cases: [SUC-016-002, SUC-016-003]
-depends-on: ["001"]
-github-issue: ""
-todo: "plan-single-sign-on-oauth-provider-migration.md"
+id: '003'
+title: AppTile component + Account.tsx Apps zone refactor (allow all roles) + client
+  tests
+status: done
+use-cases:
+- SUC-016-002
+- SUC-016-003
+depends-on:
+- '001'
+github-issue: ''
+todo: plan-single-sign-on-oauth-provider-migration.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -58,14 +62,14 @@ Add tests:
 
 ## Acceptance Criteria
 
-- [ ] `client/src/components/AppTile.tsx` exists and renders the documented props.
-- [ ] `Account.tsx` no longer redirects admins away.
-- [ ] `Account.tsx` calls `/api/account/apps` for all authenticated users.
-- [ ] `Account.tsx` does NOT call `/api/account` for non-students (avoid 403 noise).
-- [ ] Existing student sections still render for students, unchanged in appearance.
-- [ ] New tests cover student/staff/admin views.
-- [ ] Client typecheck passes (no new TS errors beyond the pre-existing 4).
-- [ ] Client test suite same baseline (no new failures).
+- [x] `client/src/components/AppTile.tsx` exists and renders the documented props.
+- [x] `Account.tsx` no longer redirects admins away.
+- [x] `Account.tsx` calls `/api/account/apps` for all authenticated users.
+- [x] `Account.tsx` does NOT call `/api/account` for non-students (avoid 403 noise).
+- [x] Existing student sections still render for students, unchanged in appearance.
+- [x] New tests cover student/staff/admin views.
+- [x] Client typecheck passes (no new TS errors beyond the pre-existing 4).
+- [x] Client test suite same baseline (no new failures).
 
 ## Testing
 
