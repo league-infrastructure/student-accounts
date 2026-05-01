@@ -438,7 +438,41 @@ supersede any conflicting text in earlier draft documents.
 
 ---
 
+---
+
 ## 9. Remaining Open Questions
 
 None. All questions raised during initial requirements review have been
 resolved (see §8).
+
+---
+
+## 10. Sprint 016 Additions — Universal Account Dashboard
+
+### 10.1 Universal Landing Page
+
+Sprint 016 introduces a universal account dashboard at `/account`. All
+authenticated users — student, staff, and admin — land on `/account` after
+sign-in. The page displays application tiles appropriate to the user's role
+and entitlements. Per-role redirect logic (`postLoginRedirect()`) is removed;
+all roles receive the same destination.
+
+### 10.2 Server-Computed Tile List
+
+A new endpoint `GET /api/account/apps` returns the tile list for the
+authenticated caller. Tile computation is server-side (not derived solely from
+the client's cached role) so that future entitlement checks (feature flags,
+per-user grants) do not require client changes. The initial tile catalog is
+defined in `server/src/services/app-tiles.service.ts`.
+
+### 10.3 Direction Notes (Sprints 017–019)
+
+This app is evolving toward a full identity service / OAuth provider over the
+next several sprints. Future sprints will add:
+- OAuth 2.0 authorization server capability (clients stored in the database).
+- Per-user OAuth token storage and management.
+- SSO provider migration flows.
+
+<!-- TODO Sprint 017+: Update the non-goals list (§1.2) once the OAuth provider
+scope is finalized. The current non-goals were written before the SSO/OAuth
+direction was decided and may need revision. -->
