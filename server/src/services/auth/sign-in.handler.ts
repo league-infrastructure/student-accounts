@@ -137,6 +137,12 @@ export interface OAuthProfile {
   displayName: string;
   /** Provider-specific username (GitHub login, etc). Null for Google. */
   providerUsername?: string | null;
+  /**
+   * Raw provider profile object as returned by Passport (or for Pike13, the
+   * profile returned by pike13FetchProfile). Stored as Login.provider_payload.
+   * Optional — callers that do not pass it will leave provider_payload unchanged.
+   */
+  rawProfile?: unknown;
 }
 
 /**
@@ -160,6 +166,15 @@ export interface SignInOptions {
    * object as its transaction argument, including the top-level client.
    */
   prisma?: any;
+  /**
+   * HTTP request context for logging provenance. Both fields are optional
+   * — sign-in still proceeds if they are absent or if the client is behind
+   * a proxy that strips headers.
+   */
+  requestContext?: {
+    ip?: string;
+    userAgent?: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +203,7 @@ export async function signInHandler(
   loginService: LoginService,
   options?: SignInOptions,
 ): Promise<User> {
-  const { providerUserId, providerEmail, displayName, providerUsername } = profile;
+  const { providerUserId, providerEmail, displayName, providerUsername, rawProfile } = profile;
 
   logger.info(
     { provider, providerUserId, providerEmail, displayName },
@@ -207,6 +222,9 @@ export async function signInHandler(
   );
 
   let user: User;
+  // loginId is resolved from either the existing Login (step 1) or the newly-
+  // created Login (step 3c). Used at the end to write provider_payload + LoginEvent.
+  let loginId: number | null = existingLogin?.id ?? null;
 
   if (existingLogin) {
     // --- Step 2: Existing identity — load the User ---
@@ -306,7 +324,7 @@ export async function signInHandler(
       { userId: user.id, provider, providerUserId },
       '[sign-in.handler] Step 3c: creating login'
     );
-    await loginService.create(
+    const newLogin = await loginService.create(
       user.id,
       provider,
       providerUserId,
@@ -314,8 +332,9 @@ export async function signInHandler(
       null, // system action
       providerUsername ?? null,
     );
+    loginId = newLogin.id;
     logger.info(
-      { userId: user.id, provider, providerUserId },
+      { userId: user.id, provider, providerUserId, loginId },
       '[sign-in.handler] Step 3c: login created'
     );
 
@@ -515,6 +534,40 @@ export async function signInHandler(
       { provider },
       '[sign-in.handler] Step 4-5: non-Google provider, skipping OU and admin checks'
     );
+  }
+
+  // --- Final step: Write provider_payload + LoginEvent (provenance) ---
+  //
+  // Best-effort: if rawProfile or loginId is absent, skip silently.
+  // Failure to write provenance must never block the sign-in path.
+  if (loginId !== null && rawProfile !== undefined) {
+    try {
+      const now = new Date();
+      await prisma.login.update({
+        where: { id: loginId },
+        data: {
+          provider_payload: rawProfile as any,
+          provider_payload_updated_at: now,
+        },
+      });
+      await prisma.loginEvent.create({
+        data: {
+          login_id: loginId,
+          payload: rawProfile as any,
+          ip: options?.requestContext?.ip ?? null,
+          user_agent: options?.requestContext?.userAgent ?? null,
+        },
+      });
+      logger.info(
+        { loginId, userId: user.id },
+        '[sign-in.handler] provenance written (provider_payload + LoginEvent)'
+      );
+    } catch (provenanceErr) {
+      logger.error(
+        { loginId, userId: user.id, err: provenanceErr },
+        '[sign-in.handler] Failed to write provenance — sign-in still succeeds'
+      );
+    }
   }
 
   logger.info(

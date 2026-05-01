@@ -238,6 +238,7 @@ export function configurePassport(
               providerEmail,
               displayName,
               providerUsername: null,
+              rawProfile: profile,
             },
             userService,
             loginService,
@@ -245,6 +246,10 @@ export function configurePassport(
               adminDirClient,
               auditService,
               prisma: prismaClient,
+              requestContext: {
+                ip: req.ip,
+                userAgent: req.headers?.['user-agent'],
+              },
             },
           )
             .then((user) => {
@@ -349,9 +354,16 @@ export function configurePassport(
               providerEmail,
               displayName,
               providerUsername,
+              rawProfile: profile,
             },
             userService,
             loginService,
+            {
+              requestContext: {
+                ip: req.ip,
+                userAgent: req.headers?.['user-agent'],
+              },
+            },
           )
             .then((user) => {
               logger.info(
