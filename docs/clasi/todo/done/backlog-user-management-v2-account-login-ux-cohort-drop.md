@@ -1,5 +1,14 @@
 ---
-status: pending
+status: done
+sprint: '025'
+tickets:
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
+- '007'
 ---
 
 # Backlog: User Management v2 + Account login UX + cohort drop
