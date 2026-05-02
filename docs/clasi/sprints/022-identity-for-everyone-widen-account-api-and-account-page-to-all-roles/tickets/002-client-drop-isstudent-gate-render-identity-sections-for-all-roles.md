@@ -1,15 +1,15 @@
 ---
-id: "002"
-title: "Client — drop isStudent gate; render identity sections for all roles"
-status: todo
+id: '002'
+title: "Client \u2014 drop isStudent gate; render identity sections for all roles"
+status: done
 use-cases:
-  - SUC-022-001
-  - SUC-022-002
-  - SUC-022-003
+- SUC-022-001
+- SUC-022-002
+- SUC-022-003
 depends-on:
-  - "001"
-github-issue: ""
-todo: ""
+- '001'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -35,26 +35,26 @@ workspace ExternalAccount and no League-format primary email).
 
 ## Acceptance Criteria
 
-- [ ] `useQuery(['account'])` is enabled for any authenticated user
+- [x] `useQuery(['account'])` is enabled for any authenticated user
       (`enabled: !!user && !loading`), not just students.
-- [ ] The loading spinner is shown for all roles while the query is in flight
+- [x] The loading spinner is shown for all roles while the query is in flight
       (not only for `isStudent`).
-- [ ] The error state is shown for all roles if the query fails (not only for
+- [x] The error state is shown for all roles if the query fails (not only for
       `isStudent`).
-- [ ] ProfileSection renders for staff and admin users.
-- [ ] LoginsSection renders for staff and admin users.
-- [ ] All three Add-Login buttons (Add Google, Add GitHub, Add Pike 13) are
+- [x] ProfileSection renders for staff and admin users.
+- [x] LoginsSection renders for staff and admin users.
+- [x] All three Add-Login buttons (Add Google, Add GitHub, Add Pike 13) are
       visible on the Account page for staff and admin users (subject to
       `providerStatus` gating for Google and GitHub, same as students).
-- [ ] UsernamePasswordSection renders for staff/admin users who have
+- [x] UsernamePasswordSection renders for staff/admin users who have
       `username` or `has_password` set; hidden otherwise.
-- [ ] WorkspaceSection is visible for users whose `externalAccounts` includes
+- [x] WorkspaceSection is visible for users whose `externalAccounts` includes
       a workspace entry, or whose `primaryEmail` is a League address; hidden
       otherwise — unchanged from existing behavior.
-- [ ] The student Account page experience is unchanged (regression guard).
-- [ ] `isStudent` variable may be removed from Account.tsx if it has no
+- [x] The student Account page experience is unchanged (regression guard).
+- [x] `isStudent` variable may be removed from Account.tsx if it has no
       remaining usages after this ticket.
-- [ ] Client test suite passes at or above baseline; new staff/admin tests
+- [x] Client test suite passes at or above baseline; new staff/admin tests
       pass (see testing section).
 
 ## Implementation Plan

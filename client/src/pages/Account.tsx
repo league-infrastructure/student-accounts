@@ -1,9 +1,11 @@
 /**
- * AccountPage — identity management page (Sprint 020).
+ * AccountPage — identity management page (Sprint 020, widened Sprint 022).
  *
  * Renders for all authenticated roles: student, staff, and admin.
- * Student-only sections (Profile, Logins, UsernamePassword) are shown
- * only when role === 'student'.
+ * Profile, Logins (with all three Add-Login buttons), and
+ * UsernamePasswordSection are shown for every authenticated user.
+ * WorkspaceSection hides itself when the user has no workspace
+ * ExternalAccount and no League-format primary email.
  *
  * Sprint 020: ServicesSection, ClaudeCodeSection, and AccountLlmProxyCard
  * have been removed. Those UIs are moving to the Services page (ticket 005).
@@ -386,17 +388,13 @@ function HelpSection() {
 // ---------------------------------------------------------------------------
 
 export default function Account() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const queryClient = useQueryClient();
-  const role = user?.role?.toLowerCase();
-  const isStudent = role === 'student';
 
   // Open SSE connection to receive real-time account updates from the server.
   useAccountEventStream();
 
   // All hooks must be called unconditionally before any early return.
-  // The student-only /api/account endpoint is guarded so non-students don't
-  // get a 403 noise in the console.
   const {
     data,
     isLoading,
@@ -406,8 +404,8 @@ export default function Account() {
   } = useQuery<AccountData>({
     queryKey: ['account'],
     queryFn: fetchAccount,
-    // Only fetch student account data for students.
-    enabled: isStudent,
+    // Fetch for any authenticated user once auth has resolved.
+    enabled: !loading && !!user,
     // While the account is pending, poll so the banner clears as soon as an
     // admin approves the account. After approval, rely on normal refetching.
     refetchInterval: (query) =>
@@ -421,8 +419,8 @@ export default function Account() {
     },
   });
 
-  // Show loading skeleton only for students (waiting on /api/account).
-  if (isStudent && isLoading) {
+  // Show loading skeleton while waiting on /api/account.
+  if (isLoading) {
     return (
       <div style={styles.container}>
         <h1 style={styles.pageTitle}>My Account</h1>
@@ -435,7 +433,7 @@ export default function Account() {
     );
   }
 
-  if (isStudent && (isError || !data)) {
+  if (isError || !data) {
     return (
       <div style={styles.container}>
         <h1 style={styles.pageTitle}>My Account</h1>
@@ -456,7 +454,6 @@ export default function Account() {
   }
 
   const hasCredentials =
-    isStudent &&
     data != null &&
     ((data.profile.username ?? null) !== null || data.profile.has_password === true);
 
@@ -464,49 +461,47 @@ export default function Account() {
     <div style={styles.container}>
       <h1 style={styles.pageTitle}>My Account</h1>
 
-      {/* Student-only sections: Profile, Logins, UsernamePassword */}
-      {isStudent && data && (
-        <>
-          <ProfileSection
-            profile={data.profile}
-            onRename={async (newName) => {
-              await patchDisplayName(newName);
-              await queryClient.invalidateQueries({ queryKey: ['account'] });
-            }}
-          />
+      {/* Identity sections: Profile, Logins, UsernamePassword — all roles */}
+      <>
+        <ProfileSection
+          profile={data.profile}
+          onRename={async (newName) => {
+            await patchDisplayName(newName);
+            await queryClient.invalidateQueries({ queryKey: ['account'] });
+          }}
+        />
 
-          <div style={styles.spacer} />
+        <div style={styles.spacer} />
 
-          <LoginsSection
-            logins={data.logins}
-            onRemoveError={
-              removeLoginMutation.isError
-                ? removeLoginMutation.error instanceof Error
-                  ? removeLoginMutation.error.message
-                  : 'Failed to remove login'
-                : null
-            }
-            onRemove={(id) => removeLoginMutation.mutate(id)}
-            removingId={removeLoginMutation.isPending ? (removeLoginMutation.variables ?? null) : null}
-          />
+        <LoginsSection
+          logins={data.logins}
+          onRemoveError={
+            removeLoginMutation.isError
+              ? removeLoginMutation.error instanceof Error
+                ? removeLoginMutation.error.message
+                : 'Failed to remove login'
+              : null
+          }
+          onRemove={(id) => removeLoginMutation.mutate(id)}
+          removingId={removeLoginMutation.isPending ? (removeLoginMutation.variables ?? null) : null}
+        />
 
-          {hasCredentials && (
-            <>
-              <div style={styles.spacer} />
-              <UsernamePasswordSection
-                username={data.profile.username ?? null}
-                onSuccess={() => {
-                  void queryClient.invalidateQueries({ queryKey: ['account'] });
-                }}
-              />
-            </>
-          )}
+        {hasCredentials && (
+          <>
+            <div style={styles.spacer} />
+            <UsernamePasswordSection
+              username={data.profile.username ?? null}
+              onSuccess={() => {
+                void queryClient.invalidateQueries({ queryKey: ['account'] });
+              }}
+            />
+          </>
+        )}
 
-          <div style={styles.spacer} />
-          <WorkspaceSection data={data} />
-          <div style={styles.spacer} />
-        </>
-      )}
+        <div style={styles.spacer} />
+        <WorkspaceSection data={data} />
+        <div style={styles.spacer} />
+      </>
 
       <HelpSection />
     </div>
