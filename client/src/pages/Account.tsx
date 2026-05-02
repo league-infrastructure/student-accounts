@@ -15,7 +15,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
-import { useProviderStatus } from '../hooks/useProviderStatus';
 import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import UsernamePasswordSection from './account/UsernamePasswordSection';
 
@@ -207,6 +206,36 @@ function ProfileSection({
 // LoginsSection
 // ---------------------------------------------------------------------------
 
+/* ---- Provider logos — visual parity with the Login page ---- */
+
+function GoogleLogo() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8a12 12 0 1 1 7.9-21l5.7-5.7A20 20 0 1 0 24 44c11 0 20-9 20-20 0-1.3-.1-2.4-.4-3.5z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8A12 12 0 0 1 24 12c3 0 5.7 1.1 7.9 3l5.7-5.7A20 20 0 0 0 6.3 14.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3a12 12 0 0 1-7.3 2.5c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3a12 12 0 0 1-4.1 5.5l6.3 5.3c-.4.4 6.5-4.8 6.5-14.8 0-1.3-.1-2.4-.4-3.5z"/>
+    </svg>
+  );
+}
+
+function GitHubLogo() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.7-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.3-3.2-.1-.4-.6-1.6.1-3.3 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.3.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.3v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/>
+    </svg>
+  );
+}
+
+function Pike13Logo() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 36 40" fill="currentColor" aria-hidden="true">
+      <path d="M20.04 18.85L11.08 13.76L35.15 0.11C35.60 -0.15 35.98 0.06 35.98 0.58L36.00 8.86C36.01 9.37 35.63 10.00 35.18 10.26L20.04 18.85ZM0 22.27L7.01 26.24L0.86 29.73C0.40 29.99 0.03 29.78 0.02 29.26L0 22.27Z"/>
+      <path d="M0.86 10.27L35.17 29.74C35.63 30.00 36.00 30.63 36.00 31.15L35.98 39.42C35.98 39.94 35.60 40.15 35.14 39.89L0.83 20.43C0.37 20.17 0 19.53 0 19.02L0.02 10.74C0.03 10.22 0.40 10.01 0.86 10.27Z"/>
+    </svg>
+  );
+}
+
 interface LoginsSectionProps {
   logins: AccountLogin[];
   onRemoveError: string | null;
@@ -215,9 +244,8 @@ interface LoginsSectionProps {
 }
 
 function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSectionProps) {
-  const providerStatus = useProviderStatus();
-
   const canRemove = logins.length > 1;
+  const hasPike13 = logins.some((l) => l.provider === 'pike13');
 
   return (
     <div style={styles.card}>
@@ -266,35 +294,36 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
         <p role="alert" style={styles.inlineError}>{onRemoveError}</p>
       )}
 
-      {/* Add buttons — always visible regardless of which providers are linked.
-          Google and GitHub are shown only when the provider is configured.
-          Pike 13 is always shown (the link-mode flow landed in Sprint 015). */}
-      {!providerStatus.loading && (
-        <div style={styles.addRow}>
-          {providerStatus.google && (
-            <a
-              href="/api/auth/google?link=1"
-              style={styles.addButtonGoogle}
-            >
-              Add Google
-            </a>
-          )}
-          {providerStatus.github && (
-            <a
-              href="/api/auth/github?link=1"
-              style={styles.addButtonGitHub}
-            >
-              Add GitHub
-            </a>
-          )}
+      {/* Add buttons — same horizontal brand-icon layout as the Login page.
+          Google and GitHub allow multiple logins per provider so they always
+          render. Pike 13 is one-per-account and hidden once linked. If a
+          provider's OAuth env isn't configured, the server returns 501 with
+          setup instructions when the user clicks. */}
+      <div style={styles.addRow}>
+        <a
+          href="/api/auth/google?link=1"
+          aria-label="Add Google"
+          style={{ ...styles.addButton, ...styles.addButtonGoogle }}
+        >
+          <GoogleLogo />
+        </a>
+        <a
+          href="/api/auth/github?link=1"
+          aria-label="Add GitHub"
+          style={{ ...styles.addButton, ...styles.addButtonGitHub }}
+        >
+          <GitHubLogo />
+        </a>
+        {!hasPike13 && (
           <a
             href="/api/auth/pike13?link=1"
-            style={styles.addButtonPike13}
+            aria-label="Add Pike 13"
+            style={{ ...styles.addButton, ...styles.addButtonPike13 }}
           >
-            Add Pike 13
+            <Pike13Logo />
           </a>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -406,6 +435,10 @@ export default function Account() {
     queryFn: fetchAccount,
     // Fetch for any authenticated user once auth has resolved.
     enabled: !loading && !!user,
+    // Always refetch on mount so a freshly-linked provider (returning from
+    // /api/auth/<provider>/callback) shows up immediately instead of the
+    // stale pre-link snapshot.
+    refetchOnMount: 'always',
     // While the account is pending, poll so the banner clears as soon as an
     // admin approves the account. After approval, rely on normal refetching.
     refetchInterval: (query) =>
@@ -664,47 +697,28 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: '1rem',
     flexWrap: 'wrap' as const,
   },
-  addButtonGoogle: {
+  addButton: {
+    flex: 1,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '6px 14px',
+    padding: '12px 0',
     borderRadius: 8,
-    fontSize: '0.85rem',
-    fontWeight: 600,
     textDecoration: 'none',
     cursor: 'pointer',
+  },
+  addButtonGoogle: {
     background: '#fff',
     color: '#374151',
     border: '1px solid #d1d5db',
   },
   addButtonGitHub: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '6px 14px',
-    borderRadius: 8,
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    textDecoration: 'none',
-    cursor: 'pointer',
     background: '#24292e',
     color: '#fff',
-    border: 'none',
   },
   addButtonPike13: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '6px 14px',
-    borderRadius: 8,
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    textDecoration: 'none',
-    cursor: 'pointer',
-    background: '#0ea5e9',
+    background: '#00833D',
     color: '#fff',
-    border: 'none',
   },
   inlineError: {
     fontSize: '0.85rem',

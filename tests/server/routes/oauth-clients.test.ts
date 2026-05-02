@@ -9,7 +9,6 @@
  * PATCH  /api/oauth-clients/:id
  * POST   /api/oauth-clients/:id/rotate-secret
  * DELETE /api/oauth-clients/:id
- * Compat: GET/POST/PATCH/DELETE /api/admin/oauth-clients[/...] → 308
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
@@ -269,11 +268,11 @@ describe('POST /api/oauth-clients/:id/rotate-secret', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/oauth-clients/:id — soft delete (ownership-gated)
+// DELETE /api/oauth-clients/:id — hard delete (ownership-gated)
 // ---------------------------------------------------------------------------
 
 describe('DELETE /api/oauth-clients/:id', () => {
-  it('owner: soft-deletes (sets disabled_at) and returns 204', async () => {
+  it('owner: hard-deletes the row and returns 204', async () => {
     const { agent, user } = await asStudent('deleter@test.com');
     const { client } = await registry.oauthClients.create({ name: 'Del', redirect_uris: [], allowed_scopes: [] }, user.id);
 
@@ -281,8 +280,7 @@ describe('DELETE /api/oauth-clients/:id', () => {
     expect(res.status).toBe(204);
 
     const raw = await (prisma as any).oAuthClient.findUnique({ where: { id: client.id } });
-    expect(raw).not.toBeNull();
-    expect(raw.disabled_at).not.toBeNull();
+    expect(raw).toBeNull();
   });
 
   it('non-owner non-admin: gets 403', async () => {
@@ -303,59 +301,334 @@ describe('DELETE /api/oauth-clients/:id', () => {
     expect(res.status).toBe(204);
   });
 
-  it('writes an oauth_client_disabled audit event', async () => {
+  it('writes an oauth_client_deleted audit event', async () => {
     const { agent, user } = await asStudent('deleter2@test.com');
     const { client } = await registry.oauthClients.create({ name: 'DA', redirect_uris: [], allowed_scopes: [] }, user.id);
 
     await agent.delete(`/api/oauth-clients/${client.id}`);
-    const events = await (prisma as any).auditEvent.findMany({ where: { action: 'oauth_client_disabled' } });
-    expect(events.length).toBeGreaterThan(0);
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_deleted', target_entity_id: String(client.id) },
+    });
+    expect(events.length).toBe(1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Compat redirect — /api/admin/oauth-clients → /api/oauth-clients (308)
+// Deprecated admin path — /api/admin/oauth-clients returns 404 (Sprint 023)
 // ---------------------------------------------------------------------------
 
-describe('Compat redirect /api/admin/oauth-clients → /api/oauth-clients', () => {
-  it('GET /api/admin/oauth-clients → 308 to /api/oauth-clients', async () => {
-    const { agent } = await asStudent('compat1@test.com');
-    const res = await agent.get('/api/admin/oauth-clients').redirects(0);
-    expect(res.status).toBe(308);
-    expect(res.headers['location']).toBe('/api/oauth-clients');
+describe('Deprecated /api/admin/oauth-clients path', () => {
+  it('returns 404 for deprecated admin path (authenticated admin)', async () => {
+    const { agent } = await asAdmin();
+    const res = await agent.get('/api/admin/oauth-clients');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scope ceiling enforcement — POST /api/oauth-clients (Sprint 023 ticket 001)
+// ---------------------------------------------------------------------------
+
+describe('Scope ceiling — POST /api/oauth-clients', () => {
+  it('student with profile only → 201', async () => {
+    const { agent } = await asStudent('scope-student-ok@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'StudentApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(201);
   });
 
-  it('unauthenticated GET /api/admin/oauth-clients → 401 (not a redirect)', async () => {
-    const res = await request(app).get('/api/admin/oauth-clients').redirects(0);
-    expect(res.status).toBe(401);
+  it('student with users:read → 403', async () => {
+    const { agent } = await asStudent('scope-student-bad@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'BadApp',
+      redirect_uris: [],
+      allowed_scopes: ['users:read'],
+    });
+    expect(res.status).toBe(403);
   });
 
-  it('PATCH /api/admin/oauth-clients/:id → 308 to /api/oauth-clients/:id', async () => {
-    const { agent } = await asStudent('compat2@test.com');
-    const res = await agent.patch('/api/admin/oauth-clients/42').send({ name: 'test' }).redirects(0);
-    expect(res.status).toBe(308);
-    expect(res.headers['location']).toBe('/api/oauth-clients/42');
+  it('student with profile + users:read → 403', async () => {
+    const { agent } = await asStudent('scope-student-bad2@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'BadApp2',
+      redirect_uris: [],
+      allowed_scopes: ['profile', 'users:read'],
+    });
+    expect(res.status).toBe(403);
   });
 
-  it('GET /api/admin/oauth-clients?foo=bar → 308 preserving query string', async () => {
-    const { agent } = await asStudent('compat3@test.com');
-    const res = await agent.get('/api/admin/oauth-clients?foo=bar').redirects(0);
-    expect(res.status).toBe(308);
-    expect(res.headers['location']).toBe('/api/oauth-clients?foo=bar');
+  it('staff with profile + users:read → 201', async () => {
+    const { agent } = await asStaff('scope-staff-ok@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'StaffApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile', 'users:read'],
+    });
+    expect(res.status).toBe(201);
   });
 
-  it('following the 308 redirect from PATCH reaches the real endpoint', async () => {
-    const { agent, user } = await asStudent('compat-follow@test.com');
-    const { client } = await registry.oauthClients.create({ name: 'CompatTarget', redirect_uris: [], allowed_scopes: [] }, user.id);
+  it('admin with profile + users:read → 201', async () => {
+    const { agent } = await asAdmin();
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'AdminApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile', 'users:read'],
+    });
+    expect(res.status).toBe(201);
+  });
+});
 
-    // Explicitly follow up to 1 redirect. Supertest does not auto-follow
-    // 308 on non-GET methods by default.
-    const res = await agent
-      .patch(`/api/admin/oauth-clients/${client.id}`)
-      .send({ name: 'CompatUpdated' })
-      .redirects(1);
-    // After following 308, PATCH lands on /api/oauth-clients/:id
+// ---------------------------------------------------------------------------
+// Scope ceiling enforcement — PATCH /api/oauth-clients/:id (Sprint 023 ticket 001)
+// ---------------------------------------------------------------------------
+
+describe('Scope ceiling — PATCH /api/oauth-clients/:id', () => {
+  it('student PATCH to add users:read → 403', async () => {
+    const { agent, user } = await asStudent('scope-patch-bad@test.com');
+    // Create via service (bypasses policy) so we have a client to patch.
+    const { client } = await registry.oauthClients.create(
+      { name: 'PatchTarget', redirect_uris: [], allowed_scopes: ['profile'] },
+      user.id,
+    );
+    const res = await agent.patch(`/api/oauth-clients/${client.id}`).send({
+      allowed_scopes: ['users:read'],
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('staff PATCH to set users:read → 200', async () => {
+    const { agent, user } = await asStaff('scope-patch-staff@test.com');
+    const { client } = await registry.oauthClients.create(
+      { name: 'StaffPatch', redirect_uris: [], allowed_scopes: ['profile'] },
+      user.id,
+    );
+    const res = await agent.patch(`/api/oauth-clients/${client.id}`).send({
+      allowed_scopes: ['profile', 'users:read'],
+    });
     expect(res.status).toBe(200);
-    expect(res.body.name).toBe('CompatUpdated');
+  });
+
+  it('student PATCH name only (no scope change) → 200', async () => {
+    const { agent, user } = await asStudent('scope-patch-nameonly@test.com');
+    const { client } = await registry.oauthClients.create(
+      { name: 'NameOnly', redirect_uris: [], allowed_scopes: ['profile'] },
+      user.id,
+    );
+    const res = await agent.patch(`/api/oauth-clients/${client.id}`).send({ name: 'Renamed' });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Admin shared-pool invariant (Sprint 023 ticket 004)
+// ---------------------------------------------------------------------------
+// Any admin can view, update, rotate, and disable any other admin's client.
+// Students and staff are still restricted to their own clients.
+// ---------------------------------------------------------------------------
+
+describe('admin shared-pool invariant', () => {
+  async function asAdminB() {
+    const user = await makeUser({ role: 'admin', primary_email: 'adminb@test.com' });
+    const agent = await loginAs('adminb@test.com', 'admin');
+    return { agent, user };
+  }
+
+  // Helper: admin A creates a client; we perform mutations as admin B.
+  async function setupAdminBClient() {
+    const adminB = await makeUser({ role: 'admin', primary_email: 'adminb@test.com' });
+    const { client } = await registry.oauthClients.create(
+      { name: 'AdminBApp', redirect_uris: [], allowed_scopes: [] },
+      adminB.id,
+    );
+    // Admin A (the agent that will act on admin B's client).
+    const adminA = await makeUser({ role: 'admin', primary_email: 'admina@test.com' });
+    const agentA = await loginAs('admina@test.com', 'admin');
+    return { agentA, adminA, adminB, client };
+  }
+
+  it('admin A can list and see admin B\'s client', async () => {
+    const { agentA, adminB, client } = await setupAdminBClient();
+    // Also create a client for adminA so the list has two entries.
+    const adminAUser = await (prisma as any).user.findUnique({ where: { primary_email: 'admina@test.com' } });
+    await registry.oauthClients.create({ name: 'AdminAApp', redirect_uris: [], allowed_scopes: [] }, adminAUser.id);
+
+    const res = await agentA.get('/api/oauth-clients');
+    expect(res.status).toBe(200);
+    const ids = res.body.map((c: any) => c.id);
+    expect(ids).toContain(client.id);
+  });
+
+  it('admin A can update admin B\'s client (rename)', async () => {
+    const { agentA, client } = await setupAdminBClient();
+    const res = await agentA.patch(`/api/oauth-clients/${client.id}`).send({ name: 'RenamedByA' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('RenamedByA');
+  });
+
+  it('audit event for admin A update records actor=admin A', async () => {
+    const { agentA, adminA, client } = await setupAdminBClient();
+    await agentA.patch(`/api/oauth-clients/${client.id}`).send({ name: 'AuditCheck' });
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_updated', target_entity_id: String(client.id) },
+    });
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].actor_user_id).toBe(adminA.id);
+  });
+
+  it('admin A can rotate secret on admin B\'s client', async () => {
+    const { agentA, client } = await setupAdminBClient();
+    const res = await agentA.post(`/api/oauth-clients/${client.id}/rotate-secret`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('client_secret');
+    expect(res.body.client_secret).toMatch(/^oacs_/);
+  });
+
+  it('audit event for admin A rotate-secret records actor=admin A', async () => {
+    const { agentA, adminA, client } = await setupAdminBClient();
+    await agentA.post(`/api/oauth-clients/${client.id}/rotate-secret`);
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_secret_rotated', target_entity_id: String(client.id) },
+    });
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].actor_user_id).toBe(adminA.id);
+  });
+
+  it('admin A can DELETE admin B\'s client (hard delete)', async () => {
+    const { agentA, client } = await setupAdminBClient();
+    const res = await agentA.delete(`/api/oauth-clients/${client.id}`);
+    expect(res.status).toBe(204);
+    const raw = await (prisma as any).oAuthClient.findUnique({ where: { id: client.id } });
+    expect(raw).toBeNull();
+  });
+
+  it('audit event for admin A delete records actor=admin A', async () => {
+    const { agentA, adminA, client } = await setupAdminBClient();
+    await agentA.delete(`/api/oauth-clients/${client.id}`);
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_deleted', target_entity_id: String(client.id) },
+    });
+    expect(events.length).toBe(1);
+    expect(events[0].actor_user_id).toBe(adminA.id);
+  });
+
+  it('student cannot update another student\'s client (403)', async () => {
+    const owner = await makeUser({ role: 'student', primary_email: 'stu-owner@test.com' });
+    const { client } = await registry.oauthClients.create(
+      { name: 'StuOwned', redirect_uris: [], allowed_scopes: [] },
+      owner.id,
+    );
+    const { agent: intruder } = await asStudent('stu-intruder@test.com');
+    const res = await intruder.patch(`/api/oauth-clients/${client.id}`).send({ name: 'Hacked' });
+    expect(res.status).toBe(403);
+  });
+
+  it('staff cannot update another user\'s client (403)', async () => {
+    const owner = await makeUser({ role: 'student', primary_email: 'stu-owner2@test.com' });
+    const { client } = await registry.oauthClients.create(
+      { name: 'StuOwned2', redirect_uris: [], allowed_scopes: [] },
+      owner.id,
+    );
+    const { agent: staffAgent } = await asStaff('staff-intruder@test.com');
+    const res = await staffAgent.patch(`/api/oauth-clients/${client.id}`).send({ name: 'StaffHacked' });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-user cap enforcement — POST /api/oauth-clients (Sprint 023 ticket 002)
+// ---------------------------------------------------------------------------
+
+describe('Per-user cap — POST /api/oauth-clients', () => {
+  it('student with 0 clients can create one → 201', async () => {
+    const { agent } = await asStudent('cap-student-first@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'FirstApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('student with 1 active client cannot create a second → 403', async () => {
+    const { agent, user } = await asStudent('cap-student-second@test.com');
+    // Create first client via service (bypasses cap for setup).
+    await registry.oauthClients.create(
+      { name: 'First', redirect_uris: [], allowed_scopes: ['profile'] },
+      user.id,
+    );
+    // Second create via route should be rejected.
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'Second',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('student who disabled their one client can create a new one → 201', async () => {
+    const { agent, user } = await asStudent('cap-student-disabled@test.com');
+    const { client } = await registry.oauthClients.create(
+      { name: 'DisabledApp', redirect_uris: [], allowed_scopes: ['profile'] },
+      user.id,
+    );
+    // Disable the first client — should not count toward cap.
+    await registry.oauthClients.disable(client.id, user.id);
+
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'NewApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('staff with multiple existing clients can always create another → 201', async () => {
+    const { agent, user } = await asStaff('cap-staff@test.com');
+    // Pre-create two clients via service.
+    await registry.oauthClients.create({ name: 'S1', redirect_uris: [], allowed_scopes: [] }, user.id);
+    await registry.oauthClients.create({ name: 'S2', redirect_uris: [], allowed_scopes: [] }, user.id);
+
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'S3',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('admin with multiple existing clients can always create another → 201', async () => {
+    const { agent, user } = await asAdmin();
+    await registry.oauthClients.create({ name: 'A1', redirect_uris: [], allowed_scopes: [] }, user.id);
+    await registry.oauthClients.create({ name: 'A2', redirect_uris: [], allowed_scopes: [] }, user.id);
+
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'A3',
+      redirect_uris: [],
+      allowed_scopes: ['profile', 'users:read'],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('cap rejection records an oauth_client_create_rejected_cap audit event', async () => {
+    const { agent, user } = await asStudent('cap-audit@test.com');
+    await registry.oauthClients.create(
+      { name: 'First', redirect_uris: [], allowed_scopes: ['profile'] },
+      user.id,
+    );
+    // This should be rejected and audited.
+    await agent.post('/api/oauth-clients').send({
+      name: 'Second',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_create_rejected_cap' },
+    });
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].details.role).toBe('student');
+    expect(events[0].details.cap).toBe(1);
   });
 });

@@ -1,14 +1,14 @@
 ---
-id: "004"
-title: "Server — admin shared-pool invariant tests"
-status: todo
+id: '004'
+title: "Server \u2014 admin shared-pool invariant tests"
+status: done
 use-cases:
-  - SUC-023-005
+- SUC-023-005
 depends-on:
-  - "023-001"
-  - "023-002"
-github-issue: ""
-todo: ""
+- 023-001
+- 023-002
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -30,13 +30,13 @@ which these tests rely on.
 
 ## Acceptance Criteria
 
-- [ ] A test verifies that Admin A can `list` and see Admin B's client.
-- [ ] A test verifies that Admin A can `update` Admin B's client (name/description change) → success.
-- [ ] A test verifies that Admin A can `rotateSecret` on Admin B's client → success.
-- [ ] A test verifies that Admin A can `disable` Admin B's client → success.
-- [ ] A test verifies that a student cannot `update` another student's client → 403.
-- [ ] A test verifies that a staff user cannot `update` another user's client → 403.
-- [ ] All new tests are in `tests/server/routes/oauth-clients.test.ts` (or the service unit test file — wherever the existing ownership tests live).
+- [x] A test verifies that Admin A can `list` and see Admin B's client.
+- [x] A test verifies that Admin A can `update` Admin B's client (name/description change) → success.
+- [x] A test verifies that Admin A can `rotateSecret` on Admin B's client → success.
+- [x] A test verifies that Admin A can `disable` Admin B's client → success.
+- [x] A test verifies that a student cannot `update` another student's client → 403.
+- [x] A test verifies that a staff user cannot `update` another user's client → 403.
+- [x] All new tests are in `tests/server/routes/oauth-clients.test.ts` (or the service unit test file — wherever the existing ownership tests live).
 
 ## Implementation Plan
 

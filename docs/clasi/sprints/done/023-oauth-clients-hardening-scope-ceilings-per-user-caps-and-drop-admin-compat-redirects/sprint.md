@@ -1,16 +1,17 @@
 ---
-id: "023"
-title: "OAuth clients hardening - scope ceilings per-user caps and drop admin compat redirects"
-status: planning
+id: '023'
+title: OAuth clients hardening - scope ceilings per-user caps and drop admin compat
+  redirects
+status: done
 branch: sprint/023-oauth-clients-hardening-scope-ceilings-per-user-caps-and-drop-admin-compat-redirects
 use-cases:
-  - SUC-023-001
-  - SUC-023-002
-  - SUC-023-003
-  - SUC-023-004
-  - SUC-023-005
+- SUC-023-001
+- SUC-023-002
+- SUC-023-003
+- SUC-023-004
+- SUC-023-005
 todo:
-  - backlog-unshipped-follow-ups-from-sprints-020-and-021.md
+- backlog-unshipped-follow-ups-from-sprints-020-and-021.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
