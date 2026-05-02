@@ -11,11 +11,11 @@ import { passphraseSignupRouter } from './routes/auth/passphrase-signup';
 import { loginRouter } from './routes/auth/login';
 import { adminRouter } from './routes/admin';
 import { accountRouter } from './routes/account';
-import { accountAppsRouter } from './routes/account-apps';
 import { staffDirectoryRouter } from './routes/staff/directory';
 import { llmProxyRouter } from './routes/llm-proxy';
 import { oauthRouter } from './routes/oauth';
 import { v1DirectoryRouter } from './routes/v1-directory';
+import { oauthClientsRouter, oauthClientsCompatRouter } from './routes/oauth-clients';
 import { impersonateMiddleware } from './middleware/impersonate';
 import { mcpTokenAuth } from './middleware/mcpAuth';
 import { createMcpHandler } from './mcp/handler';
@@ -79,9 +79,14 @@ app.use('/api', healthRouter);
 app.use('/api/auth', passphraseSignupRouter);
 app.use('/api/auth', loginRouter);
 app.use('/api', authRouter);
+// Compat redirect: /api/admin/oauth-clients → /api/oauth-clients (HTTP 308).
+// Mounted BEFORE adminRouter so it wins over the requireRole('admin') gate for
+// these specific paths. requireAuth is enforced inside oauthClientsCompatRouter
+// so unauthenticated callers still get 401.
+app.use('/api', oauthClientsCompatRouter);
 app.use('/api', adminRouter);
+app.use('/api', oauthClientsRouter);
 app.use('/api', accountRouter);
-app.use('/api', accountAppsRouter);
 app.use('/api', staffDirectoryRouter);
 
 // LLM proxy — mounted OUTSIDE /api so Anthropic-compatible clients

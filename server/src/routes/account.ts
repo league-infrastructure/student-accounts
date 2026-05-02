@@ -12,7 +12,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../services/prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
-import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
+import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../errors.js';
 import { adminBus } from '../services/change-bus.js';
 import { accountEventsRouter } from './account-events.js';
 
@@ -74,6 +74,8 @@ accountRouter.get(
         createdAt: user.created_at,
         workspaceTempPassword,
         llmProxyEnabled,
+        username: (user as any).username ?? null,
+        has_password: ((user as any).password_hash ?? null) !== null,
       },
       logins: userLogins.map((l) => ({
         id: l.id,
@@ -261,6 +263,59 @@ accountRouter.get(
       expiresAt: active.expires_at,
       grantedAt: active.granted_at,
     });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// PATCH /api/account/credentials — self-service username / password update
+// ---------------------------------------------------------------------------
+//
+// Sprint 020 T003 (SUC-020-001).
+//
+// Body: { username?, currentPassword, newPassword? }
+// currentPassword is always required; at least one of username / newPassword
+// must be present. Returns { id, username } on success. 401 on wrong
+// currentPassword, 409 on username collision, 400 on invalid input.
+accountRouter.patch(
+  '/account/credentials',
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId: number = (req.session as any).userId;
+      const body = req.body as {
+        username?: unknown;
+        currentPassword?: unknown;
+        newPassword?: unknown;
+      };
+
+      const currentPassword =
+        typeof body.currentPassword === 'string' ? body.currentPassword : '';
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'currentPassword is required' });
+      }
+
+      const patch: { username?: string; currentPassword: string; newPassword?: string } = {
+        currentPassword,
+      };
+      if (body.username !== undefined) {
+        patch.username = typeof body.username === 'string' ? body.username : '';
+      }
+      if (body.newPassword !== undefined) {
+        patch.newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+      }
+
+      const { users } = req.services;
+      const result = await users.updateCredentials(userId, patch);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        return res.status(401).json({ error: (err as Error).message });
+      }
+      if (err instanceof ValidationError) {
+        return res.status(400).json({ error: (err as Error).message });
+      }
+      next(err);
+    }
   },
 );
 
