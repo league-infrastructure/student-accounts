@@ -1,14 +1,14 @@
 ---
-id: "004"
-title: "Delete Services page and route"
-status: todo
+id: '004'
+title: Delete Services page and route
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on:
-  - "002"
-  - "003"
-github-issue: ""
-todo: ""
+- '002'
+- '003'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -28,12 +28,12 @@ Delete the file and its test. Remove the `/services` route from `App.tsx`.
 
 ## Acceptance Criteria
 
-- [ ] `client/src/pages/Services.tsx` is deleted.
-- [ ] `tests/client/pages/Services.test.tsx` is deleted.
-- [ ] `import Services from './pages/Services'` is removed from `client/src/App.tsx`.
-- [ ] `<Route path="/services" element={<Services />} />` is removed from `App.tsx`.
-- [ ] No TypeScript compilation errors after deletion.
-- [ ] `npm run test:client` passes.
+- [x] `client/src/pages/Services.tsx` is deleted.
+- [x] `tests/client/pages/Services.test.tsx` is deleted.
+- [x] `import Services from './pages/Services'` is removed from `client/src/App.tsx`.
+- [x] `<Route path="/services" element={<Services />} />` is removed from `App.tsx`.
+- [x] No TypeScript compilation errors after deletion.
+- [x] `npm run test:client` passes.
 
 ## Implementation Plan
 

@@ -10,7 +10,6 @@ import About from './pages/About';
 import McpSetup from './pages/McpSetup';
 import NotFound from './pages/NotFound';
 import Account from './pages/Account';
-import Services from './pages/Services';
 import Onboarding from './pages/Onboarding';
 
 import AdminLogin from './pages/admin/AdminLogin';
@@ -78,7 +77,6 @@ function App() {
             <Route element={<AppLayout />}>
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />
-              <Route path="/services" element={<Services />} />
               <Route path="/mcp-setup" element={<McpSetup />} />
               <Route path="/oauth-clients" element={<OAuthClients />} />
               <Route path="/claude-code" element={<ClaudeCode />} />
