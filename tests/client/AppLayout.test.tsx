@@ -91,6 +91,7 @@ function makeAdminUser(overrides = {}) {
 function makeAccountData(overrides: {
   externalAccounts?: { type: string }[];
   llmProxyEnabled?: boolean;
+  approvalStatus?: 'approved' | 'pending';
 } = {}) {
   return {
     profile: {
@@ -99,6 +100,7 @@ function makeAccountData(overrides: {
       displayName: 'Jane Student',
       role: 'USER',
       llmProxyEnabled: overrides.llmProxyEnabled ?? false,
+      approvalStatus: overrides.approvalStatus ?? 'approved',
       createdAt: '2025-01-01T00:00:00Z',
       updatedAt: '2025-01-01T00:00:00Z',
     },
@@ -248,6 +250,39 @@ describe('AppLayout', () => {
       await waitFor(() => {
         expect(screen.getByText('LLM Proxy')).toBeInTheDocument();
       });
+    });
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Pending approval (student)                                        */
+  /* ---------------------------------------------------------------- */
+
+  describe('pending-approval student', () => {
+    beforeEach(() => {
+      mockUseAuth.mockReturnValue({
+        user: makeStudentUser(),
+        loading: false,
+        logout: mockLogout,
+      });
+    });
+
+    it('shows only the Account link in the sidebar (no other items, no About)', async () => {
+      mockFetchWithAccount(makeAccountData({ approvalStatus: 'pending' }));
+      renderLayout();
+
+      const nav = await waitFor(() => document.querySelector('nav')!);
+      const links = await waitFor(() => {
+        const found = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent);
+        // Account link should be present once data loads
+        expect(found).toContain('Account');
+        return found;
+      });
+
+      // Account is the only sidebar nav link.
+      expect(links).toEqual(['Account']);
+      // OAuth Clients, About, etc. are gone.
+      expect(links).not.toContain('OAuth Clients');
+      expect(links).not.toContain('About');
     });
   });
 

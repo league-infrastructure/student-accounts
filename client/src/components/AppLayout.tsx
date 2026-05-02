@@ -515,6 +515,15 @@ export default function AppLayout() {
       {/* Main nav */}
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: 8 }}>
         {SIDEBAR_NAV.map((item) => {
+          // Pending-approval users see only the Account link in the sidebar.
+          // Everything else (services, admin pages, etc.) is hidden until an
+          // admin approves their account. The user-menu dropdown still
+          // provides Account + Log out access.
+          const pending = accountData?.profile.approvalStatus === 'pending';
+          if (pending && (item.kind !== 'link' || item.to !== '/account')) {
+            return null;
+          }
+
           if (item.kind === 'link') {
             // Apply gate if present
             if (item.gate && !item.gate(role, accountData)) return null;
@@ -630,19 +639,21 @@ export default function AppLayout() {
         )}
       </div>
 
-      {/* Bottom nav */}
-      <div style={{ borderTop: '1px solid #2a2a4e', paddingTop: 4, paddingBottom: 8 }}>
-        {BOTTOM_NAV.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </div>
+      {/* Bottom nav — hidden for pending-approval users */}
+      {accountData?.profile.approvalStatus !== 'pending' && (
+        <div style={{ borderTop: '1px solid #2a2a4e', paddingTop: 4, paddingBottom: 8 }}>
+          {BOTTOM_NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={closeSidebarIfMobile}
+              style={({ isActive }) => styles.navLink(isActive)}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
     </nav>
   );
 

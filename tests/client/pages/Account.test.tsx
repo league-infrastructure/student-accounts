@@ -784,7 +784,7 @@ describe('Account page — WorkspaceSection', () => {
     expect(screen.getByTestId('workspace-section').textContent).not.toContain('password:');
   });
 
-  it('renders pending-approval banner for a pending student', async () => {
+  it('renders pending-approval card and hides all other identity sections for a pending student', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
     (globalThis as any).fetch = makeFetch(true, {
       profile: { approvalStatus: 'pending' },
@@ -793,10 +793,14 @@ describe('Account page — WorkspaceSection', () => {
     renderAccount();
 
     await waitFor(() => {
-      expect(screen.getByTestId('workspace-section')).toBeInTheDocument();
+      expect(screen.getByTestId('pending-approval-card')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('status')).toHaveTextContent('pending approval');
+    expect(screen.getByText(/Waiting for approval/i)).toBeInTheDocument();
+    // No identity sections should render while pending.
+    expect(screen.queryByText('Sign-in Methods')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-section')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Add Google/i })).not.toBeInTheDocument();
   });
 
   it('renders WorkspaceSection for student whose primaryEmail is a League email (no ExternalAccount)', async () => {

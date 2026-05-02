@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AdminUsersPanel from '../../client/src/pages/admin/AdminUsersPanel';
@@ -244,18 +244,18 @@ describe('AdminUsersPanel', () => {
 
     const roleGroup = screen.getByRole('group', { name: 'Role filter' });
     expect(roleGroup).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Staff' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Student' })).toBeInTheDocument();
+    expect(within(roleGroup).getByRole('button', { name: 'All' })).toBeInTheDocument();
+    expect(within(roleGroup).getByRole('button', { name: 'Staff' })).toBeInTheDocument();
+    expect(within(roleGroup).getByRole('button', { name: 'Admin' })).toBeInTheDocument();
+    expect(within(roleGroup).getByRole('button', { name: 'Student' })).toBeInTheDocument();
   });
 
   it('role lozenge "All" is active by default', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    const allBtn = screen.getByRole('button', { name: 'All' });
-    expect(allBtn).toHaveAttribute('aria-pressed', 'true');
+    const roleGroup = screen.getByRole('group', { name: 'Role filter' });
+    expect(within(roleGroup).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('clicking "Staff" role lozenge shows only staff users', async () => {
@@ -301,10 +301,12 @@ describe('AdminUsersPanel', () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Staff' }));
+    const roleGroup = screen.getByRole('group', { name: 'Role filter' });
+
+    fireEvent.click(within(roleGroup).getByRole('button', { name: 'Staff' }));
     await waitFor(() => expect(screen.queryByText('Admin User')).not.toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    fireEvent.click(within(roleGroup).getByRole('button', { name: 'All' }));
     await waitFor(() => {
       expect(screen.getByText('Admin User')).toBeInTheDocument();
       expect(screen.getByText('Staff User')).toBeInTheDocument();
@@ -312,38 +314,41 @@ describe('AdminUsersPanel', () => {
     });
   });
 
-  // ---- Feature lozenge bar ----
+  // ---- Feature lozenge bar (radio) ----
 
-  it('renders feature lozenge bar with Google, Pike 13, GitHub, LLM Proxy, OAuth Client', async () => {
+  it('renders feature lozenge bar with All, Google, Pike 13, GitHub, LLM Proxy, OAuth Client', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
     const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
     expect(featureGroup).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Google' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Pike 13' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'GitHub' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'LLM Proxy' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'OAuth Client' })).toBeInTheDocument();
+    // Two "All" buttons (one in role group, one in feature group) — disambiguate via group container.
+    expect(within(featureGroup).getByRole('button', { name: 'All' })).toBeInTheDocument();
+    expect(within(featureGroup).getByRole('button', { name: 'Google' })).toBeInTheDocument();
+    expect(within(featureGroup).getByRole('button', { name: 'Pike 13' })).toBeInTheDocument();
+    expect(within(featureGroup).getByRole('button', { name: 'GitHub' })).toBeInTheDocument();
+    expect(within(featureGroup).getByRole('button', { name: 'LLM Proxy' })).toBeInTheDocument();
+    expect(within(featureGroup).getByRole('button', { name: 'OAuth Client' })).toBeInTheDocument();
   });
 
-  it('all feature toggles are off by default', async () => {
+  it('feature "All" is selected by default; no feature filter applied', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
     const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
-    const buttons = featureGroup.querySelectorAll('button');
-    buttons.forEach((btn) => {
-      expect(btn).toHaveAttribute('aria-pressed', 'false');
-    });
+    expect(within(featureGroup).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+    // All three rows visible: feature filter is inactive
+    expect(screen.getByText('Admin User')).toBeInTheDocument();
+    expect(screen.getByText('Staff User')).toBeInTheDocument();
+    expect(screen.getByText('Student User')).toBeInTheDocument();
   });
 
-  it('feature "Google" toggle shows only users with a google provider', async () => {
-    // Admin has github, Staff has google+pike13, Student has nothing
+  it('feature "Google" shows only users with a google provider', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Google' }));
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'Google' }));
 
     await waitFor(() => {
       expect(screen.getByText('Staff User')).toBeInTheDocument();
@@ -352,11 +357,12 @@ describe('AdminUsersPanel', () => {
     });
   });
 
-  it('feature "GitHub" toggle shows only users with a github provider', async () => {
+  it('feature "GitHub" shows only users with a github provider', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'GitHub' }));
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'GitHub' }));
 
     await waitFor(() => {
       expect(screen.getByText('Admin User')).toBeInTheDocument();
@@ -365,11 +371,12 @@ describe('AdminUsersPanel', () => {
     });
   });
 
-  it('feature "Pike 13" toggle shows only users with pike13 in externalAccountTypes', async () => {
+  it('feature "Pike 13" shows only users with pike13 in externalAccountTypes', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pike 13' }));
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'Pike 13' }));
 
     await waitFor(() => {
       expect(screen.getByText('Staff User')).toBeInTheDocument();
@@ -378,11 +385,12 @@ describe('AdminUsersPanel', () => {
     });
   });
 
-  it('feature "LLM Proxy" toggle shows only users with llmProxyEnabled=true', async () => {
+  it('feature "LLM Proxy" shows only users with llmProxyEnabled=true', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'LLM Proxy' }));
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'LLM Proxy' }));
 
     await waitFor(() => {
       expect(screen.getByText('Staff User')).toBeInTheDocument();
@@ -391,11 +399,12 @@ describe('AdminUsersPanel', () => {
     });
   });
 
-  it('feature "OAuth Client" toggle shows only users with oauthClientCount > 0', async () => {
+  it('feature "OAuth Client" shows only users with oauthClientCount > 0', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'OAuth Client' }));
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'OAuth Client' }));
 
     await waitFor(() => {
       expect(screen.getByText('Student User')).toBeInTheDocument();
@@ -404,51 +413,43 @@ describe('AdminUsersPanel', () => {
     });
   });
 
-  it('feature toggles use intersection: Google + Pike 13 shows only users with both', async () => {
-    // Staff has google + pike13, no one else has both
+  it('selecting a feature deselects All; selecting All clears the feature', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Google' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Pike 13' }));
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
 
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'LLM Proxy' }));
+    await waitFor(() => expect(screen.queryByText('Admin User')).not.toBeInTheDocument());
+    expect(within(featureGroup).getByRole('button', { name: 'LLM Proxy' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(featureGroup).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'All' }));
     await waitFor(() => {
+      expect(screen.getByText('Admin User')).toBeInTheDocument();
       expect(screen.getByText('Staff User')).toBeInTheDocument();
-      expect(screen.queryByText('Admin User')).not.toBeInTheDocument();
-      expect(screen.queryByText('Student User')).not.toBeInTheDocument();
+      expect(screen.getByText('Student User')).toBeInTheDocument();
     });
+    expect(within(featureGroup).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(featureGroup).getByRole('button', { name: 'LLM Proxy' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('feature intersection with no matches shows empty state', async () => {
-    // GitHub + LLM Proxy: Admin has github but not llmProxy; nobody has both
+  it('switching from one feature to another replaces the filter (radio behavior)', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'GitHub' }));
-    fireEvent.click(screen.getByRole('button', { name: 'LLM Proxy' }));
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
 
-    await waitFor(() => {
-      expect(screen.queryByText('Admin User')).not.toBeInTheDocument();
-      expect(screen.queryByText('Staff User')).not.toBeInTheDocument();
-      expect(screen.queryByText('Student User')).not.toBeInTheDocument();
-      expect(screen.getByText('No users match this filter.')).toBeInTheDocument();
-    });
-  });
-
-  it('deactivating a feature toggle re-expands results', async () => {
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'LLM Proxy' }));
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'Google' }));
     await waitFor(() => expect(screen.queryByText('Admin User')).not.toBeInTheDocument());
 
-    // Toggle off
-    fireEvent.click(screen.getByRole('button', { name: 'LLM Proxy' }));
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'GitHub' }));
     await waitFor(() => {
       expect(screen.getByText('Admin User')).toBeInTheDocument();
-      expect(screen.getByText('Staff User')).toBeInTheDocument();
-      expect(screen.getByText('Student User')).toBeInTheDocument();
+      expect(screen.queryByText('Staff User')).not.toBeInTheDocument();
     });
+    expect(within(featureGroup).getByRole('button', { name: 'Google' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(featureGroup).getByRole('button', { name: 'GitHub' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   // ---- Sortable headers ----
