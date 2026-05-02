@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { NavLink, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { hasAdminAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
+import { hasAdminAccess, hasStaffAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
 import { useAdminEventStream } from '../hooks/useAdminEventStream';
 
 /* ------------------------------------------------------------------ */
@@ -17,11 +17,37 @@ interface NavItem {
   children?: NavItem[];
 }
 
+interface AppNavItem {
+  to: string;
+  label: string;
+  gate?: (role: string | undefined) => boolean;
+}
+
+/**
+ * Primary app nav — visible in the sidebar for all authenticated users on
+ * every route under AppLayout. Items with a `gate` function are shown only
+ * when the gate returns true for the current user's role.
+ *
+ * Paths are verified against App.tsx routes — do not invent paths here.
+ */
+const APP_NAV: AppNavItem[] = [
+  { to: '/account', label: 'Account' },
+  { to: '/services', label: 'Services' },
+  { to: '/oauth-clients', label: 'OAuth Clients' },
+  { to: '/staff/directory', label: 'Staff Directory', gate: hasStaffAccess },
+  { to: '/admin/users', label: 'User Management', gate: hasStaffAccess },
+  { to: '/cohorts', label: 'Cohorts', gate: hasAdminAccess },
+  { to: '/groups', label: 'Groups', gate: hasAdminAccess },
+];
+
 const MAIN_NAV: NavItem[] = [];
 
 /**
  * Admin workflow nav — shown in the main sidebar when user.role === 'admin'
  * and the current path is NOT under /admin/*.
+ *
+ * Cohorts and Groups are intentionally omitted here — they appear in APP_NAV
+ * (which is visible on every route) so duplicates are avoided.
  */
 const ADMIN_WORKFLOW_NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', end: true },
@@ -34,8 +60,6 @@ const ADMIN_WORKFLOW_NAV: NavItem[] = [
       { to: '/users/llm-proxy', label: 'LLM Proxy' },
     ],
   },
-  { to: '/groups', label: 'Groups' },
-  { to: '/cohorts', label: 'Cohorts' },
   { to: '/sync', label: 'Sync' },
 ];
 
@@ -360,6 +384,9 @@ export default function AppLayout() {
 
   /* ---------- Sidebar ---------- */
 
+  // Role-gated app nav items visible in every non-admin-ops context.
+  const appNavItems = APP_NAV.filter((item) => !item.gate || item.gate(role));
+
   // When in the /admin/* section, show ops-only nav.
   // When in the main app, show MAIN_NAV + ADMIN_WORKFLOW_NAV (for admins).
   const primaryNav = isAdminSection
@@ -396,6 +423,22 @@ export default function AppLayout() {
           &larr; Back to App
         </NavLink>
       ) : null}
+
+      {/* App nav — role-gated links always visible regardless of current path */}
+      {appNavItems.length > 0 && (
+        <div style={{ borderBottom: '1px solid #2a2a4e', paddingTop: 8, paddingBottom: 8 }}>
+          {appNavItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={closeSidebarIfMobile}
+              style={({ isActive }) => styles.navLink(isActive)}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
 
       {/* Primary nav */}
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: 8 }}>
@@ -500,7 +543,7 @@ export default function AppLayout() {
             {item.label}
           </NavLink>
         ))}
-        {user.role === 'staff' && !isAdminSection && (
+        {user.role === 'staff' && (
           <NavLink
             to="/staff/directory"
             onClick={closeSidebarIfMobile}
@@ -509,7 +552,7 @@ export default function AppLayout() {
             Directory
           </NavLink>
         )}
-        {isAdmin && !isAdminSection && (
+        {isAdmin && (
           <NavLink
             to="/admin/env"
             onClick={closeSidebarIfMobile}

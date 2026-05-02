@@ -201,8 +201,13 @@ describe('AppLayout', () => {
         </MemoryRouter>,
       ),
     );
+    // Workflow-only items (Dashboard, Sync) are hidden in the admin ops section.
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
-    expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sync')).not.toBeInTheDocument();
+    // But role-gated APP_NAV items (Cohorts, Groups) remain visible even in
+    // /admin/* — the !isAdminSection hide behaviour has been removed (ticket 007).
+    expect(screen.getByText('Cohorts')).toBeInTheDocument();
+    expect(screen.getByText('Groups')).toBeInTheDocument();
   });
 
   it('shows ops-only ADMIN_NAV items (not workflow items) when in /admin/* section', () => {
@@ -238,6 +243,90 @@ describe('AppLayout', () => {
     renderLayout();
     const adminLink = screen.getByText('Admin').closest('a');
     expect(adminLink).toHaveAttribute('href', '/admin/env');
+  });
+
+  // ---- Ticket 007: role-gated APP_NAV tests ----
+
+  it('student user sees Account, Services, OAuth Clients — no Staff Directory or admin items', () => {
+    // Default mock is a USER (student) role
+    renderLayout();
+    expect(screen.getByText('Account')).toBeInTheDocument();
+    expect(screen.getByText('Services')).toBeInTheDocument();
+    expect(screen.getByText('OAuth Clients')).toBeInTheDocument();
+    expect(screen.queryByText('Staff Directory')).not.toBeInTheDocument();
+    expect(screen.queryByText('User Management')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
+    expect(screen.queryByText('Groups')).not.toBeInTheDocument();
+  });
+
+  it('staff user sees always-on items plus Staff Directory and User Management but not Cohorts or Groups', () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 2,
+        email: 'staff@example.com',
+        displayName: 'Staff User',
+        role: 'staff',
+        avatarUrl: null,
+        provider: null,
+        providerId: null,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    expect(screen.getByText('Account')).toBeInTheDocument();
+    expect(screen.getByText('Services')).toBeInTheDocument();
+    expect(screen.getByText('OAuth Clients')).toBeInTheDocument();
+    expect(screen.getByText('Staff Directory')).toBeInTheDocument();
+    expect(screen.getByText('User Management')).toBeInTheDocument();
+    expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
+    expect(screen.queryByText('Groups')).not.toBeInTheDocument();
+  });
+
+  it('admin user sees all seven APP_NAV items', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    renderLayout();
+    expect(screen.getByText('Account')).toBeInTheDocument();
+    expect(screen.getByText('Services')).toBeInTheDocument();
+    expect(screen.getByText('OAuth Clients')).toBeInTheDocument();
+    expect(screen.getByText('Staff Directory')).toBeInTheDocument();
+    expect(screen.getByText('User Management')).toBeInTheDocument();
+    expect(screen.getByText('Cohorts')).toBeInTheDocument();
+    expect(screen.getByText('Groups')).toBeInTheDocument();
+  });
+
+  it('always-on items are visible in the sidebar when visiting an admin route', () => {
+    mockUseAuth.mockReturnValue({
+      user: makeAdminUser(),
+      loading: false,
+      logout: mockLogout,
+    });
+
+    render(
+      withQueryClient(
+        <MemoryRouter initialEntries={['/admin/env']}>
+          <AppLayout />
+        </MemoryRouter>,
+      ),
+    );
+    // The !isAdminSection hide behaviour is gone — these always appear.
+    expect(screen.getByText('Account')).toBeInTheDocument();
+    expect(screen.getByText('Services')).toBeInTheDocument();
+    expect(screen.getByText('OAuth Clients')).toBeInTheDocument();
+  });
+
+  it('OAuth Clients is visible to a student (SUC-020-002 regression)', () => {
+    // Default mock is a USER (student) role
+    renderLayout();
+    expect(screen.getByText('OAuth Clients')).toBeInTheDocument();
   });
 
   it('does not show impersonation banner when not impersonating', () => {
@@ -336,5 +425,35 @@ describe('AppLayout', () => {
     });
 
     vi.unstubAllGlobals();
+  });
+});
+
+// ---- hasStaffAccess unit tests (ticket 007) ----
+
+import { hasStaffAccess } from '../../client/src/lib/roles';
+
+describe('hasStaffAccess', () => {
+  it("returns true for 'staff'", () => {
+    expect(hasStaffAccess('staff')).toBe(true);
+  });
+
+  it("returns true for 'admin' (lowercase)", () => {
+    expect(hasStaffAccess('admin')).toBe(true);
+  });
+
+  it("returns true for 'STAFF' (uppercase, from server serialization)", () => {
+    expect(hasStaffAccess('STAFF')).toBe(true);
+  });
+
+  it("returns true for 'ADMIN' (uppercase, from server serialization)", () => {
+    expect(hasStaffAccess('ADMIN')).toBe(true);
+  });
+
+  it("returns false for 'student'", () => {
+    expect(hasStaffAccess('student')).toBe(false);
+  });
+
+  it('returns false for undefined', () => {
+    expect(hasStaffAccess(undefined)).toBe(false);
   });
 });
