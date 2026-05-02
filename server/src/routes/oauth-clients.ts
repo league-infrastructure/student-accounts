@@ -20,37 +20,6 @@ import type { ActorContext } from '../services/oauth/oauth-client.service.js';
 export const oauthClientsRouter = Router();
 
 // ---------------------------------------------------------------------------
-// Compat redirect — /api/admin/oauth-clients → /api/oauth-clients (HTTP 308).
-//
-// Intentionally temporary: preserves backward compatibility with existing
-// curl scripts and admin-panel bookmarks that point to the old /api/admin
-// namespace. Drop this redirect in a future release once the ecosystem
-// migrates. See sprint.md "Out of Scope".
-// ---------------------------------------------------------------------------
-
-export const oauthClientsCompatRouter = Router();
-
-oauthClientsCompatRouter.all(
-  '/admin/oauth-clients',
-  requireAuth,
-  (req: Request, res: Response) => {
-    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    res.redirect(308, `/api/oauth-clients${qs}`);
-  },
-);
-
-oauthClientsCompatRouter.all(
-  '/admin/oauth-clients/*',
-  requireAuth,
-  (req: Request, res: Response) => {
-    // Strip the /admin/oauth-clients prefix and preserve the rest.
-    const suffix = req.params[0] ? `/${req.params[0]}` : '';
-    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    res.redirect(308, `/api/oauth-clients${suffix}${qs}`);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // Helper — extract actor context from the session.
 // ---------------------------------------------------------------------------
 
@@ -107,6 +76,7 @@ oauthClientsRouter.post('/oauth-clients', async (req: Request, res: Response, ne
         allowed_scopes: allowed_scopes as string[],
       },
       actor.actorUserId,
+      actor,
     );
 
     // Return the client AND the plaintext secret (shown once, never again).
