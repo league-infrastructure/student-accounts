@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { NavLink, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
-import { hasAdminAccess, hasStaffAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
+import { hasAdminAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
 import { useAdminEventStream } from '../hooks/useAdminEventStream';
 import type { AccountData } from '../pages/Account';
 
@@ -97,19 +97,15 @@ const SIDEBAR_NAV: SidebarItem[] = [
     gate: (_role, account) => account?.profile.llmProxyEnabled === true,
   },
 
-  // --- User Management group (staff + admin) ---
+  // --- User Management group (admin only) ---
   {
     kind: 'group',
     label: 'User Management',
     defaultTo: '/admin/users',
-    gate: hasStaffAccess,
+    gate: hasAdminAccess,
     children: [
-      { to: '/admin/users', label: 'Users', gate: hasAdminAccess },
-      { to: '/users/students', label: 'Students', gate: hasAdminAccess },
-      { to: '/staff/directory', label: 'Staff', gate: hasStaffAccess },
-      { to: '/users/llm-proxy', label: 'LLM Proxy Users', gate: hasAdminAccess },
-      { to: '/groups', label: 'Groups', gate: hasAdminAccess },
-      { to: '/cohorts', label: 'Cohorts', gate: hasAdminAccess },
+      { to: '/admin/users', label: 'User Management' },
+      { to: '/groups', label: 'Groups' },
     ],
   },
 
