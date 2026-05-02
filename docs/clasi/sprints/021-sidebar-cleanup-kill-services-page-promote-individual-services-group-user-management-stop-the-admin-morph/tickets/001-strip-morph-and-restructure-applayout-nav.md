@@ -1,13 +1,13 @@
 ---
-id: "001"
-title: "Strip morph and restructure AppLayout nav"
-status: todo
+id: '001'
+title: Strip morph and restructure AppLayout nav
+status: done
 use-cases:
-  - SUC-001
-  - SUC-004
+- SUC-001
+- SUC-004
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -78,19 +78,19 @@ significant complexity.
 
 ## Acceptance Criteria
 
-- [ ] `SIDEBAR_NAV` is a single array; no `isAdminSection` variable exists anywhere in `AppLayout.tsx`.
-- [ ] Navigating to `/admin/env` does not change the set of visible sidebar items.
-- [ ] User Management group is visible to staff and admin roles; hidden for student/unauthenticated.
-- [ ] Clicking the User Management group header navigates to `/staff/directory` AND expands the group.
-- [ ] Admin group is visible to admin only and contains all eight ops links.
-- [ ] Dashboard and Sync are visible to admin only as flat items.
-- [ ] OAuth Clients item is visible to all authenticated roles.
-- [ ] Claude Code sidebar item appears only when the user has a `claude` ExternalAccount; absent otherwise.
-- [ ] LLM Proxy sidebar item appears only when `account.profile.llmProxyEnabled === true`; absent otherwise.
-- [ ] Account does not appear in the sidebar (remains in user-menu dropdown only).
-- [ ] Services does not appear in the sidebar.
-- [ ] Bottom nav still shows About.
-- [ ] `npm run test:client` passes (pre-existing failures acceptable; AppLayout.test.tsx will be rewritten in ticket 006).
+- [x] `SIDEBAR_NAV` is a single array; no `isAdminSection` variable exists anywhere in `AppLayout.tsx`.
+- [x] Navigating to `/admin/env` does not change the set of visible sidebar items.
+- [x] User Management group is visible to staff and admin roles; hidden for student/unauthenticated.
+- [x] Clicking the User Management group header navigates to `/staff/directory` AND expands the group.
+- [x] Admin group is visible to admin only and contains all eight ops links.
+- [x] Dashboard and Sync are visible to admin only as flat items.
+- [x] OAuth Clients item is visible to all authenticated roles.
+- [x] Claude Code sidebar item appears only when the user has a `claude` ExternalAccount; absent otherwise.
+- [x] LLM Proxy sidebar item appears only when `account.profile.llmProxyEnabled === true`; absent otherwise.
+- [x] Account does not appear in the sidebar (remains in user-menu dropdown only).
+- [x] Services does not appear in the sidebar.
+- [x] Bottom nav still shows About.
+- [x] `npm run test:client` passes (pre-existing failures acceptable; AppLayout.test.tsx will be rewritten in ticket 006).
 
 ## Implementation Plan
 
