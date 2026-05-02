@@ -1,21 +1,21 @@
 ---
-id: "006"
-title: "Sidebar tests — rewrite AppLayout.test.tsx for new nav structure"
-status: todo
+id: '006'
+title: "Sidebar tests \u2014 rewrite AppLayout.test.tsx for new nav structure"
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
 depends-on:
-  - "001"
-  - "002"
-  - "003"
-  - "004"
-  - "005"
-github-issue: ""
-todo: ""
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -71,16 +71,16 @@ route rendering setup) but replace all nav assertions.
 
 ## Acceptance Criteria
 
-- [ ] `tests/client/AppLayout.test.tsx` has been rewritten (old assertions removed).
-- [ ] Student role test: correct items visible; no User Management, Admin group, Dashboard, Sync.
-- [ ] Student entitlement test: Claude Code absent without `claude` ExternalAccount; present with it.
-- [ ] Student entitlement test: LLM Proxy absent when `llmProxyEnabled` is false; present when true.
-- [ ] Staff role test: User Management group visible; admin-only children hidden.
-- [ ] Admin role test: all groups and flat admin items visible.
-- [ ] No-morph test: sidebar items identical at `/admin/env` vs `/account`.
-- [ ] Group navigate test: clicking User Management header triggers navigation to `/staff/directory`.
-- [ ] `npm run test:client` passes with 0 unexpected failures.
-- [ ] `npm run test:server` baseline unchanged.
+- [x] `tests/client/AppLayout.test.tsx` has been rewritten (old assertions removed).
+- [x] Student role test: correct items visible; no User Management, Admin group, Dashboard, Sync.
+- [x] Student entitlement test: Claude Code absent without `claude` ExternalAccount; present with it.
+- [x] Student entitlement test: LLM Proxy absent when `llmProxyEnabled` is false; present when true.
+- [x] Staff role test: User Management group visible; admin-only children hidden.
+- [x] Admin role test: all groups and flat admin items visible.
+- [x] No-morph test: sidebar items identical at `/admin/env` vs `/account`.
+- [x] Group navigate test: clicking User Management header triggers navigation to `/staff/directory`.
+- [x] `npm run test:client` passes with 0 unexpected failures.
+- [x] `npm run test:server` baseline unchanged.
 
 ## Implementation Plan
 

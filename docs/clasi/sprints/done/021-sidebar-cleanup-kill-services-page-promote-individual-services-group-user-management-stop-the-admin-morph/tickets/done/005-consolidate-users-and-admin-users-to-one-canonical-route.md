@@ -1,14 +1,14 @@
 ---
-id: "005"
-title: "Consolidate /users and /admin/users to one canonical route"
-status: todo
+id: '005'
+title: Consolidate /users and /admin/users to one canonical route
+status: done
 use-cases:
-  - SUC-004
-  - SUC-005
+- SUC-004
+- SUC-005
 depends-on:
-  - "001"
-github-issue: ""
-todo: ""
+- '001'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -44,11 +44,11 @@ it may be deleted; otherwise leave it.
 
 ## Acceptance Criteria
 
-- [ ] Navigating to `/users` redirects to `/admin/users` (React Router `<Navigate replace />`).
-- [ ] `/admin/users` still renders `AdminUsersPanel` correctly.
-- [ ] `/users/students`, `/users/llm-proxy`, and `/users/:id` sub-paths are unaffected.
-- [ ] The sidebar User Management "Users" child item links to `/admin/users`.
-- [ ] `npm run test:client` passes.
+- [x] Navigating to `/users` redirects to `/admin/users` (React Router `<Navigate replace />`).
+- [x] `/admin/users` still renders `AdminUsersPanel` correctly.
+- [x] `/users/students`, `/users/llm-proxy`, and `/users/:id` sub-paths are unaffected.
+- [x] The sidebar User Management "Users" child item links to `/admin/users`.
+- [x] `npm run test:client` passes.
 
 ## Implementation Plan
 

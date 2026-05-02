@@ -10,7 +10,6 @@ import About from './pages/About';
 import McpSetup from './pages/McpSetup';
 import NotFound from './pages/NotFound';
 import Account from './pages/Account';
-import Services from './pages/Services';
 import Onboarding from './pages/Onboarding';
 
 import AdminLogin from './pages/admin/AdminLogin';
@@ -23,7 +22,6 @@ import LogViewer from './pages/admin/LogViewer';
 import SessionViewer from './pages/admin/SessionViewer';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
-import UsersPanel from './pages/admin/UsersPanel';
 import UserDetailPanel from './pages/admin/UserDetailPanel';
 import StudentAccountsPanel from './pages/admin/StudentAccountsPanel';
 import LlmProxyUsersPanel from './pages/admin/LlmProxyUsersPanel';
@@ -36,6 +34,8 @@ import SyncPanel from './pages/admin/SyncPanel';
 import MergeQueuePanel from './pages/admin/MergeQueuePanel';
 import Dashboard from './pages/admin/Dashboard';
 import OAuthClients from './pages/OAuthClients';
+import ClaudeCode from './pages/ClaudeCode';
+import LlmProxy from './pages/LlmProxy';
 
 import OAuthConsent from './pages/OAuthConsent';
 
@@ -77,9 +77,10 @@ function App() {
             <Route element={<AppLayout />}>
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />
-              <Route path="/services" element={<Services />} />
               <Route path="/mcp-setup" element={<McpSetup />} />
               <Route path="/oauth-clients" element={<OAuthClients />} />
+              <Route path="/claude-code" element={<ClaudeCode />} />
+              <Route path="/llm-proxy" element={<LlmProxy />} />
               {/* Redirect old admin path to new canonical path */}
               <Route path="/admin/oauth-clients" element={<Navigate to="/oauth-clients" replace />} />
 
@@ -96,7 +97,8 @@ function App() {
                 <Route path="/cohorts/:id" element={<CohortDetailPanel />} />
                 <Route path="/groups" element={<Groups />} />
                 <Route path="/groups/:id" element={<GroupDetailPanel />} />
-                <Route path="/users" element={<UsersPanel />} />
+                {/* /users redirects to the canonical /admin/users route (AdminUsersPanel) */}
+                <Route path="/users" element={<Navigate to="/admin/users" replace />} />
                 {/* Literal sub-paths come BEFORE /users/:id so they win
                    the match against the dynamic segment. */}
                 <Route path="/users/students" element={<StudentAccountsPanel />} />
