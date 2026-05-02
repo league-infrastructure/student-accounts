@@ -1,20 +1,20 @@
 ---
-id: "006"
-title: "Manual smoke — stakeholder verification"
-status: todo
+id: '006'
+title: "Manual smoke \u2014 stakeholder verification"
+status: done
 use-cases:
-  - SUC-023-001
-  - SUC-023-002
-  - SUC-023-003
-  - SUC-023-004
-  - SUC-023-005
-  - SUC-023-006
+- SUC-023-001
+- SUC-023-002
+- SUC-023-003
+- SUC-023-004
+- SUC-023-005
+- SUC-023-006
 depends-on:
-  - "023-003"
-  - "023-004"
-  - "023-005"
-github-issue: ""
-todo: ""
+- 023-003
+- 023-004
+- 023-005
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
