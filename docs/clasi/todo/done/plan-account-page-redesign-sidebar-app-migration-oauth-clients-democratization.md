@@ -1,5 +1,6 @@
 ---
-status: pending
+status: done
+sprint: '020'
 ---
 
 # Plan: Account-page redesign + sidebar app migration + OAuth-Clients democratization

@@ -1,22 +1,22 @@
 ---
-id: "008"
-title: "Manual smoke pass stakeholder verification sweep"
-status: todo
+id: 008
+title: Manual smoke pass stakeholder verification sweep
+status: done
 use-cases:
-  - SUC-020-001
-  - SUC-020-002
-  - SUC-020-003
-  - SUC-020-004
+- SUC-020-001
+- SUC-020-002
+- SUC-020-003
+- SUC-020-004
 depends-on:
-  - "001"
-  - "002"
-  - "003"
-  - "004"
-  - "005"
-  - "006"
-  - "007"
-github-issue: ""
-todo: "plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md"
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
+- '007'
+github-issue: ''
+todo: plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
