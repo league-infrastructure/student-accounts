@@ -1,12 +1,12 @@
 ---
-id: "003"
-title: "StudentAccountsPanel — add search bar and sortable column headers"
-status: todo
+id: '003'
+title: "StudentAccountsPanel \u2014 add search bar and sortable column headers"
+status: done
 use-cases:
-  - SUC-003
+- SUC-003
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
@@ -29,18 +29,18 @@ The checkbox selection and bulk-suspend action are not changed.
 
 ## Acceptance Criteria
 
-- [ ] A search bar is present above the table.
-- [ ] Typing in the search bar filters rows by display name or email
+- [x] A search bar is present above the table.
+- [x] Typing in the search bar filters rows by display name or email
       (case-insensitive, real-time).
-- [ ] Column headers Name, Email, Cohort, Accounts, Joined are all
+- [x] Column headers Name, Email, Cohort, Accounts, Joined are all
       clickable and sort the visible (already filtered) rows.
-- [ ] Clicking the same header twice toggles between ascending and
+- [x] Clicking the same header twice toggles between ascending and
       descending.
-- [ ] Default sort remains newest-first (Joined descending) when no
+- [x] Default sort remains newest-first (Joined descending) when no
       header has been clicked and the search bar is empty.
-- [ ] Checkbox selection and bulk-suspend action continue to operate on
+- [x] Checkbox selection and bulk-suspend action continue to operate on
       the filtered+sorted row set.
-- [ ] `npm run test:client` passes (update or add tests as needed).
+- [x] `npm run test:client` passes (update or add tests as needed).
 
 ## Implementation Plan
 

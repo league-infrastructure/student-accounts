@@ -35,6 +35,7 @@ staffDirectoryRouter.get(
           id: u.id,
           displayName: u.display_name,
           email: u.primary_email,
+          createdAt: u.created_at,
           cohort: u.cohort ? { id: u.cohort.id, name: u.cohort.name } : null,
           externalAccountTypes: [...new Set<string>(u.external_accounts.map((a: any) => a.type))],
         })),

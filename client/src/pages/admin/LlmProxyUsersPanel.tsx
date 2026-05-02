@@ -6,7 +6,7 @@
  * "Revoke tokens".
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -58,6 +58,9 @@ export default function LlmProxyUsersPanel() {
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [banner, setBanner] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [search, setSearch] = useState('');
+  const [sortCol, setSortCol] = useState<'name' | 'email' | 'cohort' | 'usage' | 'expires'>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const revokeMutation = useMutation<BulkRevokeResult, Error, number[]>({
     mutationFn: bulkRevoke,
@@ -78,9 +81,55 @@ export default function LlmProxyUsersPanel() {
     onError: (err) => setBanner({ ok: false, msg: err.message }),
   });
 
-  const visible = rows ?? [];
+  const visible = useMemo(() => {
+    const all = rows ?? [];
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? all.filter((r) => {
+          const name = (r.displayName ?? r.email).toLowerCase();
+          return name.includes(q) || r.email.toLowerCase().includes(q);
+        })
+      : all;
+
+    return [...filtered].sort((a, b) => {
+      let cmp = 0;
+      switch (sortCol) {
+        case 'name':
+          cmp = (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email);
+          break;
+        case 'email':
+          cmp = a.email.localeCompare(b.email);
+          break;
+        case 'cohort':
+          cmp = (a.cohort?.name ?? '').localeCompare(b.cohort?.name ?? '');
+          break;
+        case 'usage':
+          cmp = a.tokensUsed - b.tokensUsed;
+          break;
+        case 'expires':
+          cmp = new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime();
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [rows, search, sortCol, sortDir]);
+
   const allSelected = visible.length > 0 && visible.every((r) => selected.has(r.userId));
   const someSelected = visible.some((r) => selected.has(r.userId));
+
+  function handleSortHeader(col: typeof sortCol) {
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  function sortIndicator(col: typeof sortCol) {
+    if (sortCol !== col) return null;
+    return sortDir === 'asc' ? ' ▲' : ' ▼';
+  }
 
   function toggleAll() {
     if (allSelected) {
@@ -132,7 +181,15 @@ export default function LlmProxyUsersPanel() {
         </div>
       )}
 
-      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="search"
+          placeholder="Search by name or email…"
+          aria-label="Search users"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={searchInputStyle}
+        />
         <button
           type="button"
           onClick={handleRevoke}
@@ -161,11 +218,21 @@ export default function LlmProxyUsersPanel() {
                 disabled={visible.length === 0}
               />
             </th>
-            <th style={th}>Name</th>
-            <th style={th}>Email</th>
-            <th style={th}>Cohort</th>
-            <th style={th}>Usage</th>
-            <th style={th}>Expires</th>
+            <th style={{ ...th, ...thSortable }} onClick={() => handleSortHeader('name')} aria-sort={sortCol === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+              Name{sortIndicator('name')}
+            </th>
+            <th style={{ ...th, ...thSortable }} onClick={() => handleSortHeader('email')} aria-sort={sortCol === 'email' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+              Email{sortIndicator('email')}
+            </th>
+            <th style={{ ...th, ...thSortable }} onClick={() => handleSortHeader('cohort')} aria-sort={sortCol === 'cohort' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+              Cohort{sortIndicator('cohort')}
+            </th>
+            <th style={{ ...th, ...thSortable }} onClick={() => handleSortHeader('usage')} aria-sort={sortCol === 'usage' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+              Usage{sortIndicator('usage')}
+            </th>
+            <th style={{ ...th, ...thSortable }} onClick={() => handleSortHeader('expires')} aria-sort={sortCol === 'expires' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+              Expires{sortIndicator('expires')}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -231,9 +298,22 @@ const th: React.CSSProperties = {
   fontSize: 13,
   color: '#64748b',
 };
+const thSortable: React.CSSProperties = {
+  cursor: 'pointer',
+  userSelect: 'none',
+  whiteSpace: 'nowrap',
+};
 const td: React.CSSProperties = { padding: '8px 12px', borderBottom: '1px solid #f1f5f9' };
 const linkStyle: React.CSSProperties = {
   color: '#2563eb',
   textDecoration: 'none',
   fontWeight: 600,
+};
+const searchInputStyle: React.CSSProperties = {
+  padding: '6px 10px',
+  fontSize: 13,
+  border: '1px solid #cbd5e1',
+  borderRadius: 6,
+  outline: 'none',
+  minWidth: 220,
 };

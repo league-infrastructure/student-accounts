@@ -1,12 +1,12 @@
 ---
-id: "005"
-title: "LlmProxyUsersPanel — add search bar and sortable column headers"
-status: todo
+id: '005'
+title: "LlmProxyUsersPanel \u2014 add search bar and sortable column headers"
+status: done
 use-cases:
-  - SUC-005
+- SUC-005
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
@@ -25,16 +25,16 @@ Existing behaviour preserved: checkbox selection, bulk-revoke action.
 
 ## Acceptance Criteria
 
-- [ ] A search bar is present above the table.
-- [ ] Typing in the search bar filters rows by display name or email
+- [x] A search bar is present above the table.
+- [x] Typing in the search bar filters rows by display name or email
       (case-insensitive, real-time).
-- [ ] Column headers Name, Email, Cohort, Usage, Expires are all
+- [x] Column headers Name, Email, Cohort, Usage, Expires are all
       clickable and sort the visible rows.
-- [ ] Clicking the same header twice toggles between ascending and
+- [x] Clicking the same header twice toggles between ascending and
       descending.
-- [ ] Checkbox selection and bulk-revoke action continue to operate on
+- [x] Checkbox selection and bulk-revoke action continue to operate on
       the filtered+sorted row set.
-- [ ] `npm run test:client` passes.
+- [x] `npm run test:client` passes.
 
 ## Implementation Plan
 
