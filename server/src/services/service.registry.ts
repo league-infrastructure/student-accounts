@@ -184,10 +184,11 @@ export class ServiceRegistry {
     );
 
     // WorkspaceSyncService — Sprint 006 T006.
+    // Sprint 025 T004: cohortService removed from constructor; syncCohorts now
+    // writes Group rows instead of Cohort rows.
     this.workspaceSync = new WorkspaceSyncService(
       defaultPrisma,
       wsClient,
-      this.cohorts,
       UserRepository,
       ExternalAccountRepository,
       CohortRepository,

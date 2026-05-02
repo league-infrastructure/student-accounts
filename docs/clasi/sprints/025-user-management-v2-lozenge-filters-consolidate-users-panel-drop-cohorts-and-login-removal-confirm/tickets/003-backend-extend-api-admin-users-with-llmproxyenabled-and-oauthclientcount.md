@@ -1,14 +1,14 @@
 ---
-id: "003"
-title: "Backend: extend /api/admin/users with llmProxyEnabled and oauthClientCount"
-status: todo
+id: '003'
+title: 'Backend: extend /api/admin/users with llmProxyEnabled and oauthClientCount'
+status: done
 use-cases:
-  - SUC-003
-  - SUC-004
-  - SUC-006
+- SUC-003
+- SUC-004
+- SUC-006
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 
@@ -33,12 +33,12 @@ be extended to load the required relations.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/admin/users` response includes `llmProxyEnabled: boolean` on each user object.
-- [ ] `llmProxyEnabled` is `true` if and only if the user has at least one `LlmProxyToken` with `expires_at > now()` and `revoked_at IS NULL`.
-- [ ] `GET /api/admin/users` response includes `oauthClientCount: number` on each user object.
-- [ ] `oauthClientCount` equals the count of `OAuthClient` rows created by the user.
-- [ ] A backend test asserts both fields appear with correct values for: (a) a user with an active LLM proxy token, (b) a user with a revoked or expired token, (c) a user with no token. And: (a) a user with two OAuth clients, (b) a user with zero OAuth clients.
-- [ ] Existing tests for `GET /api/admin/users` continue to pass (update any that snapshot the full response shape).
+- [x] `GET /api/admin/users` response includes `llmProxyEnabled: boolean` on each user object.
+- [x] `llmProxyEnabled` is `true` if and only if the user has at least one `LlmProxyToken` with `expires_at > now()` and `revoked_at IS NULL`.
+- [x] `GET /api/admin/users` response includes `oauthClientCount: number` on each user object.
+- [x] `oauthClientCount` equals the count of `OAuthClient` rows created by the user.
+- [x] A backend test asserts both fields appear with correct values for: (a) a user with an active LLM proxy token, (b) a user with a revoked or expired token, (c) a user with no token. And: (a) a user with two OAuth clients, (b) a user with zero OAuth clients.
+- [x] Existing tests for `GET /api/admin/users` continue to pass (update any that snapshot the full response shape).
 
 ## Implementation Plan
 

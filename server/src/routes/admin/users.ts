@@ -84,6 +84,7 @@ adminUsersRouter.get('/users/:id/pike13', async (req, res, next) => {
 // GET /admin/users - list all users
 adminUsersRouter.get('/users', async (req, res, next) => {
   try {
+    const now = new Date();
     const users = await prisma.user.findMany({
       where: { is_active: true },
       orderBy: { created_at: 'desc' },
@@ -91,6 +92,16 @@ adminUsersRouter.get('/users', async (req, res, next) => {
         logins: { select: { provider: true, provider_username: true, provider_email: true } },
         cohort: { select: { id: true, name: true } },
         external_accounts: { select: { type: true, external_id: true, status: true } },
+        // Fetch at most one active (non-revoked, non-expired) LLM proxy token per user.
+        llm_proxy_tokens: {
+          where: { revoked_at: null, expires_at: { gt: now } },
+          select: { id: true },
+          take: 1,
+        },
+        // Count non-disabled OAuth clients created by this user.
+        _count: {
+          select: { oauth_clients_created: { where: { disabled_at: null } } },
+        },
       },
     });
     res.json(users.map(serializeUser));
@@ -532,6 +543,12 @@ function serializeUser(user: any) {
           status: a.status,
         }))
       : [],
+    // true when the user has at least one active (non-revoked, non-expired) LLM proxy token.
+    llmProxyEnabled: Array.isArray(user.llm_proxy_tokens)
+      ? user.llm_proxy_tokens.length > 0
+      : false,
+    // count of non-disabled OAuth clients created by this user.
+    oauthClientCount: user._count?.oauth_clients_created ?? 0,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
   };

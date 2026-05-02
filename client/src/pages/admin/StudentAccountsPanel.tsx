@@ -40,7 +40,12 @@ interface BulkSuspendResult {
 
 type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'joined';
 
-const STUDENT_EMAIL_RE = /@students\.[a-z0-9.-]+$/i;
+function normalizeRole(role: string): 'admin' | 'staff' | 'student' {
+  const r = role.toLowerCase();
+  if (r === 'admin') return 'admin';
+  if (r === 'staff') return 'staff';
+  return 'student';
+}
 
 function fetchUsers(): Promise<AdminUser[]> {
   return fetch('/api/admin/users')
@@ -176,7 +181,7 @@ export default function StudentAccountsPanel() {
 
   // Filter to students, apply search, then sort.
   const visibleStudents = useMemo(() => {
-    const students = (users ?? []).filter((u) => STUDENT_EMAIL_RE.test(u.email));
+    const students = (users ?? []).filter((u) => normalizeRole(u.role) === 'student');
     const searched = applySearch(students, search);
     return sortStudents(searched, sortCol, sortDir);
   }, [users, search, sortCol, sortDir]);
@@ -192,7 +197,7 @@ export default function StudentAccountsPanel() {
 
   // Total count of students (before search filter, for the subtitle).
   const totalStudents = useMemo(
-    () => (users ?? []).filter((u) => STUDENT_EMAIL_RE.test(u.email)).length,
+    () => (users ?? []).filter((u) => normalizeRole(u.role) === 'student').length,
     [users],
   );
 
