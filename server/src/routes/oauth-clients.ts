@@ -149,7 +149,8 @@ oauthClientsRouter.post('/oauth-clients/:id/rotate-secret', async (req: Request,
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /oauth-clients/:id — soft delete (sets disabled_at); returns 204
+// DELETE /oauth-clients/:id — hard delete; FK cascades remove tokens,
+// authorization codes, refresh tokens, and consents. Returns 204.
 // ---------------------------------------------------------------------------
 
 oauthClientsRouter.delete('/oauth-clients/:id', async (req: Request, res: Response, next: NextFunction) => {
@@ -158,7 +159,7 @@ oauthClientsRouter.delete('/oauth-clients/:id', async (req: Request, res: Respon
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
 
     const actor = actorContext(req);
-    await req.services.oauthClients.disable(id, actor.actorUserId, actor);
+    await req.services.oauthClients.delete(id, actor.actorUserId, actor);
     res.status(204).send();
   } catch (err: any) {
     if (err?.code === 'P2025') return res.status(404).json({ error: 'OAuth client not found' });

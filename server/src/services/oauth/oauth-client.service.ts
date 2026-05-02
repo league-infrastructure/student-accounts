@@ -238,7 +238,8 @@ export class OAuthClientService {
   }
 
   // --------------------------------------------------------------------
-  // Disable (soft delete)
+  // Disable (soft delete) — kept for token-revocation semantics in tests
+  // and for any future "suspend without deleting" admin tooling.
   // --------------------------------------------------------------------
 
   async disable(id: number, actorUserId: number, actor?: ActorContext): Promise<void> {
@@ -259,6 +260,29 @@ export class OAuthClientService {
         target_entity_type: 'OAuthClient',
         target_entity_id: String(id),
         details: { client_id: updated.client_id, disabled_at: now.toISOString() },
+      });
+    });
+  }
+
+  // --------------------------------------------------------------------
+  // Delete (hard delete) — what the user-facing DELETE endpoint calls.
+  // FK cascades drop dependent tokens, codes, refresh tokens, consents.
+  // --------------------------------------------------------------------
+
+  async delete(id: number, actorUserId: number, actor?: ActorContext): Promise<void> {
+    if (actor) {
+      const existing = await this.prisma.oAuthClient.findUnique({ where: { id } });
+      if (existing) this.enforceOwnership(existing, actor);
+    }
+
+    await this.prisma.$transaction(async (tx: any) => {
+      const removed = await tx.oAuthClient.delete({ where: { id } });
+      await this.audit.record(tx, {
+        actor_user_id: actorUserId,
+        action: 'oauth_client_deleted',
+        target_entity_type: 'OAuthClient',
+        target_entity_id: String(id),
+        details: { client_id: removed.client_id, name: removed.name },
       });
     });
   }

@@ -268,11 +268,11 @@ describe('POST /api/oauth-clients/:id/rotate-secret', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DELETE /api/oauth-clients/:id — soft delete (ownership-gated)
+// DELETE /api/oauth-clients/:id — hard delete (ownership-gated)
 // ---------------------------------------------------------------------------
 
 describe('DELETE /api/oauth-clients/:id', () => {
-  it('owner: soft-deletes (sets disabled_at) and returns 204', async () => {
+  it('owner: hard-deletes the row and returns 204', async () => {
     const { agent, user } = await asStudent('deleter@test.com');
     const { client } = await registry.oauthClients.create({ name: 'Del', redirect_uris: [], allowed_scopes: [] }, user.id);
 
@@ -280,8 +280,7 @@ describe('DELETE /api/oauth-clients/:id', () => {
     expect(res.status).toBe(204);
 
     const raw = await (prisma as any).oAuthClient.findUnique({ where: { id: client.id } });
-    expect(raw).not.toBeNull();
-    expect(raw.disabled_at).not.toBeNull();
+    expect(raw).toBeNull();
   });
 
   it('non-owner non-admin: gets 403', async () => {
@@ -302,13 +301,15 @@ describe('DELETE /api/oauth-clients/:id', () => {
     expect(res.status).toBe(204);
   });
 
-  it('writes an oauth_client_disabled audit event', async () => {
+  it('writes an oauth_client_deleted audit event', async () => {
     const { agent, user } = await asStudent('deleter2@test.com');
     const { client } = await registry.oauthClients.create({ name: 'DA', redirect_uris: [], allowed_scopes: [] }, user.id);
 
     await agent.delete(`/api/oauth-clients/${client.id}`);
-    const events = await (prisma as any).auditEvent.findMany({ where: { action: 'oauth_client_disabled' } });
-    expect(events.length).toBeGreaterThan(0);
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_deleted', target_entity_id: String(client.id) },
+    });
+    expect(events.length).toBe(1);
   });
 });
 
@@ -495,21 +496,21 @@ describe('admin shared-pool invariant', () => {
     expect(events[0].actor_user_id).toBe(adminA.id);
   });
 
-  it('admin A can disable (DELETE) admin B\'s client', async () => {
+  it('admin A can DELETE admin B\'s client (hard delete)', async () => {
     const { agentA, client } = await setupAdminBClient();
     const res = await agentA.delete(`/api/oauth-clients/${client.id}`);
     expect(res.status).toBe(204);
     const raw = await (prisma as any).oAuthClient.findUnique({ where: { id: client.id } });
-    expect(raw.disabled_at).not.toBeNull();
+    expect(raw).toBeNull();
   });
 
-  it('audit event for admin A disable records actor=admin A', async () => {
+  it('audit event for admin A delete records actor=admin A', async () => {
     const { agentA, adminA, client } = await setupAdminBClient();
     await agentA.delete(`/api/oauth-clients/${client.id}`);
     const events = await (prisma as any).auditEvent.findMany({
-      where: { action: 'oauth_client_disabled', target_entity_id: String(client.id) },
+      where: { action: 'oauth_client_deleted', target_entity_id: String(client.id) },
     });
-    expect(events.length).toBeGreaterThan(0);
+    expect(events.length).toBe(1);
     expect(events[0].actor_user_id).toBe(adminA.id);
   });
 
