@@ -75,7 +75,7 @@ interface BulkRevokeResult {
 
 type RoleFilter = 'all' | 'staff' | 'admin' | 'student';
 
-type FeatureToggle = 'google' | 'pike13' | 'github' | 'llm-proxy' | 'oauth-client';
+type FeatureFilter = 'all' | 'google' | 'pike13' | 'github' | 'llm-proxy' | 'oauth-client';
 
 // ---------------------------------------------------------------------------
 // Sort types
@@ -172,8 +172,8 @@ function applyRoleFilter(users: AdminUser[], roleFilter: RoleFilter): AdminUser[
   return users.filter((u) => normalizeRole(u.role) === roleFilter);
 }
 
-function featurePredicate(u: AdminUser, toggle: FeatureToggle): boolean {
-  switch (toggle) {
+function featurePredicate(u: AdminUser, feature: Exclude<FeatureFilter, 'all'>): boolean {
+  switch (feature) {
     case 'google':
       return u.providers.some((p) => p.provider === 'google');
     case 'pike13':
@@ -187,10 +187,9 @@ function featurePredicate(u: AdminUser, toggle: FeatureToggle): boolean {
   }
 }
 
-function applyFeatureFilter(users: AdminUser[], activeToggles: Set<FeatureToggle>): AdminUser[] {
-  if (activeToggles.size === 0) return users;
-  const toggles = [...activeToggles];
-  return users.filter((u) => toggles.every((t) => featurePredicate(u, t)));
+function applyFeatureFilter(users: AdminUser[], feature: FeatureFilter): AdminUser[] {
+  if (feature === 'all') return users;
+  return users.filter((u) => featurePredicate(u, feature));
 }
 
 function applySearch(users: AdminUser[], search: string): AdminUser[] {
@@ -341,11 +340,12 @@ function RoleLozengeBar({ value, onChange }: RoleLozengeBarProps) {
 }
 
 interface FeatureLozengeBarProps {
-  active: Set<FeatureToggle>;
-  onChange: (v: Set<FeatureToggle>) => void;
+  value: FeatureFilter;
+  onChange: (v: FeatureFilter) => void;
 }
 
-const FEATURE_OPTIONS: { label: string; value: FeatureToggle }[] = [
+const FEATURE_OPTIONS: { label: string; value: FeatureFilter }[] = [
+  { label: 'All', value: 'all' },
   { label: 'Google', value: 'google' },
   { label: 'Pike 13', value: 'pike13' },
   { label: 'GitHub', value: 'github' },
@@ -353,26 +353,16 @@ const FEATURE_OPTIONS: { label: string; value: FeatureToggle }[] = [
   { label: 'OAuth Client', value: 'oauth-client' },
 ];
 
-function FeatureLozengeBar({ active, onChange }: FeatureLozengeBarProps) {
-  function toggle(v: FeatureToggle) {
-    const next = new Set(active);
-    if (next.has(v)) {
-      next.delete(v);
-    } else {
-      next.add(v);
-    }
-    onChange(next);
-  }
-
+function FeatureLozengeBar({ value, onChange }: FeatureLozengeBarProps) {
   return (
     <div style={lozengeBarStyle} role="group" aria-label="Feature filter">
       {FEATURE_OPTIONS.map((opt) => (
         <button
           key={opt.value}
           type="button"
-          aria-pressed={active.has(opt.value)}
-          onClick={() => toggle(opt.value)}
-          style={lozengePillStyle(active.has(opt.value), 'toggle')}
+          aria-pressed={value === opt.value}
+          onClick={() => onChange(opt.value)}
+          style={lozengePillStyle(value === opt.value, 'radio')}
         >
           {opt.label}
         </button>
@@ -656,7 +646,7 @@ export default function AdminUsersPanel() {
   // Filter / search / sort state
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
-  const [featureToggles, setFeatureToggles] = useState<Set<FeatureToggle>>(new Set());
+  const [featureFilter, setFeatureFilter] = useState<FeatureFilter>('all');
   // Default sort puts the most recently joined users first so newcomers
   // are immediately visible; rows created in the last 24h are also
   // highlighted in the table below.
@@ -742,10 +732,10 @@ export default function AdminUsersPanel() {
   const filtered = useMemo(
     () =>
       applySearch(
-        applyFeatureFilter(applyRoleFilter(users, roleFilter), featureToggles),
+        applyFeatureFilter(applyRoleFilter(users, roleFilter), featureFilter),
         search,
       ),
-    [users, roleFilter, featureToggles, search],
+    [users, roleFilter, featureFilter, search],
   );
   const visible = useMemo(
     () => sortUsers(filtered, sortCol, sortDir),
@@ -912,7 +902,7 @@ export default function AdminUsersPanel() {
         </div>
       )}
 
-      {/* Toolbar: search */}
+      {/* Toolbar: search + role + feature lozenges, one line, wraps as needed */}
       <div style={toolbarStyle}>
         <input
           type="search"
@@ -922,13 +912,9 @@ export default function AdminUsersPanel() {
           style={searchInputStyle}
           aria-label="Search users"
         />
+        <RoleLozengeBar value={roleFilter} onChange={setRoleFilter} />
+        <FeatureLozengeBar value={featureFilter} onChange={setFeatureFilter} />
       </div>
-
-      {/* Role lozenge bar */}
-      <RoleLozengeBar value={roleFilter} onChange={setRoleFilter} />
-
-      {/* Feature lozenge bar */}
-      <FeatureLozengeBar active={featureToggles} onChange={setFeatureToggles} />
 
       <table style={tableStyle}>
         <thead>
@@ -1095,7 +1081,8 @@ export default function AdminUsersPanel() {
 const toolbarStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
+  flexWrap: 'wrap',
+  gap: 12,
   marginBottom: 8,
 };
 
@@ -1103,7 +1090,6 @@ const lozengeBarStyle: React.CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
   gap: 6,
-  marginBottom: 8,
 };
 
 function lozengePillStyle(active: boolean, variant: 'radio' | 'toggle'): React.CSSProperties {

@@ -495,6 +495,27 @@ export default function Account() {
     data != null &&
     ((data.profile.username ?? null) !== null || data.profile.has_password === true);
 
+  const isPending = data?.profile.approvalStatus === 'pending';
+
+  // Pending-approval state: show only the waiting-for-approval card. The
+  // useQuery polls every 5s while pending, so the page auto-refreshes the
+  // moment an admin approves.
+  if (isPending) {
+    return (
+      <div style={styles.container}>
+        <h1 style={styles.pageTitle}>My Account</h1>
+        <div style={styles.card} data-testid="pending-approval-card">
+          <h2 style={styles.sectionTitle}>Waiting for approval</h2>
+          <p style={styles.helpText}>
+            Your account is pending review. An admin or staff member will
+            approve it shortly. This page will refresh automatically once
+            your account is approved.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.container}>
       <h1 style={styles.pageTitle}>My Account</h1>
