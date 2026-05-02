@@ -616,6 +616,71 @@ describe('AppLayout', () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  AppLayout — loading to resolved transition (hook-order regression) */
+/* ------------------------------------------------------------------ */
+
+describe('AppLayout — loading to resolved transition', () => {
+  afterEach(() => {
+    resetFetch();
+  });
+
+  it('renders sidebar after auth resolves without hook-order errors', async () => {
+    // Return a 403 for /api/account so the query errors silently rather than
+    // hanging — we are only testing the nav render, not account data.
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = vi.fn().mockImplementation(
+      (url: string) => {
+        if (url === '/api/account') {
+          return Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: 'Forbidden' }) });
+        }
+        if (url === '/api/health') {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ appName: 'Test App' }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+      },
+    );
+
+    // Phase 1: auth is still loading — useAuth returns loading: true, user: null.
+    mockUseAuth.mockReturnValue({ user: null, loading: true, logout: vi.fn() });
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    const AppLayoutWrapper = () => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/']}>
+          <AppLayout />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const { rerender } = render(<AppLayoutWrapper />);
+
+    // Loading spinner must be visible and sidebar must not yet be present.
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^account$/i })).not.toBeInTheDocument();
+
+    // Phase 2: auth resolved — update the mock before rerendering so every
+    // call to useAuth() in the next render cycle returns the resolved value.
+    mockUseAuth.mockReturnValue({
+      user: makeStudentUser(),
+      loading: false,
+      logout: vi.fn(),
+    });
+
+    rerender(<AppLayoutWrapper />);
+
+    // The sidebar "Account" nav link should now be visible.  If the useQuery
+    // was placed AFTER the conditional early return (the regression), React
+    // would throw "Rendered more hooks than during the previous render" and
+    // this await would never resolve — the test fails loudly.
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /^account$/i })).toBeInTheDocument();
+    });
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  hasStaffAccess unit tests (retained from previous test file)       */
 /* ------------------------------------------------------------------ */
 

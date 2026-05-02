@@ -1,11 +1,17 @@
 /**
- * Account routes — endpoints scoped to the signed-in student's own account.
+ * Account routes — endpoints scoped to the signed-in user's own account.
  *
- * Every handler applies requireAuth + requireRole('student').
- * Requests from users with role=staff or role=admin return 403.
+ * GET /account and DELETE /account/logins/:id apply requireAuth only and are
+ * accessible to all authenticated roles (student, staff, admin). The response
+ * shape is identical for all roles; fields that do not apply to non-students
+ * (cohort, workspaceTempPassword, llmProxyEnabled) return null/false/empty
+ * naturally when no corresponding DB records exist.
+ *
+ * GET /account/llm-proxy retains requireRole('student') — the LLM proxy
+ * feature is student-only.
  *
  * Provisioning (workspace, Claude, LLM proxy) is admin-initiated only;
- * students cannot request services from this surface.
+ * users cannot request services from this surface.
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
@@ -23,16 +29,17 @@ export const accountRouter = Router();
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the signed-in student's full account data in one response:
- *   profile          — id, displayName, primaryEmail, cohort, role, createdAt
+ * Returns the signed-in user's full account data in one response.
+ * Accessible to all authenticated roles (student, staff, admin).
+ *
+ *   profile          — id, displayName, primaryEmail, cohort, role, createdAt,
+ *                      workspaceTempPassword, llmProxyEnabled (null/false for non-students)
  *   logins           — all Login records for this user
  *   externalAccounts — all ExternalAccount records for this user
- *   provisioningRequests — all ProvisioningRequest records, newest first
  */
 accountRouter.get(
   '/account',
   requireAuth,
-  requireRole('student'),
   async (req: Request, res: Response) => {
     const userId: number = (req.session as any).userId;
     const { users, cohorts, logins, externalAccounts, llmProxyTokens } = req.services;
@@ -102,7 +109,8 @@ accountRouter.get(
 // ---------------------------------------------------------------------------
 
 /**
- * Removes a Login that belongs to the signed-in student.
+ * Removes a Login that belongs to the signed-in user.
+ * Accessible to all authenticated roles (student, staff, admin).
  *
  * Ownership scope: the Login must have login.user_id === session.userId.
  * If the ID does not exist or belongs to another user, returns 404 (to avoid
@@ -117,7 +125,6 @@ accountRouter.get(
 accountRouter.delete(
   '/account/logins/:id',
   requireAuth,
-  requireRole('student'),
   async (req: Request, res: Response, next: NextFunction) => {
     const userId: number = (req.session as any).userId;
     const loginId = parseInt(req.params.id as string, 10);
