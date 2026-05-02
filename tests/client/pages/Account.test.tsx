@@ -1,9 +1,10 @@
 /**
- * Tests for the Account page — Sprint 020 (post tile-launchpad removal).
+ * Tests for the Account page — Sprint 020 (post tile-launchpad removal),
+ * widened in Sprint 022 to cover all authenticated roles.
  *
  * Covers:
- *  - Admin: renders without redirecting; no tile sections.
- *  - Staff: renders without redirecting; no tile sections.
+ *  - Admin: renders Profile, Logins, and Add-Login buttons.
+ *  - Staff: renders Profile, Logins, and Add-Login buttons.
  *  - Student: renders profile and login sections; no tile/services sections.
  *  - LoginsSection: three Add buttons (Google, GitHub, Pike 13); always visible.
  *  - UsernamePasswordSection: visibility conditions and error surfaces.
@@ -74,11 +75,71 @@ const STUDENT_ACCOUNT_BASE = {
   externalAccounts: [],
 };
 
-/** Build a fetch mock that returns appropriate data for each URL. */
+/** Account data shaped for admin — no workspace, no cohort. */
+const ADMIN_ACCOUNT_BASE = {
+  profile: {
+    id: 2,
+    displayName: 'Test admin',
+    primaryEmail: 'admin@example.com',
+    cohort: null,
+    role: 'admin',
+    approvalStatus: 'approved' as const,
+    createdAt: '2025-01-01T00:00:00Z',
+    llmProxyEnabled: false,
+    username: null,
+    has_password: false,
+  },
+  logins: [
+    {
+      id: 2,
+      provider: 'google',
+      providerEmail: 'admin@example.com',
+      providerUsername: null,
+      createdAt: '2025-01-01T00:00:00Z',
+    },
+  ],
+  externalAccounts: [],
+};
+
+/** Account data shaped for staff — no workspace, no cohort. */
+const STAFF_ACCOUNT_BASE = {
+  profile: {
+    id: 3,
+    displayName: 'Test staff',
+    primaryEmail: 'staff@example.com',
+    cohort: null,
+    role: 'staff',
+    approvalStatus: 'approved' as const,
+    createdAt: '2025-01-01T00:00:00Z',
+    llmProxyEnabled: false,
+    username: null,
+    has_password: false,
+  },
+  logins: [
+    {
+      id: 3,
+      provider: 'google',
+      providerEmail: 'staff@example.com',
+      providerUsername: null,
+      createdAt: '2025-01-01T00:00:00Z',
+    },
+  ],
+  externalAccounts: [],
+};
+
+/** Build a fetch mock that returns appropriate data for each URL.
+ *
+ * @param includeAccount - When true, /api/account returns the base data merged
+ *   with accountOverrides.
+ * @param accountOverrides - Deep-merged into the base account data.
+ * @param credentialsResponse - Optional override for PATCH /api/account/credentials.
+ * @param baseAccount - Base account object to merge into (defaults to STUDENT_ACCOUNT_BASE).
+ */
 function makeFetch(
-  includeStudentAccount = false,
+  includeAccount = false,
   accountOverrides: Record<string, unknown> = {},
   credentialsResponse?: { status: number; body: unknown },
+  baseAccount: typeof STUDENT_ACCOUNT_BASE = STUDENT_ACCOUNT_BASE,
 ) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     // PATCH /api/account/credentials
@@ -101,12 +162,12 @@ function makeFetch(
       };
     }
 
-    if (url === '/api/account' && includeStudentAccount) {
+    if (url === '/api/account' && includeAccount) {
       const data = {
-        ...STUDENT_ACCOUNT_BASE,
+        ...baseAccount,
         ...accountOverrides,
         profile: {
-          ...STUDENT_ACCOUNT_BASE.profile,
+          ...baseAccount.profile,
           ...((accountOverrides.profile as object) ?? {}),
         },
       };
@@ -173,7 +234,7 @@ afterEach(() => {
 describe('Account page — admin', () => {
   it('renders without redirecting to /', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ADMIN_ACCOUNT_BASE);
 
     renderAccount();
 
@@ -185,7 +246,7 @@ describe('Account page — admin', () => {
 
   it('does NOT show Apps zone heading (tile launchpad removed)', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ADMIN_ACCOUNT_BASE);
 
     renderAccount();
 
@@ -196,23 +257,24 @@ describe('Account page — admin', () => {
     expect(screen.queryByRole('heading', { name: /your applications/i })).not.toBeInTheDocument();
   });
 
-  it('does not show student-only sections (Profile, Logins) for admin', async () => {
+  it('shows Profile and Sign-in Methods sections for admin', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ADMIN_ACCOUNT_BASE);
 
     renderAccount();
 
+    // Wait for the data to load (profile name is only visible after fetch completes)
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+      expect(screen.getByText('Test admin')).toBeInTheDocument();
     });
 
-    expect(screen.queryByText('Sign-in Methods')).not.toBeInTheDocument();
+    expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
     expect(screen.queryByText('Services')).not.toBeInTheDocument();
   });
 
   it('does NOT show Services or ClaudeCode or LLM Proxy sections for admin', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ADMIN_ACCOUNT_BASE);
 
     renderAccount();
 
@@ -223,6 +285,21 @@ describe('Account page — admin', () => {
     expect(screen.queryByText('Services')).not.toBeInTheDocument();
     expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
     expect(screen.queryByText('LLM Proxy')).not.toBeInTheDocument();
+  });
+
+  it('renders all three Add-Login buttons for admin', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ADMIN_ACCOUNT_BASE);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add Pike 13' })).toBeInTheDocument();
   });
 });
 
@@ -233,7 +310,7 @@ describe('Account page — admin', () => {
 describe('Account page — staff', () => {
   it('renders without redirecting', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, STAFF_ACCOUNT_BASE);
 
     renderAccount();
 
@@ -244,7 +321,7 @@ describe('Account page — staff', () => {
 
   it('does NOT show Apps zone for staff (removed in Sprint 020)', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, STAFF_ACCOUNT_BASE);
 
     renderAccount();
 
@@ -255,9 +332,24 @@ describe('Account page — staff', () => {
     expect(screen.queryByRole('heading', { name: /your applications/i })).not.toBeInTheDocument();
   });
 
+  it('shows Profile and Sign-in Methods sections for staff', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, STAFF_ACCOUNT_BASE);
+
+    renderAccount();
+
+    // Wait for the data to load (profile name is only visible after fetch completes)
+    await waitFor(() => {
+      expect(screen.getByText('Test staff')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    expect(screen.queryByText('Services')).not.toBeInTheDocument();
+  });
+
   it('does NOT show Services or ClaudeCode or LLM Proxy sections for staff', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, STAFF_ACCOUNT_BASE);
 
     renderAccount();
 
@@ -268,6 +360,21 @@ describe('Account page — staff', () => {
     expect(screen.queryByText('Services')).not.toBeInTheDocument();
     expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
     expect(screen.queryByText('LLM Proxy')).not.toBeInTheDocument();
+  });
+
+  it('renders all three Add-Login buttons for staff', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, STAFF_ACCOUNT_BASE);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add Pike 13' })).toBeInTheDocument();
   });
 });
 
@@ -568,12 +675,13 @@ describe('Account page — WorkspaceSection', () => {
 
   it('does NOT render WorkspaceSection for admin', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    // Admin has no workspace ExternalAccount and a non-League email
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ADMIN_ACCOUNT_BASE);
 
     renderAccount();
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
     });
 
     expect(screen.queryByTestId('workspace-section')).not.toBeInTheDocument();
@@ -581,12 +689,13 @@ describe('Account page — WorkspaceSection', () => {
 
   it('does NOT render WorkspaceSection for staff', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
-    (globalThis as any).fetch = makeFetch();
+    // Staff has no workspace ExternalAccount and a non-League email
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, STAFF_ACCOUNT_BASE);
 
     renderAccount();
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
     });
 
     expect(screen.queryByTestId('workspace-section')).not.toBeInTheDocument();
