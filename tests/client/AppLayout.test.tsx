@@ -182,16 +182,15 @@ describe('AppLayout', () => {
       expect(screen.getByText('About')).toBeInTheDocument();
     });
 
-    it('does not see Account as a sidebar nav link (Account is in user-menu dropdown)', () => {
+    it('sees Account as the first sidebar nav link', () => {
       renderLayout();
-      // "Account" only appears inside the dropdown, not as a sidebar NavLink.
-      // The sidebar nav area contains NavLink elements; the dropdown button is
-      // only rendered when the user area is clicked.
       const nav = document.querySelector('nav')!;
-      // OAuth Clients is a real nav link — check that "Account" is not a nav link
-      const navLinks = nav.querySelectorAll('a');
-      const accountLink = Array.from(navLinks).find((a) => a.textContent === 'Account');
-      expect(accountLink).toBeUndefined();
+      const navLinks = Array.from(nav.querySelectorAll('a'));
+      const accountLink = navLinks.find((a) => a.textContent === 'Account');
+      expect(accountLink).toBeDefined();
+      expect(accountLink).toHaveAttribute('href', '/account');
+      // Account is the first nav link (above OAuth Clients).
+      expect(navLinks[0]?.textContent).toBe('Account');
     });
 
     it('does not see Services in the sidebar', () => {
@@ -543,12 +542,9 @@ describe('AppLayout', () => {
 
     it('Account link appears in user-menu dropdown after clicking user area', () => {
       renderLayout();
-      // Account should NOT be a sidebar NavLink
-      const navLinks = document.querySelector('nav')!.querySelectorAll('a');
-      const accountNavLink = Array.from(navLinks).find((a) => a.textContent === 'Account');
-      expect(accountNavLink).toBeUndefined();
-
-      // Clicking user area opens the dropdown containing Account
+      // Clicking user area opens the dropdown containing an Account button.
+      // Account is also a sidebar NavLink (first item) — the dropdown copy is a
+      // separate convenience entry.
       const userArea = screen.getByText('Jane Student').closest('div[style]')!;
       fireEvent.click(userArea);
       expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument();

@@ -65,6 +65,19 @@ const SIDEBAR_NAV: SidebarItem[] = [
   // --- Always-on for authenticated users ---
   {
     kind: 'link',
+    to: '/account',
+    label: 'Account',
+  },
+  // --- Dashboard (admin only) — second item for admins ---
+  {
+    kind: 'link',
+    to: '/',
+    label: 'Dashboard',
+    end: true,
+    gate: (role) => hasAdminAccess(role),
+  },
+  {
+    kind: 'link',
     to: '/oauth-clients',
     label: 'OAuth Clients',
   },
@@ -101,13 +114,6 @@ const SIDEBAR_NAV: SidebarItem[] = [
   },
 
   // --- Admin-only flat items ---
-  {
-    kind: 'link',
-    to: '/',
-    label: 'Dashboard',
-    end: true,
-    gate: (role) => hasAdminAccess(role),
-  },
   {
     kind: 'link',
     to: '/sync',
