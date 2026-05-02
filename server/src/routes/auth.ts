@@ -330,19 +330,11 @@ authRouter.get(
           return res.redirect('/account');
         }
 
-        // Approval gate: only auto-approved users (staff/admin via the
-        // /Staff OU) get a session at sign-in. Everyone else lands on
-        // the login page with a "pending approval" message and waits
-        // for an admin to approve them in the dashboard.
-        if ((user as any).approval_status === 'pending') {
-          logger.info(
-            { userId: (user as any).id, email: (user as any).primary_email },
-            '[google-callback] user is pending approval — denying session establishment'
-          );
-          return res.redirect('/login?error=pending_approval');
-        }
-
-        // Normal sign-in path.
+        // Pending-approval users may sign in; the /account page shows
+        // a "Waiting for approval" card and the sidebar locks down to
+        // just the Account link until an admin flips approval_status.
+        // Permanently-denied users were rejected earlier (sign-in handler
+        // throws PermanentlyDeniedError before we reach this point).
         logger.info(
           { userId: (user as any).id, role: (user as any).role },
           '[google-callback] normal sign-in, calling req.login'
@@ -484,17 +476,7 @@ authRouter.get(
           return res.redirect('/account');
         }
 
-        // Approval gate — same rule as Google: pending users wait for
-        // an admin to approve them.
-        if ((user as any).approval_status === 'pending') {
-          logger.info(
-            { userId: (user as any).id, email: (user as any).primary_email },
-            '[github-callback] user is pending approval — denying session establishment'
-          );
-          return res.redirect('/login?error=pending_approval');
-        }
-
-        // Normal sign-in path.
+        // Pending-approval users may sign in; same rule as Google.
         logger.info(
           { userId: (user as any).id, role: (user as any).role },
           '[github-callback] normal sign-in, calling req.login'
@@ -719,15 +701,7 @@ authRouter.get(
         },
       );
 
-      // Approval gate — pending users get the same redirect as Google/GitHub.
-      if ((user as any).approval_status === 'pending') {
-        logger.info(
-          { userId: (user as any).id, email: (user as any).primary_email },
-          '[pike13-callback] user is pending approval — denying session establishment'
-        );
-        return res.redirect('/login?error=pending_approval');
-      }
-
+      // Pending-approval users may sign in; same rule as Google/GitHub.
       req.login(user, (loginErr) => {
         if (loginErr) {
           logger.error({ loginErr }, '[pike13-callback] req.login failed');

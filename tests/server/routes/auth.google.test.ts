@@ -13,6 +13,7 @@
  *  - OAuth callback: new user created, session established, redirect to /account.
  *  - OAuth callback: returning user signed in, no new User/Login created.
  *  - OAuth callback: error/denial redirects to /?error=oauth_denied.
+ *  - OAuth callback: pending users get a session and redirect to /account.
  *  - GET /account returns 200 with placeholder text after sign-in.
  *  - Session contains userId and role after successful sign-in.
  */
@@ -236,25 +237,27 @@ describe('GET /api/auth/google/callback — new user', () => {
     expect(login.provider_email).toBe('newuser@example.com');
   });
 
-  it('redirects to /login?error=pending_approval on first sign-in (non-staff)', async () => {
+  it('redirects to /account on first sign-in (non-staff, pending approval)', async () => {
     mockStrategy.setProfile(googleProfile);
 
     const res = await request(app).get('/api/auth/google/callback');
 
-    // Non-staff users always start in the approval queue.
+    // Pending users now get a session and land on /account where the UI shows
+    // a "Waiting for approval" card. No redirect to an error page.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login?error=pending_approval');
+    expect(res.headers.location).toBe('/account');
   });
 
-  it('does NOT establish a session for a pending user', async () => {
+  it('establishes a session for a pending user', async () => {
     mockStrategy.setProfile(googleProfile);
 
     const agent = request.agent(app);
     await agent.get('/api/auth/google/callback');
 
-    // /api/auth/me should be unauthenticated since approval is pending.
+    // Pending users get a valid session — /api/auth/me returns 200.
     const me = await agent.get('/api/auth/me');
-    expect(me.status).toBe(401);
+    expect(me.status).toBe(200);
+    expect(me.body).toHaveProperty('email', 'newuser@example.com');
   });
 });
 
@@ -444,10 +447,10 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
 
     const res = await request(app).get('/api/auth/google/callback');
 
-    // Sign-in is not a hard deny but no session is established —
-    // they wait in the approval queue.
+    // Pending users get a session and land on /account where the UI shows
+    // a "Waiting for approval" card. No redirect to an error page.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login?error=pending_approval');
+    expect(res.headers.location).toBe('/account');
 
     const user = await (prisma as any).user.findFirst({
       where: { primary_email: 'nonstaffou@jointheleague.org' },
@@ -533,8 +536,9 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
 
     const res = await request(app).get('/api/auth/google/callback');
 
+    // Pending users get a session and land on /account; OU lookup is still skipped.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login?error=pending_approval');
+    expect(res.headers.location).toBe('/account');
     expect(ouLookupCalled).toBe(false);
 
     const user = await (prisma as any).user.findFirst({
@@ -563,8 +567,9 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
 
     const res = await request(app).get('/api/auth/google/callback');
 
+    // Pending users get a session and land on /account; OU lookup is still skipped.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login?error=pending_approval');
+    expect(res.headers.location).toBe('/account');
     expect(ouLookupCalled).toBe(false);
 
     const user = await (prisma as any).user.findFirst({
@@ -643,16 +648,21 @@ describe('GET /api/auth/google/callback — post-login redirect by role', () => 
     expect(res.headers.location).toBe('/account');
   });
 
-  it('redirects pending student to /login?error=pending_approval (no session)', async () => {
+  it('redirects pending student to /account and establishes a session', async () => {
     mockStrategy.setProfile({
       id: 'google-uid-student-redirect',
       displayName: 'Student User',
       emails: [{ value: 'student-redirect@example.com' }],
     });
 
-    const res = await request(app).get('/api/auth/google/callback');
+    const agent = request.agent(app);
+    const res = await agent.get('/api/auth/google/callback');
 
+    // Pending students now get a session and land on /account.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login?error=pending_approval');
+    expect(res.headers.location).toBe('/account');
+
+    const me = await agent.get('/api/auth/me');
+    expect(me.status).toBe(200);
   });
 });

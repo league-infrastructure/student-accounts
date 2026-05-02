@@ -222,8 +222,8 @@ describe('GET /api/auth/github/callback — new user with email', () => {
   });
 
   it('redirects to /account on successful sign-in', async () => {
-    // Pre-seed approved user — post-Sprint-015 brand-new social_login users
-    // are pending and would land on /login?error=pending_approval.
+    // Pre-seed approved user — brand-new social_login users start pending and
+    // land on /account showing a "Waiting for approval" card.
     await makeUser({ primary_email: 'newghuser@example.com', display_name: 'New GitHub User' });
     mockStrategy.setProfile(githubProfile);
 
