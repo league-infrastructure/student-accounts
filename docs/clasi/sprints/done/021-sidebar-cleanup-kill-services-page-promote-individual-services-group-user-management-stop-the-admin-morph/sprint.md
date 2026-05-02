@@ -1,14 +1,15 @@
 ---
-id: "021"
-title: "Sidebar cleanup - kill Services page promote individual services group user management stop the admin morph"
-status: planning
+id: '021'
+title: Sidebar cleanup - kill Services page promote individual services group user
+  management stop the admin morph
+status: done
 branch: sprint/021-sidebar-cleanup-kill-services-page-promote-individual-services-group-user-management-stop-the-admin-morph
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
