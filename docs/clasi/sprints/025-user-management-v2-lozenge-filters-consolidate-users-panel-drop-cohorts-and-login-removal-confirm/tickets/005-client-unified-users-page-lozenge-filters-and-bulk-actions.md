@@ -1,16 +1,16 @@
 ---
-id: "005"
-title: "Client: unified Users page lozenge filters and bulk actions"
-status: todo
+id: '005'
+title: 'Client: unified Users page lozenge filters and bulk actions'
+status: done
 use-cases:
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-006
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-006
 depends-on:
-  - "003"
-github-issue: ""
-todo: ""
+- '003'
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 
@@ -34,38 +34,38 @@ not be linked from the sidebar.
 ## Acceptance Criteria
 
 **Role lozenge filter (radio group):**
-- [ ] Four pill buttons rendered above the table: `All | Staff | Admin | Student`.
-- [ ] Exactly one is active at a time; clicking another deactivates the current one.
-- [ ] Default: `All`.
-- [ ] `Staff` shows users where `normalizeRole(role) === 'staff'`.
-- [ ] `Admin` shows users where `normalizeRole(role) === 'admin'`.
-- [ ] `Student` shows users where `normalizeRole(role) === 'student'` (no email-domain filter).
+- [x] Four pill buttons rendered above the table: `All | Staff | Admin | Student`.
+- [x] Exactly one is active at a time; clicking another deactivates the current one.
+- [x] Default: `All`.
+- [x] `Staff` shows users where `normalizeRole(role) === 'staff'`.
+- [x] `Admin` shows users where `normalizeRole(role) === 'admin'`.
+- [x] `Student` shows users where `normalizeRole(role) === 'student'` (no email-domain filter).
 
 **Feature lozenge filter (multi-select toggle group):**
-- [ ] Five pill buttons rendered on a second row: `Google | Pike 13 | GitHub | LLM Proxy | OAuth Client`.
-- [ ] Each is independently on/off; multiple may be active simultaneously.
-- [ ] When multiple are active, results are the intersection (user must match ALL active predicates).
-- [ ] When none are active, no feature filter applies.
-- [ ] `Google`: `providers.some(p => p.provider === 'google')`
-- [ ] `Pike 13`: `externalAccountTypes.includes('pike13')`
-- [ ] `GitHub`: `providers.some(p => p.provider === 'github')`
-- [ ] `LLM Proxy`: `llmProxyEnabled === true` (requires ticket 003)
-- [ ] `OAuth Client`: `oauthClientCount > 0` (requires ticket 003)
+- [x] Five pill buttons rendered on a second row: `Google | Pike 13 | GitHub | LLM Proxy | OAuth Client`.
+- [x] Each is independently on/off; multiple may be active simultaneously.
+- [x] When multiple are active, results are the intersection (user must match ALL active predicates).
+- [x] When none are active, no feature filter applies.
+- [x] `Google`: `providers.some(p => p.provider === 'google')`
+- [x] `Pike 13`: `externalAccountTypes.includes('pike13')`
+- [x] `GitHub`: `providers.some(p => p.provider === 'github')`
+- [x] `LLM Proxy`: `llmProxyEnabled === true` (requires ticket 003)
+- [x] `OAuth Client`: `oauthClientCount > 0` (requires ticket 003)
 
 **Cohort column:**
-- [ ] The "Cohort" column header and all cohort cells are removed from the table.
-- [ ] `cohortLabel`, cohort sort comparator, and cohort chip style are removed.
-- [ ] The `cohort` query (`GET /api/admin/cohorts`) is no longer fetched.
-- [ ] Sort columns that referenced cohort are updated (cohort sort option removed from SortCol type).
+- [x] The "Cohort" column header and all cohort cells are removed from the table.
+- [x] `cohortLabel`, cohort sort comparator, and cohort chip style are removed.
+- [x] The `cohort` query (`GET /api/admin/cohorts`) is no longer fetched.
+- [x] Sort columns that referenced cohort are updated (cohort sort option removed from SortCol type).
 
 **Bulk actions:**
-- [ ] "Suspend accounts" button added to bulk toolbar; calls `POST /api/admin/users/bulk-suspend-accounts` with selected user IDs; guarded by `<ConfirmDialog>` (ticket 001 must be merged first, or ConfirmDialog may be created inline if 001 is in parallel).
-- [ ] "Revoke LLM Proxy" button added to bulk toolbar; enabled only when at least one selected user has `llmProxyEnabled === true`; calls the LLM proxy bulk-revoke endpoint.
-- [ ] Both bulk actions show `<ConfirmDialog>` before proceeding.
+- [x] "Suspend accounts" button added to bulk toolbar; calls `POST /api/admin/users/bulk-suspend-accounts` with selected user IDs; guarded by `<ConfirmDialog>` (ticket 001 must be merged first, or ConfirmDialog may be created inline if 001 is in parallel).
+- [x] "Revoke LLM Proxy" button added to bulk toolbar; enabled only when at least one selected user has `llmProxyEnabled === true`; calls the LLM proxy bulk-revoke endpoint.
+- [x] Both bulk actions show `<ConfirmDialog>` before proceeding.
 
 **Filter removal:**
-- [ ] The `<FilterDropdown>` component and all references to it are removed from `AdminUsersPanel.tsx`.
-- [ ] The `FilterOption` type and `filterUsers`/`filterLabel` helpers are removed or replaced by the lozenge filter logic.
+- [x] The `<FilterDropdown>` component and all references to it are removed from `AdminUsersPanel.tsx`.
+- [x] The `FilterOption` type and `filterUsers`/`filterLabel` helpers are removed or replaced by the lozenge filter logic.
 
 ## Implementation Plan
 
