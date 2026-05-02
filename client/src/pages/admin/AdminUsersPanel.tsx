@@ -330,7 +330,7 @@ function RoleLozengeBar({ value, onChange }: RoleLozengeBarProps) {
           type="button"
           aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
-          style={lozengePillStyle(value === opt.value, 'radio')}
+          style={lozengePillStyle(value === opt.value, 'role')}
         >
           {opt.label}
         </button>
@@ -362,7 +362,7 @@ function FeatureLozengeBar({ value, onChange }: FeatureLozengeBarProps) {
           type="button"
           aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
-          style={lozengePillStyle(value === opt.value, 'radio')}
+          style={lozengePillStyle(value === opt.value, 'feature')}
         >
           {opt.label}
         </button>
@@ -913,6 +913,7 @@ export default function AdminUsersPanel() {
           aria-label="Search users"
         />
         <RoleLozengeBar value={roleFilter} onChange={setRoleFilter} />
+        <div style={lozengeDividerStyle} aria-hidden="true" />
         <FeatureLozengeBar value={featureFilter} onChange={setFeatureFilter} />
       </div>
 
@@ -1092,20 +1093,34 @@ const lozengeBarStyle: React.CSSProperties = {
   gap: 6,
 };
 
-function lozengePillStyle(active: boolean, variant: 'radio' | 'toggle'): React.CSSProperties {
-  const activeColor = variant === 'radio' ? '#1d4ed8' : '#0f766e';
+type LozengeColor = 'role' | 'feature';
+
+const LOZENGE_COLORS: Record<LozengeColor, { active: string; bg: string }> = {
+  role: { active: '#1d4ed8', bg: '#eff6ff' },     // blue
+  feature: { active: '#7c3aed', bg: '#f5f3ff' },  // purple
+};
+
+function lozengePillStyle(active: boolean, color: LozengeColor): React.CSSProperties {
+  const palette = LOZENGE_COLORS[color];
   return {
     padding: '4px 12px',
     fontSize: 12,
     fontWeight: active ? 700 : 500,
-    border: active ? `2px solid ${activeColor}` : '2px solid #e2e8f0',
+    border: active ? `2px solid ${palette.active}` : '2px solid #e2e8f0',
     borderRadius: 999,
     cursor: 'pointer',
-    background: active ? (variant === 'radio' ? '#eff6ff' : '#f0fdfa') : '#f8fafc',
-    color: active ? activeColor : '#475569',
+    background: active ? palette.bg : '#f8fafc',
+    color: active ? palette.active : '#475569',
     transition: 'all 0.1s',
   };
 }
+
+const lozengeDividerStyle: React.CSSProperties = {
+  width: 1,
+  alignSelf: 'stretch',
+  background: '#cbd5e1',
+  margin: '0 4px',
+};
 
 const bulkToolbarStyle: React.CSSProperties = {
   display: 'flex',
