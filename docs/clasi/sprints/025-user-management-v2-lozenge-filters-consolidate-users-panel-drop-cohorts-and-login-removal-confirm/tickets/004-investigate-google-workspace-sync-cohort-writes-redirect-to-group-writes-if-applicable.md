@@ -1,12 +1,13 @@
 ---
-id: "004"
-title: "Investigate Google Workspace sync cohort-writes; redirect to Group-writes if applicable"
-status: todo
+id: '004'
+title: Investigate Google Workspace sync cohort-writes; redirect to Group-writes if
+  applicable
+status: done
 use-cases:
-  - SUC-007
+- SUC-007
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 
@@ -27,19 +28,19 @@ root env var is set) and what would need to change.
 
 ## Acceptance Criteria
 
-- [ ] Read `server/src/services/workspace-sync.service.ts` `syncCohorts` method in full and document what it does.
-- [ ] Determine whether `syncCohorts` is currently called and whether it creates Cohort rows in any environment (dev or prod). Check the sync route and the scheduler for call sites.
+- [x] Read `server/src/services/workspace-sync.service.ts` `syncCohorts` method in full and document what it does.
+- [x] Determine whether `syncCohorts` is currently called and whether it creates Cohort rows in any environment (dev or prod). Check the sync route and the scheduler for call sites.
 
 **If `syncCohorts` creates Cohort rows:**
-- [ ] Replace `CohortService` / `CohortRepository` writes with equivalent `GroupService` writes. Each OU that would have become a Cohort becomes a Group with the same name.
-- [ ] Add `upsertByName(name: string, tx?)` to `GroupService` (or use an equivalent existing method) if one does not exist.
-- [ ] Remove `CohortService` and `CohortRepository` from `WorkspaceSyncService` constructor/imports if they are no longer used after the redirect.
-- [ ] Rename or replace `WorkspaceSyncReport.cohortsUpserted` with `groupsUpserted`; update the sync route's response and any callers that inspect this field.
-- [ ] The sync route handler and scheduler call sites are updated to expect `groupsUpserted` in the report.
+- [x] Replace `CohortService` / `CohortRepository` writes with equivalent `GroupService` writes. Each OU that would have become a Cohort becomes a Group with the same name.
+- [x] Add `upsertByName(name: string, tx?)` to `GroupService` (or use an equivalent existing method) if one does not exist.
+- [x] Remove `CohortService` and `CohortRepository` from `WorkspaceSyncService` constructor/imports if they are no longer used after the redirect.
+- [x] Rename or replace `WorkspaceSyncReport.cohortsUpserted` with `groupsUpserted`; update the sync route's response and any callers that inspect this field.
+- [x] The sync route handler and scheduler call sites are updated to expect `groupsUpserted` in the report.
 
 **If `syncCohorts` does NOT create Cohort rows (e.g., Google client is unconfigured):**
-- [ ] Add a code comment in `syncCohorts` noting that cohort-writes were intentionally stopped as of sprint 025 and that the method is a no-op or routes to Groups.
-- [ ] No functional code change is required; close the ticket with a documentation note.
+- [x] Add a code comment in `syncCohorts` noting that cohort-writes were intentionally stopped as of sprint 025 and that the method is a no-op or routes to Groups.
+- [x] No functional code change is required; close the ticket with a documentation note.
 
 ## Implementation Plan
 

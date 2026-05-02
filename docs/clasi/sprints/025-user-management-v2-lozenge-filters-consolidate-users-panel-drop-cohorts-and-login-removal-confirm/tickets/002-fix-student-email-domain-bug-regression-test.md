@@ -1,12 +1,12 @@
 ---
-id: "002"
-title: "Fix student email-domain bug + regression test"
-status: todo
+id: '002'
+title: Fix student email-domain bug + regression test
+status: done
 use-cases:
-  - SUC-002
+- SUC-002
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 
@@ -31,10 +31,10 @@ forward.
 
 ## Acceptance Criteria
 
-- [ ] `StudentAccountsPanel.tsx` filters to `role === 'student'` (case-insensitive normalize); the `STUDENT_EMAIL_RE` regex filter is removed.
-- [ ] A student user with `email: 'eric@civicknowledge.com'` and `role: 'student'` (or `role: 'USER'` as returned by the API, which normalizes to student) appears in the Students list.
-- [ ] A regression test in `tests/client/pages/Account.test.tsx` or a new `tests/client/pages/StudentAccountsPanel.test.tsx` asserts that a user with `role: 'USER'` and a non-League email is visible in the panel. (If the panel will be deleted in ticket 006, the test may live in `AdminUsersPanel.test.tsx` instead and cover the Student lozenge predicate — coordinate with ticket 005.)
-- [ ] `AdminUsersPanel.tsx` `filterUsers` `students` case is audited: the current code is `normalizeRole(u.role) === 'student'`, which is already correct. Confirm this does not include an email-domain check. If it does, remove it.
+- [x] `StudentAccountsPanel.tsx` filters to `role === 'student'` (case-insensitive normalize); the `STUDENT_EMAIL_RE` regex filter is removed.
+- [x] A student user with `email: 'eric@civicknowledge.com'` and `role: 'student'` (or `role: 'USER'` as returned by the API, which normalizes to student) appears in the Students list.
+- [x] A regression test in `tests/client/pages/Account.test.tsx` or a new `tests/client/pages/StudentAccountsPanel.test.tsx` asserts that a user with `role: 'USER'` and a non-League email is visible in the panel. (If the panel will be deleted in ticket 006, the test may live in `AdminUsersPanel.test.tsx` instead and cover the Student lozenge predicate — coordinate with ticket 005.)
+- [x] `AdminUsersPanel.tsx` `filterUsers` `students` case is audited: the current code is `normalizeRole(u.role) === 'student'`, which is already correct. Confirm this does not include an email-domain check. If it does, remove it.
 
 ## Implementation Plan
 

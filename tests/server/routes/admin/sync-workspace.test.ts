@@ -37,8 +37,10 @@ async function cleanDb(): Promise<void> {
   await (prisma as any).auditEvent.deleteMany();
   await (prisma as any).externalAccount.deleteMany();
   await (prisma as any).login.deleteMany();
+  await (prisma as any).userGroup.deleteMany();
   await (prisma as any).user.deleteMany();
   await (prisma as any).cohort.deleteMany();
+  await (prisma as any).group.deleteMany();
 }
 
 async function loginAs(
@@ -54,6 +56,8 @@ async function loginAs(
  * Build a WorkspaceSyncService backed by a FakeGoogleWorkspaceAdminClient and
  * inject it into the singleton registry. Returns the fake client and a cleanup
  * function that restores the original service.
+ *
+ * Sprint 025 T004: cohortService removed from WorkspaceSyncService constructor.
  */
 function injectFakeWorkspaceSync(fakeGoogle?: FakeGoogleWorkspaceAdminClient): {
   fakeGoogle: FakeGoogleWorkspaceAdminClient;
@@ -65,7 +69,6 @@ function injectFakeWorkspaceSync(fakeGoogle?: FakeGoogleWorkspaceAdminClient): {
   const fakeSync = new WorkspaceSyncService(
     prisma as any,
     client,
-    (registry as any).cohorts,
     UserRepository,
     ExternalAccountRepository,
     CohortRepository,
@@ -152,13 +155,13 @@ describe('POST /api/admin/sync/workspace/cohorts — admin success', () => {
       const res = await agent.post('/api/admin/sync/workspace/cohorts');
 
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ cohortsUpserted: 0 });
+      expect(res.body).toMatchObject({ groupsUpserted: 0 });
     } finally {
       restore();
     }
   });
 
-  it('returns 200 with cohortsUpserted=1 when one OU is present', async () => {
+  it('returns 200 with groupsUpserted=1 when one OU is present', async () => {
     const { fakeGoogle, restore } = injectFakeWorkspaceSync();
     try {
       const studentRoot = process.env.GOOGLE_STUDENT_OU_ROOT ?? '/Students';
@@ -170,7 +173,7 @@ describe('POST /api/admin/sync/workspace/cohorts — admin success', () => {
       const res = await agent.post('/api/admin/sync/workspace/cohorts');
 
       expect(res.status).toBe(200);
-      expect(res.body.cohortsUpserted).toBe(1);
+      expect(res.body.groupsUpserted).toBe(1);
     } finally {
       restore();
     }
@@ -337,7 +340,7 @@ describe('POST /api/admin/sync/workspace/all — admin success', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({
-        cohortsUpserted: 0,
+        groupsUpserted: 0,
         staffUpserted: 0,
         studentsUpserted: 0,
         flaggedAccounts: [],

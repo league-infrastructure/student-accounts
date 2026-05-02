@@ -17,6 +17,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import UsernamePasswordSection from './account/UsernamePasswordSection';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -239,7 +240,7 @@ function Pike13Logo() {
 interface LoginsSectionProps {
   logins: AccountLogin[];
   onRemoveError: string | null;
-  onRemove: (id: number) => void;
+  onRemove: (login: AccountLogin) => void;
   removingId: number | null;
 }
 
@@ -275,7 +276,7 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
                 </td>
                 <td style={styles.td}>
                   <button
-                    onClick={() => onRemove(login.id)}
+                    onClick={() => onRemove(login)}
                     disabled={!canRemove || removingId === login.id}
                     title={!canRemove ? 'At least one login must remain' : undefined}
                     aria-label={`Remove ${providerLabel(login.provider)} login`}
@@ -420,6 +421,10 @@ export default function Account() {
   const { user, loading } = useAuth();
   const queryClient = useQueryClient();
 
+  // Confirmation dialog state for login removal
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingLogin, setPendingLogin] = useState<AccountLogin | null>(null);
+
   // Open SSE connection to receive real-time account updates from the server.
   useAccountEventStream();
 
@@ -515,8 +520,35 @@ export default function Account() {
                 : 'Failed to remove login'
               : null
           }
-          onRemove={(id) => removeLoginMutation.mutate(id)}
+          onRemove={(login) => {
+            setPendingLogin(login);
+            setConfirmOpen(true);
+          }}
           removingId={removeLoginMutation.isPending ? (removeLoginMutation.variables ?? null) : null}
+        />
+
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Remove login"
+          message={
+            pendingLogin
+              ? `Remove the ${providerLabel(pendingLogin.provider)} login from your account? You can re-link it later by clicking Add ${providerLabel(pendingLogin.provider)}.`
+              : ''
+          }
+          confirmLabel="Remove"
+          cancelLabel="Cancel"
+          danger
+          onConfirm={() => {
+            if (pendingLogin !== null) {
+              removeLoginMutation.mutate(pendingLogin.id);
+            }
+            setConfirmOpen(false);
+            setPendingLogin(null);
+          }}
+          onCancel={() => {
+            setConfirmOpen(false);
+            setPendingLogin(null);
+          }}
         />
 
         {hasCredentials && (

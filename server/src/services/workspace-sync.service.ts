@@ -4,10 +4,13 @@
  *
  * This service is the core of the Google Workspace sync epic (SUC-001 through
  * SUC-004). It reads the directory via GoogleWorkspaceAdminClient and upserts
- * local Cohort, User, and ExternalAccount rows to match.
+ * local Group, User, and ExternalAccount rows to match.
  *
  * Methods:
- *  - syncCohorts  — import child OUs under GOOGLE_STUDENT_OU_ROOT as Cohorts.
+ *  - syncCohorts  — import child OUs under GOOGLE_STUDENT_OU_ROOT as Groups.
+ *                   (Sprint 025: previously wrote Cohort rows; now writes Group
+ *                   rows with the same name. The User.cohort_id column is
+ *                   legacy and is NOT modified here — see ticket 004.)
  *  - syncStaff    — import users in GOOGLE_STAFF_OU_PATH as staff Users.
  *  - syncStudents — import users in student OUs as student Users, flag removed
  *                   workspace ExternalAccounts.
@@ -27,11 +30,10 @@
 import { createLogger } from './logger.js';
 import type { AuditService } from './audit.service.js';
 import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
-import type { CohortService } from './cohort.service.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import { CohortRepository } from './repositories/cohort.repository.js';
-import type { Cohort } from '../generated/prisma/client.js';
+import { GroupRepository } from './repositories/group.repository.js';
 
 const logger = createLogger('workspace-sync');
 
@@ -40,8 +42,11 @@ const logger = createLogger('workspace-sync');
 // ---------------------------------------------------------------------------
 
 export interface WorkspaceSyncReport {
-  /** Count of Cohort rows created or updated by syncCohorts. */
-  cohortsUpserted?: number;
+  /**
+   * Count of Group rows created or updated by syncCohorts.
+   * (Sprint 025: renamed from cohortsUpserted — OUs now sync as Groups.)
+   */
+  groupsUpserted?: number;
   /** Count of staff User rows created or updated by syncStaff. */
   staffUpserted?: number;
   /** Count of student User rows created or updated by syncStudents. */
@@ -63,7 +68,6 @@ export class WorkspaceSyncService {
   constructor(
     private readonly prisma: any,
     private readonly googleClient: GoogleWorkspaceAdminClient,
-    private readonly cohortService: CohortService,
     private readonly userRepo: typeof UserRepository,
     private readonly externalAccountRepo: typeof ExternalAccountRepository,
     private readonly cohortRepo: typeof CohortRepository,
@@ -75,14 +79,20 @@ export class WorkspaceSyncService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Import Google Workspace student OUs as Cohort rows.
+   * Import Google Workspace student OUs as Group rows.
+   *
+   * Sprint 025 (ticket 004): previously this method wrote Cohort rows via
+   * CohortService.upsertByOUPath. As of sprint 025 the cohort concept is
+   * being dropped at the top-level UI; OUs now sync as Groups with the same
+   * name. Existing Cohort rows and User.cohort_id assignments are NOT touched
+   * here — that migration is deferred.
    *
    * Calls listOUs(studentRoot) and for each child OU calls
-   * CohortService.upsertByOUPath to create or update the local Cohort row.
+   * GroupRepository.upsertByName to create or update the local Group row.
    *
    * @param actorId - The user performing this action; null for system.
    * @param tx      - Optional Prisma transaction client.
-   * @returns WorkspaceSyncReport with cohortsUpserted count.
+   * @returns WorkspaceSyncReport with groupsUpserted count.
    */
   async syncCohorts(
     actorId: number | null = null,
@@ -94,25 +104,37 @@ export class WorkspaceSyncService {
     logger.info({ studentRoot, actorId }, '[workspace-sync] syncCohorts: starting');
 
     const ous = await this.googleClient.listOUs(studentRoot);
-    let cohortsUpserted = 0;
+    let groupsUpserted = 0;
 
     for (const ou of ous) {
-      await this.cohortService.upsertByOUPath(ou.orgUnitPath, ou.name, actorId);
-      cohortsUpserted++;
+      const { created } = await GroupRepository.upsertByName(
+        db,
+        ou.name,
+        `Synced from Google Workspace OU ${ou.orgUnitPath}`,
+      );
+      if (created) {
+        await this.audit.record(db, {
+          actor_user_id: actorId,
+          action: 'create_group',
+          target_entity_type: 'Group',
+          details: { name: ou.name, source: 'workspace_sync', ou_path: ou.orgUnitPath },
+        });
+      }
+      groupsUpserted++;
     }
 
     await this.audit.record(db, {
       actor_user_id: actorId,
       action: 'sync_cohorts_completed',
-      details: { student_root: studentRoot, cohorts_upserted: cohortsUpserted },
+      details: { student_root: studentRoot, groups_upserted: groupsUpserted },
     });
 
     logger.info(
-      { studentRoot, cohortsUpserted },
+      { studentRoot, groupsUpserted },
       '[workspace-sync] syncCohorts: completed',
     );
 
-    return { cohortsUpserted };
+    return { groupsUpserted };
   }
 
   // ---------------------------------------------------------------------------
@@ -306,7 +328,7 @@ export class WorkspaceSyncService {
   ): Promise<WorkspaceSyncReport> {
     const db = tx ?? this.prisma;
     const combined: WorkspaceSyncReport = {
-      cohortsUpserted: 0,
+      groupsUpserted: 0,
       staffUpserted: 0,
       studentsUpserted: 0,
       flaggedAccounts: [],
@@ -318,7 +340,7 @@ export class WorkspaceSyncService {
     // syncCohorts
     try {
       const r = await this.syncCohorts(actorId, tx);
-      combined.cohortsUpserted = r.cohortsUpserted ?? 0;
+      combined.groupsUpserted = r.groupsUpserted ?? 0;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err }, '[workspace-sync] syncAll: syncCohorts failed');
@@ -350,7 +372,7 @@ export class WorkspaceSyncService {
       actor_user_id: actorId,
       action: 'sync_all_completed',
       details: {
-        cohorts_upserted: combined.cohortsUpserted,
+        groups_upserted: combined.groupsUpserted,
         staff_upserted: combined.staffUpserted,
         students_upserted: combined.studentsUpserted,
         flagged_count: combined.flaggedAccounts!.length,
@@ -360,7 +382,7 @@ export class WorkspaceSyncService {
 
     logger.info(
       {
-        cohortsUpserted: combined.cohortsUpserted,
+        groupsUpserted: combined.groupsUpserted,
         staffUpserted: combined.staffUpserted,
         studentsUpserted: combined.studentsUpserted,
         flaggedAccounts: combined.flaggedAccounts!.length,

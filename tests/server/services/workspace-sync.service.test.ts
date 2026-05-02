@@ -1,6 +1,11 @@
 /**
  * Integration tests for WorkspaceSyncService (Sprint 006 T006).
  *
+ * Sprint 025 T004: syncCohorts now writes Group rows instead of Cohort rows.
+ * - The CohortService.upsertByOUPath test block is retained for cohort.service
+ *   coverage but is no longer exercised by the sync path.
+ * - syncCohorts assertions now check Group rows and groupsUpserted.
+ *
  * Covers:
  *
  * CohortService.upsertByOUPath
@@ -10,9 +15,9 @@
  *  - Does not call createOU or any Google Admin SDK method.
  *
  * WorkspaceSyncService.syncCohorts
- *  - New OUs create Cohort rows.
- *  - Existing OUs with matching names return unchanged.
- *  - Empty OU list results in 0 cohorts upserted.
+ *  - New OUs create Group rows (NOT Cohort rows).
+ *  - Existing OUs with matching Group names are idempotent.
+ *  - Empty OU list results in 0 groups upserted.
  *  - Records sync_cohorts_completed audit event.
  *
  * WorkspaceSyncService.syncStaff
@@ -48,6 +53,7 @@ import { ExternalAccountRepository } from '../../../server/src/services/reposito
 import { CohortRepository } from '../../../server/src/services/repositories/cohort.repository.js';
 import { FakeGoogleWorkspaceAdminClient } from '../helpers/fake-google-workspace-admin.client.js';
 import { WorkspaceApiError } from '../../../server/src/services/google-workspace/google-workspace-admin.client.js';
+import { GroupRepository } from '../../../server/src/services/repositories/group.repository.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,27 +64,26 @@ async function clearDb() {
   await (prisma as any).provisioningRequest.deleteMany();
   await (prisma as any).externalAccount.deleteMany();
   await (prisma as any).login.deleteMany();
+  await (prisma as any).userGroup.deleteMany();
   await (prisma as any).user.deleteMany();
   await (prisma as any).cohort.deleteMany();
+  await (prisma as any).group.deleteMany();
 }
 
 function makeServices(fake: FakeGoogleWorkspaceAdminClient) {
   const audit = new AuditService();
+  // cohortService is kept for CohortService.upsertByOUPath tests below.
+  // WorkspaceSyncService no longer receives it — sprint 025 T004.
   const cohortService = new CohortService(prisma, audit);
   const svc = new WorkspaceSyncService(
     prisma,
     fake,
-    cohortService,
     UserRepository,
     ExternalAccountRepository,
     CohortRepository,
     audit,
   );
   return { svc, cohortService, audit };
-}
-
-async function findCohortByOUPath(ouPath: string) {
-  return (prisma as any).cohort.findFirst({ where: { google_ou_path: ouPath } });
 }
 
 async function findUserByEmail(email: string) {
@@ -206,10 +211,11 @@ describe('CohortService.upsertByOUPath', () => {
 
 // ===========================================================================
 // WorkspaceSyncService.syncCohorts
+// Sprint 025 T004: OUs now sync as Group rows, not Cohort rows.
 // ===========================================================================
 
 describe('WorkspaceSyncService.syncCohorts', () => {
-  it('creates Cohort rows for new OUs', async () => {
+  it('creates Group rows for new OUs (not Cohort rows)', async () => {
     const fake = new FakeGoogleWorkspaceAdminClient();
     fake.seedOUs('/Students', [
       { orgUnitPath: '/Students/Spring2026', name: 'Spring2026' },
@@ -219,26 +225,32 @@ describe('WorkspaceSyncService.syncCohorts', () => {
 
     const report = await svc.syncCohorts();
 
-    expect(report.cohortsUpserted).toBe(2);
-    const spring = await findCohortByOUPath('/Students/Spring2026');
-    const fall = await findCohortByOUPath('/Students/Fall2026');
+    expect(report.groupsUpserted).toBe(2);
+
+    // Groups are created
+    const spring = await GroupRepository.findByName(prisma, 'Spring2026');
+    const fall = await GroupRepository.findByName(prisma, 'Fall2026');
     expect(spring).not.toBeNull();
-    expect(spring.name).toBe('Spring2026');
+    expect(spring!.name).toBe('Spring2026');
     expect(fall).not.toBeNull();
-    expect(fall.name).toBe('Fall2026');
+    expect(fall!.name).toBe('Fall2026');
+
+    // No Cohort rows written
+    const cohorts = await (prisma as any).cohort.findMany();
+    expect(cohorts).toHaveLength(0);
   });
 
-  it('returns cohortsUpserted=0 when OU list is empty', async () => {
+  it('returns groupsUpserted=0 when OU list is empty', async () => {
     const fake = new FakeGoogleWorkspaceAdminClient();
     // ouSeed has no entry for /Students → returns []
     const { svc } = makeServices(fake);
 
     const report = await svc.syncCohorts();
 
-    expect(report.cohortsUpserted).toBe(0);
+    expect(report.groupsUpserted).toBe(0);
   });
 
-  it('handles existing cohorts (name unchanged)', async () => {
+  it('is idempotent — existing Group with same name is not duplicated', async () => {
     const fake = new FakeGoogleWorkspaceAdminClient();
     fake.seedOUs('/Students', [
       { orgUnitPath: '/Students/Spring2026', name: 'Spring2026' },
@@ -246,12 +258,12 @@ describe('WorkspaceSyncService.syncCohorts', () => {
     const { svc } = makeServices(fake);
 
     await svc.syncCohorts();
-    // Run again — existing cohort with matching name
+    // Run again — group already exists with same name
     const report = await svc.syncCohorts();
 
-    expect(report.cohortsUpserted).toBe(1);
-    const cohorts = await (prisma as any).cohort.findMany();
-    expect(cohorts).toHaveLength(1);
+    expect(report.groupsUpserted).toBe(1);
+    const groups = await (prisma as any).group.findMany({ where: { name: 'Spring2026' } });
+    expect(groups).toHaveLength(1);
   });
 
   it('records a sync_cohorts_completed audit event', async () => {
@@ -262,6 +274,37 @@ describe('WorkspaceSyncService.syncCohorts', () => {
 
     const events = await findAuditEvents('sync_cohorts_completed');
     expect(events).toHaveLength(1);
+  });
+
+  it('records a create_group audit event for each new OU Group', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.seedOUs('/Students', [
+      { orgUnitPath: '/Students/Spring2026', name: 'Spring2026' },
+      { orgUnitPath: '/Students/Fall2026', name: 'Fall2026' },
+    ]);
+    const { svc } = makeServices(fake);
+
+    await svc.syncCohorts();
+
+    const events = await findAuditEvents('create_group');
+    expect(events).toHaveLength(2);
+    const names = events.map((e: any) => (e.details as any).name).sort();
+    expect(names).toEqual(['Fall2026', 'Spring2026']);
+  });
+
+  it('does not emit create_group when Group already exists', async () => {
+    const fake = new FakeGoogleWorkspaceAdminClient();
+    fake.seedOUs('/Students', [
+      { orgUnitPath: '/Students/Spring2026', name: 'Spring2026' },
+    ]);
+    const { svc } = makeServices(fake);
+
+    await svc.syncCohorts(); // first run — creates group
+    await (prisma as any).auditEvent.deleteMany(); // clear events
+    await svc.syncCohorts(); // second run — group exists, no create_group
+
+    const events = await findAuditEvents('create_group');
+    expect(events).toHaveLength(0);
   });
 
   it('uses GOOGLE_STUDENT_OU_ROOT env var', async () => {
@@ -275,7 +318,7 @@ describe('WorkspaceSyncService.syncCohorts', () => {
     const report = await svc.syncCohorts();
 
     expect(fake.calls.listOUs[0]).toBe('/CustomRoot');
-    expect(report.cohortsUpserted).toBe(1);
+    expect(report.groupsUpserted).toBe(1);
   });
 });
 
@@ -636,7 +679,7 @@ describe('WorkspaceSyncService.syncAll', () => {
 
     const report = await svc.syncAll();
 
-    expect(report.cohortsUpserted).toBe(1);
+    expect(report.groupsUpserted).toBe(1);
     expect(report.staffUpserted).toBe(1);
     expect(report.studentsUpserted).toBeGreaterThanOrEqual(1);
     expect(report.errors).toHaveLength(0);

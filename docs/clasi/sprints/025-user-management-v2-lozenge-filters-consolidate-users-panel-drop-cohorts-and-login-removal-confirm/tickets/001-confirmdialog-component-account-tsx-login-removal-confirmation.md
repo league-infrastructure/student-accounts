@@ -1,10 +1,10 @@
 ---
 id: '001'
 title: ConfirmDialog component + Account.tsx login removal confirmation
-status: todo
+status: done
 use-cases:
-  - SUC-001
-  - SUC-006
+- SUC-001
+- SUC-006
 depends-on: []
 github-issue: ''
 todo: backlog-user-management-v2-account-login-ux-cohort-drop.md
@@ -27,14 +27,14 @@ so it must be general-purpose.
 
 ## Acceptance Criteria
 
-- [ ] `client/src/components/ConfirmDialog.tsx` exists and exports a default `<ConfirmDialog>` component.
-- [ ] The component accepts props: `open`, `title`, `message`, `confirmLabel` (default "Confirm"), `cancelLabel` (default "Cancel"), `onConfirm`, `onCancel`.
-- [ ] The dialog renders as an in-page modal overlay with a backdrop; it does not use `window.confirm()` or `window.alert()`.
-- [ ] The dialog is styled consistently with the app (uses the same font, color palette, and border-radius as existing panels).
-- [ ] Pressing Escape or clicking outside the dialog triggers `onCancel`.
-- [ ] In `Account.tsx` `LoginsSection`, clicking "Remove" opens `<ConfirmDialog>` with title "Remove login" and a message that names the provider (e.g., "Remove the Google login from your account? You can re-link it later by clicking Add Google.").
-- [ ] Clicking "Confirm" in the dialog issues the DELETE; clicking "Cancel" closes the dialog without issuing the DELETE.
-- [ ] The existing `window.confirm()` call on the Remove button is fully replaced; none remains.
+- [x] `client/src/components/ConfirmDialog.tsx` exists and exports a default `<ConfirmDialog>` component.
+- [x] The component accepts props: `open`, `title`, `message`, `confirmLabel` (default "Confirm"), `cancelLabel` (default "Cancel"), `onConfirm`, `onCancel`.
+- [x] The dialog renders as an in-page modal overlay with a backdrop; it does not use `window.confirm()` or `window.alert()`.
+- [x] The dialog is styled consistently with the app (uses the same font, color palette, and border-radius as existing panels).
+- [x] Pressing Escape or clicking outside the dialog triggers `onCancel`.
+- [x] In `Account.tsx` `LoginsSection`, clicking "Remove" opens `<ConfirmDialog>` with title "Remove login" and a message that names the provider (e.g., "Remove the Google login from your account? You can re-link it later by clicking Add Google.").
+- [x] Clicking "Confirm" in the dialog issues the DELETE; clicking "Cancel" closes the dialog without issuing the DELETE.
+- [x] The existing `window.confirm()` call on the Remove button is fully replaced; none remains.
 
 ## Implementation Plan
 
