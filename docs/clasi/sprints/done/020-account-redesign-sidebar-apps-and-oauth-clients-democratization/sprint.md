@@ -1,9 +1,13 @@
 ---
-id: "020"
-title: "Account Redesign Sidebar Apps and OAuth Clients Democratization"
-status: planning
+id: '020'
+title: Account Redesign Sidebar Apps and OAuth Clients Democratization
+status: done
 branch: sprint/020-account-redesign-sidebar-apps-and-oauth-clients-democratization
-use-cases: [SUC-020-001, SUC-020-002, SUC-020-003, SUC-020-004]
+use-cases:
+- SUC-020-001
+- SUC-020-002
+- SUC-020-003
+- SUC-020-004
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
