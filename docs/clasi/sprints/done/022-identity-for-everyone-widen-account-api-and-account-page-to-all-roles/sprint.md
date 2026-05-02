@@ -1,15 +1,15 @@
 ---
-id: "022"
-title: "Identity for everyone - widen account API and Account page to all roles"
-status: planning
+id: '022'
+title: Identity for everyone - widen account API and Account page to all roles
+status: done
 branch: sprint/022-identity-for-everyone-widen-account-api-and-account-page-to-all-roles
 use-cases:
-  - SUC-022-001
-  - SUC-022-002
-  - SUC-022-003
-  - SUC-022-004
+- SUC-022-001
+- SUC-022-002
+- SUC-022-003
+- SUC-022-004
 todo:
-  - backlog-unshipped-follow-ups-from-sprints-020-and-021.md
+- backlog-unshipped-follow-ups-from-sprints-020-and-021.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
