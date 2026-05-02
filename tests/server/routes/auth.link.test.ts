@@ -631,8 +631,8 @@ describe('Google link-mode callback — conflict (AC-05)', () => {
 
 describe('Google link-mode — unauthenticated session.userId absent (AC-06)', () => {
   it('falls through to normal sign-in when session.link is set but userId is absent', async () => {
-    // Pre-seed approved user — post-Sprint-015, brand-new social_login users
-    // are pending and would land on /login?error=pending_approval. Step 3a of
+    // Pre-seed an approved user — brand-new social_login users are pending and
+    // would land on /account showing a "Waiting for approval" card. Step 3a of
     // signInHandler matches by email so a pre-seeded user is reused as-is.
     await makeUser({ primary_email: 'link-no-userid@example.com', display_name: 'Link No UserId' });
 

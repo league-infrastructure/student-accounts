@@ -117,8 +117,8 @@ describe('GET /api/auth/pike13', () => {
 
 describe('GET /api/auth/pike13/callback — sign-in', () => {
   it('approves a returning approved user and redirects to /account', async () => {
-    // Pre-seed approved user — post-Sprint-015 brand-new social_login users
-    // are pending and would land on /login?error=pending_approval.
+    // Pre-seed approved user — brand-new social_login users start pending and
+    // land on /account showing a "Waiting for approval" card.
     await makeUser({
       primary_email: 'pike13-existing@example.com',
       display_name: 'Pike Existing',
@@ -134,16 +134,25 @@ describe('GET /api/auth/pike13/callback — sign-in', () => {
     expect(res.headers.location).toBe('/account');
   });
 
-  it('routes a brand-new user to /login?error=pending_approval', async () => {
+  it('routes a brand-new pending user to /account and establishes a session', async () => {
     stubPike13Fetch({
       id: 'pike13-uid-newperson',
       email: 'pike13-new@example.com',
       name: 'Pike New',
     });
 
-    const res = await request(app).get('/api/auth/pike13/callback?code=test-code');
+    const agent = request.agent(app);
+    const res = await agent.get('/api/auth/pike13/callback?code=test-code');
+
+    // Pending users now get a session and land on /account where the UI shows
+    // a "Waiting for approval" card.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login?error=pending_approval');
+    expect(res.headers.location).toBe('/account');
+
+    // Session is established
+    const me = await agent.get('/api/auth/me');
+    expect(me.status).toBe(200);
+    expect(me.body).toHaveProperty('email', 'pike13-new@example.com');
 
     // Confirm the user was created as pending
     const user = await (prisma as any).user.findFirst({
@@ -201,9 +210,16 @@ describe('GET /api/auth/pike13/callback — sign-in', () => {
       name: 'Pike Redo',
     });
 
-    const res = await request(app).get('/api/auth/pike13/callback?code=test-code');
+    const agent = request.agent(app);
+    const res = await agent.get('/api/auth/pike13/callback?code=test-code');
+
+    // Re-activated pending users get a session and land on /account.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/login?error=pending_approval');
+    expect(res.headers.location).toBe('/account');
+
+    // Session is established
+    const me = await agent.get('/api/auth/me');
+    expect(me.status).toBe(200);
 
     const after = await (prisma as any).user.findUnique({ where: { id: denied.id } });
     expect(after.is_active).toBe(true);

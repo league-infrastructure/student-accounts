@@ -39,8 +39,6 @@ function Pike13Logo({ className = 'h-5 w-5' }: { className?: string }) {
 }
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  pending_approval:
-    'Your account is awaiting approval by an admin. You\'ll be able to sign in once an admin approves you.',
   permanently_denied:
     'Your account has been denied. Contact an admin if you think this is a mistake.',
   staff_lookup_failed:
