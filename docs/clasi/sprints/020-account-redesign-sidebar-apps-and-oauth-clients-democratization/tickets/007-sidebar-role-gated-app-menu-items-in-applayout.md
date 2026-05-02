@@ -1,15 +1,15 @@
 ---
-id: "007"
-title: "Sidebar role-gated app menu items in AppLayout"
-status: todo
+id: '007'
+title: Sidebar role-gated app menu items in AppLayout
+status: done
 use-cases:
-  - SUC-020-002
+- SUC-020-002
 depends-on:
-  - "001"
-  - "005"
-  - "006"
-github-issue: ""
-todo: "plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md"
+- '001'
+- '005'
+- '006'
+github-issue: ''
+todo: plan-account-page-redesign-sidebar-app-migration-oauth-clients-democratization.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -65,12 +65,12 @@ intent).
 
 ## Acceptance Criteria
 
-- [ ] `hasStaffAccess(role)` exported from `client/src/lib/roles.ts`; returns `true` for `'staff'` and `'admin'`, `false` otherwise.
-- [ ] Sidebar shows Account, Services, OAuth Clients to every authenticated user, on every route under `AppLayout` (not just outside `/admin/*`).
-- [ ] Sidebar adds Staff Directory + User Management for staff/admin.
-- [ ] Sidebar adds Cohorts + Groups for admin only.
-- [ ] No item paths are invented — every `to` corresponds to a real route in `App.tsx`.
-- [ ] `npm run test:client` passes; `AppLayout.test.tsx` covers per-role visibility.
+- [x] `hasStaffAccess(role)` exported from `client/src/lib/roles.ts`; returns `true` for `'staff'` and `'admin'`, `false` otherwise.
+- [x] Sidebar shows Account, Services, OAuth Clients to every authenticated user, on every route under `AppLayout` (not just outside `/admin/*`).
+- [x] Sidebar adds Staff Directory + User Management for staff/admin.
+- [x] Sidebar adds Cohorts + Groups for admin only.
+- [x] No item paths are invented — every `to` corresponds to a real route in `App.tsx`.
+- [x] `npm run test:client` passes; `AppLayout.test.tsx` covers per-role visibility.
 
 ## Testing
 

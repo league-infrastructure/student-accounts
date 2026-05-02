@@ -25,6 +25,17 @@ export function hasAdminAccess(role: string | undefined): boolean {
   return role === ROLES.ADMIN;
 }
 
+/**
+ * Check whether the given role string has staff-level access.
+ * Returns true for both staff and admin roles (case-insensitive for
+ * compatibility with both legacy uppercase and lowercase role values).
+ */
+export function hasStaffAccess(role: string | undefined): boolean {
+  if (!role) return false;
+  const lower = role.toLowerCase();
+  return lower === 'staff' || lower === 'admin';
+}
+
 /** Return a short display label for a role, defaulting to "user". */
 export function roleShortLabel(role: string | undefined): string {
   if (role && role in ROLE_SHORT_LABELS) {
