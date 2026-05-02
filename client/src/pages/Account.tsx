@@ -206,32 +206,32 @@ function ProfileSection({
 // LoginsSection
 // ---------------------------------------------------------------------------
 
-/* ---- Provider icons (inline SVG, brand-recognizable) ---- */
+/* ---- Provider logos — visual parity with the Login page ---- */
 
-function GoogleIcon() {
+function GoogleLogo() {
   return (
-    <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
-      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/>
-      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.3 19 12 24 12c3 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
-      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35 26.7 36 24 36c-5.3 0-9.7-3.4-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
-      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.1 5.6l6.2 5.2C41.9 35.6 44 30.2 44 24c0-1.3-.1-2.3-.4-3.5z"/>
+    <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8a12 12 0 1 1 7.9-21l5.7-5.7A20 20 0 1 0 24 44c11 0 20-9 20-20 0-1.3-.1-2.4-.4-3.5z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8A12 12 0 0 1 24 12c3 0 5.7 1.1 7.9 3l5.7-5.7A20 20 0 0 0 6.3 14.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3a12 12 0 0 1-7.3 2.5c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3a12 12 0 0 1-4.1 5.5l6.3 5.3c-.4.4 6.5-4.8 6.5-14.8 0-1.3-.1-2.4-.4-3.5z"/>
     </svg>
   );
 }
 
-function GitHubIcon() {
+function GitHubLogo() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.18.91-.25 1.89-.38 2.86-.38.97 0 1.95.13 2.86.38 2.19-1.49 3.15-1.18 3.15-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.43-2.7 5.41-5.27 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.7-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.3-3.2-.1-.4-.6-1.6.1-3.3 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.3.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.3v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/>
     </svg>
   );
 }
 
-function Pike13Icon() {
+function Pike13Logo() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="2" y="2" width="20" height="20" rx="4" fill="#0ea5e9"/>
-      <text x="12" y="16" textAnchor="middle" fontSize="9" fontWeight="700" fill="#fff" fontFamily="system-ui, sans-serif">P13</text>
+    <svg width="20" height="20" viewBox="0 0 36 40" fill="currentColor" aria-hidden="true">
+      <path d="M20.04 18.85L11.08 13.76L35.15 0.11C35.60 -0.15 35.98 0.06 35.98 0.58L36.00 8.86C36.01 9.37 35.63 10.00 35.18 10.26L20.04 18.85ZM0 22.27L7.01 26.24L0.86 29.73C0.40 29.99 0.03 29.78 0.02 29.26L0 22.27Z"/>
+      <path d="M0.86 10.27L35.17 29.74C35.63 30.00 36.00 30.63 36.00 31.15L35.98 39.42C35.98 39.94 35.60 40.15 35.14 39.89L0.83 20.43C0.37 20.17 0 19.53 0 19.02L0.02 10.74C0.03 10.22 0.40 10.01 0.86 10.27Z"/>
     </svg>
   );
 }
@@ -294,20 +294,33 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
         <p role="alert" style={styles.inlineError}>{onRemoveError}</p>
       )}
 
-      {/* Add buttons. Google and GitHub are always shown — multiple logins
-          per provider are allowed. Pike 13 is one-per-account and hidden
-          once linked. If a provider's OAuth env isn't configured, the
-          server returns 501 with setup instructions when the user clicks. */}
+      {/* Add buttons — same horizontal brand-icon layout as the Login page.
+          Google and GitHub allow multiple logins per provider so they always
+          render. Pike 13 is one-per-account and hidden once linked. If a
+          provider's OAuth env isn't configured, the server returns 501 with
+          setup instructions when the user clicks. */}
       <div style={styles.addRow}>
-        <a href="/api/auth/google?link=1" style={styles.addButton}>
-          <GoogleIcon /> Add Google
+        <a
+          href="/api/auth/google?link=1"
+          aria-label="Add Google"
+          style={{ ...styles.addButton, ...styles.addButtonGoogle }}
+        >
+          <GoogleLogo />
         </a>
-        <a href="/api/auth/github?link=1" style={styles.addButton}>
-          <GitHubIcon /> Add GitHub
+        <a
+          href="/api/auth/github?link=1"
+          aria-label="Add GitHub"
+          style={{ ...styles.addButton, ...styles.addButtonGitHub }}
+        >
+          <GitHubLogo />
         </a>
         {!hasPike13 && (
-          <a href="/api/auth/pike13?link=1" style={styles.addButton}>
-            <Pike13Icon /> Add Pike 13
+          <a
+            href="/api/auth/pike13?link=1"
+            aria-label="Add Pike 13"
+            style={{ ...styles.addButton, ...styles.addButtonPike13 }}
+          >
+            <Pike13Logo />
           </a>
         )}
       </div>
@@ -422,6 +435,10 @@ export default function Account() {
     queryFn: fetchAccount,
     // Fetch for any authenticated user once auth has resolved.
     enabled: !loading && !!user,
+    // Always refetch on mount so a freshly-linked provider (returning from
+    // /api/auth/<provider>/callback) shows up immediately instead of the
+    // stale pre-link snapshot.
+    refetchOnMount: 'always',
     // While the account is pending, poll so the banner clears as soon as an
     // admin approves the account. After approval, rely on normal refetching.
     refetchInterval: (query) =>
@@ -681,18 +698,27 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap' as const,
   },
   addButton: {
+    flex: 1,
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 8,
-    padding: '6px 14px',
+    justifyContent: 'center',
+    padding: '12px 0',
     borderRadius: 8,
-    fontSize: '0.85rem',
-    fontWeight: 600,
     textDecoration: 'none',
     cursor: 'pointer',
+  },
+  addButtonGoogle: {
     background: '#fff',
     color: '#374151',
     border: '1px solid #d1d5db',
+  },
+  addButtonGitHub: {
+    background: '#24292e',
+    color: '#fff',
+  },
+  addButtonPike13: {
+    background: '#00833D',
+    color: '#fff',
   },
   inlineError: {
     fontSize: '0.85rem',
