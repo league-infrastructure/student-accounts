@@ -422,6 +422,121 @@ describe('Scope ceiling — PATCH /api/oauth-clients/:id', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Admin shared-pool invariant (Sprint 023 ticket 004)
+// ---------------------------------------------------------------------------
+// Any admin can view, update, rotate, and disable any other admin's client.
+// Students and staff are still restricted to their own clients.
+// ---------------------------------------------------------------------------
+
+describe('admin shared-pool invariant', () => {
+  async function asAdminB() {
+    const user = await makeUser({ role: 'admin', primary_email: 'adminb@test.com' });
+    const agent = await loginAs('adminb@test.com', 'admin');
+    return { agent, user };
+  }
+
+  // Helper: admin A creates a client; we perform mutations as admin B.
+  async function setupAdminBClient() {
+    const adminB = await makeUser({ role: 'admin', primary_email: 'adminb@test.com' });
+    const { client } = await registry.oauthClients.create(
+      { name: 'AdminBApp', redirect_uris: [], allowed_scopes: [] },
+      adminB.id,
+    );
+    // Admin A (the agent that will act on admin B's client).
+    const adminA = await makeUser({ role: 'admin', primary_email: 'admina@test.com' });
+    const agentA = await loginAs('admina@test.com', 'admin');
+    return { agentA, adminA, adminB, client };
+  }
+
+  it('admin A can list and see admin B\'s client', async () => {
+    const { agentA, adminB, client } = await setupAdminBClient();
+    // Also create a client for adminA so the list has two entries.
+    const adminAUser = await (prisma as any).user.findUnique({ where: { primary_email: 'admina@test.com' } });
+    await registry.oauthClients.create({ name: 'AdminAApp', redirect_uris: [], allowed_scopes: [] }, adminAUser.id);
+
+    const res = await agentA.get('/api/oauth-clients');
+    expect(res.status).toBe(200);
+    const ids = res.body.map((c: any) => c.id);
+    expect(ids).toContain(client.id);
+  });
+
+  it('admin A can update admin B\'s client (rename)', async () => {
+    const { agentA, client } = await setupAdminBClient();
+    const res = await agentA.patch(`/api/oauth-clients/${client.id}`).send({ name: 'RenamedByA' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('RenamedByA');
+  });
+
+  it('audit event for admin A update records actor=admin A', async () => {
+    const { agentA, adminA, client } = await setupAdminBClient();
+    await agentA.patch(`/api/oauth-clients/${client.id}`).send({ name: 'AuditCheck' });
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_updated', target_entity_id: String(client.id) },
+    });
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].actor_user_id).toBe(adminA.id);
+  });
+
+  it('admin A can rotate secret on admin B\'s client', async () => {
+    const { agentA, client } = await setupAdminBClient();
+    const res = await agentA.post(`/api/oauth-clients/${client.id}/rotate-secret`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('client_secret');
+    expect(res.body.client_secret).toMatch(/^oacs_/);
+  });
+
+  it('audit event for admin A rotate-secret records actor=admin A', async () => {
+    const { agentA, adminA, client } = await setupAdminBClient();
+    await agentA.post(`/api/oauth-clients/${client.id}/rotate-secret`);
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_secret_rotated', target_entity_id: String(client.id) },
+    });
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].actor_user_id).toBe(adminA.id);
+  });
+
+  it('admin A can disable (DELETE) admin B\'s client', async () => {
+    const { agentA, client } = await setupAdminBClient();
+    const res = await agentA.delete(`/api/oauth-clients/${client.id}`);
+    expect(res.status).toBe(204);
+    const raw = await (prisma as any).oAuthClient.findUnique({ where: { id: client.id } });
+    expect(raw.disabled_at).not.toBeNull();
+  });
+
+  it('audit event for admin A disable records actor=admin A', async () => {
+    const { agentA, adminA, client } = await setupAdminBClient();
+    await agentA.delete(`/api/oauth-clients/${client.id}`);
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_disabled', target_entity_id: String(client.id) },
+    });
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].actor_user_id).toBe(adminA.id);
+  });
+
+  it('student cannot update another student\'s client (403)', async () => {
+    const owner = await makeUser({ role: 'student', primary_email: 'stu-owner@test.com' });
+    const { client } = await registry.oauthClients.create(
+      { name: 'StuOwned', redirect_uris: [], allowed_scopes: [] },
+      owner.id,
+    );
+    const { agent: intruder } = await asStudent('stu-intruder@test.com');
+    const res = await intruder.patch(`/api/oauth-clients/${client.id}`).send({ name: 'Hacked' });
+    expect(res.status).toBe(403);
+  });
+
+  it('staff cannot update another user\'s client (403)', async () => {
+    const owner = await makeUser({ role: 'student', primary_email: 'stu-owner2@test.com' });
+    const { client } = await registry.oauthClients.create(
+      { name: 'StuOwned2', redirect_uris: [], allowed_scopes: [] },
+      owner.id,
+    );
+    const { agent: staffAgent } = await asStaff('staff-intruder@test.com');
+    const res = await staffAgent.patch(`/api/oauth-clients/${client.id}`).send({ name: 'StaffHacked' });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Per-user cap enforcement — POST /api/oauth-clients (Sprint 023 ticket 002)
 // ---------------------------------------------------------------------------
 

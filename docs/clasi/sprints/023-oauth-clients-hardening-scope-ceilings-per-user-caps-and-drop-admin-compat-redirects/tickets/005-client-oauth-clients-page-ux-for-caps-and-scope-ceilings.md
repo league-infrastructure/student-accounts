@@ -1,17 +1,17 @@
 ---
-id: "005"
-title: "Client — OAuth Clients page UX for caps and scope ceilings"
-status: todo
+id: '005'
+title: "Client \u2014 OAuth Clients page UX for caps and scope ceilings"
+status: done
 use-cases:
-  - SUC-023-001
-  - SUC-023-002
-  - SUC-023-003
-  - SUC-023-004
+- SUC-023-001
+- SUC-023-002
+- SUC-023-003
+- SUC-023-004
 depends-on:
-  - "023-001"
-  - "023-002"
-github-issue: ""
-todo: ""
+- 023-001
+- 023-002
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -34,14 +34,14 @@ enforcer. If a user bypasses the UI, the server 403 is the safety net.
 
 ## Acceptance Criteria
 
-- [ ] A student sees only the `profile` checkbox in the create form; `users:read` is not rendered.
-- [ ] A staff user sees both `profile` and `users:read` checkboxes.
-- [ ] An admin sees both `profile` and `users:read` checkboxes.
-- [ ] A student with one active client sees no create button and instead sees a message such as "You have reached your OAuth client limit (1). Disable your existing client to create a new one."
-- [ ] A student with zero clients (or with all clients disabled) sees the normal "+ New OAuth Client" button.
-- [ ] Staff and admin always see the create button regardless of how many clients they own.
-- [ ] Both `// TODO (sprint.md "Out of Scope: Scope ceilings")` comments are removed from `OAuthClients.tsx`.
-- [ ] TypeScript compilation passes with no new errors.
+- [x] A student sees only the `profile` checkbox in the create form; `users:read` is not rendered.
+- [x] A staff user sees both `profile` and `users:read` checkboxes.
+- [x] An admin sees both `profile` and `users:read` checkboxes.
+- [x] A student with one active client sees no create button and instead sees a message such as "You have reached your OAuth client limit (1). Disable your existing client to create a new one."
+- [x] A student with zero clients (or with all clients disabled) sees the normal "+ New OAuth Client" button.
+- [x] Staff and admin always see the create button regardless of how many clients they own.
+- [x] Both `// TODO (sprint.md "Out of Scope: Scope ceilings")` comments are removed from `OAuthClients.tsx`.
+- [x] TypeScript compilation passes with no new errors.
 
 ## Implementation Plan
 

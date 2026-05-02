@@ -44,7 +44,7 @@ const DISABLED_CLIENT = {
 // ---------------------------------------------------------------------------
 
 vi.mock('../../client/src/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 1, email: 'test@example.com', role: 'USER', displayName: 'Test User', avatarUrl: null, provider: null, providerId: null, createdAt: '', updatedAt: '' }, loading: false }),
+  useAuth: vi.fn(() => ({ user: { id: 1, email: 'test@example.com', role: 'USER', displayName: 'Test User', avatarUrl: null, provider: null, providerId: null, createdAt: '', updatedAt: '' }, loading: false })),
 }));
 
 // ---------------------------------------------------------------------------
@@ -344,6 +344,102 @@ describe('OAuthClients — disable flow', () => {
 
     await waitFor(() => {
       expect(deleteCount).toBe(1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests for scope ceilings and per-user cap UX (Sprint 023 T005)
+// ---------------------------------------------------------------------------
+
+import { useAuth } from '../../client/src/context/AuthContext';
+
+function makeUser(role: string) {
+  return { id: 99, email: 'test@example.com', role, displayName: 'Test', avatarUrl: null, provider: null, providerId: null, createdAt: '', updatedAt: '' };
+}
+
+function renderPageWithRole(role: string, clients: unknown[]) {
+  vi.mocked(useAuth).mockReturnValue({ user: makeUser(role), loading: false });
+  vi.spyOn(global, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify(clients), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+  );
+  return renderPage();
+}
+
+describe('OAuthClients — scope ceilings and per-user cap UX (Sprint 023 T005)', () => {
+  it('student with 0 clients: create button visible, only profile checkbox shown', async () => {
+    renderPageWithRole('student', []);
+
+    await waitFor(() => screen.getByText(/No OAuth clients registered yet/i));
+
+    // Create button should be present.
+    expect(screen.getByText(/\+ New OAuth Client/i)).toBeTruthy();
+
+    // Open create form.
+    fireEvent.click(screen.getByText(/\+ New OAuth Client/i));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scope-checkbox-profile')).toBeTruthy();
+    });
+    // users:read must NOT appear.
+    expect(screen.queryByTestId('scope-checkbox-users:read')).toBeNull();
+  });
+
+  it('student with 1 active client: create button hidden, cap message shown', async () => {
+    const activeClient = { ...SAMPLE_CLIENT, id: 10, disabled_at: null };
+    renderPageWithRole('student', [activeClient]);
+
+    await waitFor(() => screen.getByText('My Test App'));
+
+    // The create button should NOT be present.
+    expect(screen.queryByText(/\+ New OAuth Client/i)).toBeNull();
+
+    // Cap message must be shown.
+    expect(screen.getByTestId('cap-message')).toBeTruthy();
+    expect(screen.getByText(/reached your.*limit/i)).toBeTruthy();
+  });
+
+  it('staff with multiple clients: create button always visible, both scope checkboxes shown', async () => {
+    const clients = [
+      { ...SAMPLE_CLIENT, id: 11 },
+      { ...SAMPLE_CLIENT, id: 12, client_id: 'client_xyz', name: 'Another App' },
+      { ...SAMPLE_CLIENT, id: 13, client_id: 'client_uvw', name: 'Third App' },
+    ];
+    renderPageWithRole('staff', clients);
+
+    await waitFor(() => screen.getByText('My Test App'));
+
+    // Create button must be present (no cap for staff).
+    expect(screen.getByText(/\+ New OAuth Client/i)).toBeTruthy();
+
+    // Open create form.
+    fireEvent.click(screen.getByText(/\+ New OAuth Client/i));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scope-checkbox-profile')).toBeTruthy();
+      expect(screen.getByTestId('scope-checkbox-users:read')).toBeTruthy();
+    });
+  });
+
+  it('admin with multiple clients: create button always visible, both scope checkboxes shown', async () => {
+    const clients = [
+      { ...SAMPLE_CLIENT, id: 21 },
+      { ...SAMPLE_CLIENT, id: 22, client_id: 'client_aaa', name: 'Admin App 2' },
+      { ...SAMPLE_CLIENT, id: 23, client_id: 'client_bbb', name: 'Admin App 3' },
+    ];
+    renderPageWithRole('admin', clients);
+
+    await waitFor(() => screen.getByText('My Test App'));
+
+    // Create button must be present (no cap for admin).
+    expect(screen.getByText(/\+ New OAuth Client/i)).toBeTruthy();
+
+    // Open create form.
+    fireEvent.click(screen.getByText(/\+ New OAuth Client/i));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('scope-checkbox-profile')).toBeTruthy();
+      expect(screen.getByTestId('scope-checkbox-users:read')).toBeTruthy();
     });
   });
 });
