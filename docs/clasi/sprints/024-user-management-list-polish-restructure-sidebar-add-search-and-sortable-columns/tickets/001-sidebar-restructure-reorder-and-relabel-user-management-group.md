@@ -1,12 +1,12 @@
 ---
-id: "001"
-title: "Sidebar restructure — reorder and relabel User Management group"
-status: todo
+id: '001'
+title: "Sidebar restructure \u2014 reorder and relabel User Management group"
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
@@ -46,15 +46,15 @@ navigates admins to the primary list.
 
 ## Acceptance Criteria
 
-- [ ] User Management children appear in the order: Users, Students, Staff,
+- [x] User Management children appear in the order: Users, Students, Staff,
       LLM Proxy Users, Groups, Cohorts.
-- [ ] Label "Staff Directory" is replaced by "Staff".
-- [ ] Label "League Students" is replaced by "Students".
-- [ ] Groups and Cohorts are swapped (Groups before Cohorts).
-- [ ] The group `defaultTo` is `/admin/users`.
-- [ ] Gate predicates on each item are unchanged.
-- [ ] All existing route paths are unchanged.
-- [ ] `npm run test:client` passes with updated assertions for new labels
+- [x] Label "Staff Directory" is replaced by "Staff".
+- [x] Label "League Students" is replaced by "Students".
+- [x] Groups and Cohorts are swapped (Groups before Cohorts).
+- [x] The group `defaultTo` is `/admin/users`.
+- [x] Gate predicates on each item are unchanged.
+- [x] All existing route paths are unchanged.
+- [x] `npm run test:client` passes with updated assertions for new labels
       and order.
 
 ## Implementation Plan

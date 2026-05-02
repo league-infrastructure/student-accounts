@@ -1,12 +1,13 @@
 ---
-id: "002"
-title: "Replace AdminUsersPanel with all-users view — port UsersPanel logic, integrate make-admin action, delete UsersPanel.tsx"
-status: todo
+id: '002'
+title: "Replace AdminUsersPanel with all-users view \u2014 port UsersPanel logic,\
+  \ integrate make-admin action, delete UsersPanel.tsx"
+status: done
 use-cases:
-  - SUC-002
+- SUC-002
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
@@ -38,20 +39,20 @@ the old AdminUsersPanel.
 
 ## Acceptance Criteria
 
-- [ ] `/admin/users` shows all active users (not filtered to staff).
-- [ ] Search bar filters by name or email (client-side, real-time).
-- [ ] Filter dropdown supports All / Admin & Staff / Students / by account
+- [x] `/admin/users` shows all active users (not filtered to staff).
+- [x] Search bar filters by name or email (client-side, real-time).
+- [x] Filter dropdown supports All / Admin & Staff / Students / by account
       type / by cohort (ported from UsersPanel).
-- [ ] Column headers Name, Email, Cohort, Accounts, Joined are all sortable.
-- [ ] Row action menu includes Edit, Delete, Impersonate, and (for
+- [x] Column headers Name, Email, Cohort, Accounts, Joined are all sortable.
+- [x] Row action menu includes Edit, Delete, Impersonate, and (for
       staff/admin rows only) a "Make admin" / "Remove admin" toggle.
-- [ ] Self-demotion button is disabled; attempting via API returns 403.
-- [ ] Last-admin demotion button is disabled; attempting via API returns 409.
-- [ ] Bulk selection and bulk delete work as before.
-- [ ] `UsersPanel.tsx` is deleted; no import of it remains in the codebase.
-- [ ] `UsersPanel.test.tsx` is deleted or migrated; test coverage for the
+- [x] Self-demotion button is disabled; attempting via API returns 403.
+- [x] Last-admin demotion button is disabled; attempting via API returns 409.
+- [x] Bulk selection and bulk delete work as before.
+- [x] `UsersPanel.tsx` is deleted; no import of it remains in the codebase.
+- [x] `UsersPanel.test.tsx` is deleted or migrated; test coverage for the
       new AdminUsersPanel is present in `AdminUsersPanel.test.tsx`.
-- [ ] `npm run test:client` passes.
+- [x] `npm run test:client` passes.
 
 ## Implementation Plan
 

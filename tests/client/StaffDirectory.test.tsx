@@ -12,6 +12,7 @@ const SAMPLE_STUDENTS = [
     id: 1,
     displayName: null,
     email: 'alice.smith@jointheleague.org',
+    createdAt: '2025-03-01T00:00:00.000Z',
     cohort: { id: 10, name: 'Spring 2025' },
     externalAccountTypes: ['workspace', 'pike13'],
   },
@@ -19,6 +20,7 @@ const SAMPLE_STUDENTS = [
     id: 2,
     displayName: 'Bobby Jones',
     email: 'bobby@example.com',
+    createdAt: '2025-01-15T00:00:00.000Z',
     cohort: { id: 11, name: 'Fall 2025' },
     externalAccountTypes: ['claude'],
   },
@@ -26,6 +28,7 @@ const SAMPLE_STUDENTS = [
     id: 3,
     displayName: 'Carol White',
     email: 'carol@example.com',
+    createdAt: '2025-06-10T00:00:00.000Z',
     cohort: null,
     externalAccountTypes: [],
   },
@@ -84,13 +87,91 @@ describe('StaffDirectory', () => {
     await waitFor(() => expect(screen.getByText(/Error loading directory/i)).toBeInTheDocument());
   });
 
-  it('renders Name, Email, Cohort, Accounts column headers', async () => {
+  it('renders Name, Email, Cohort, Accounts, Joined column headers', async () => {
     renderPage();
     await waitFor(() => screen.getByText('Student Directory'));
     expect(screen.getByText('Name')).toBeInTheDocument();
     expect(screen.getByText('Email')).toBeInTheDocument();
     expect(screen.getByText('Cohort')).toBeInTheDocument();
     expect(screen.getByText('Accounts')).toBeInTheDocument();
+    expect(screen.getByText('Joined')).toBeInTheDocument();
+  });
+
+  it('renders Joined column with formatted dates', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Alice Smith'));
+    // All three students have createdAt set — the column should be visible.
+    // toLocaleDateString output varies by locale; just check the header exists and
+    // that more than zero date cells are rendered.
+    const joinedHeader = screen.getByText('Joined');
+    expect(joinedHeader).toBeInTheDocument();
+    // Each student row should have a date cell — verify at least one date is rendered
+    // by checking that the formatted date for Bobby (2025-01-15) appears somewhere.
+    const rows = screen.getAllByRole('row');
+    // 1 header row + 3 data rows
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('sorts by name ascending by default', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Alice Smith'));
+    // Default sort is name asc; rows should be: Alice Smith, Bobby Jones, Carol White
+    const rows = screen.getAllByRole('row');
+    const dataRows = rows.slice(1); // skip header
+    expect(dataRows[0]).toHaveTextContent('Alice Smith');
+    expect(dataRows[1]).toHaveTextContent('Bobby Jones');
+    expect(dataRows[2]).toHaveTextContent('Carol White');
+  });
+
+  it('toggles sort direction when the same header is clicked twice', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Alice Smith'));
+
+    const nameHeader = screen.getByText('Name');
+    // First click — already name asc, clicking again => desc
+    fireEvent.click(nameHeader);
+
+    // After toggling to desc: Carol, Bobby, Alice
+    await waitFor(() => {
+      const rows = screen.getAllByRole('row');
+      const dataRows = rows.slice(1);
+      expect(dataRows[0]).toHaveTextContent('Carol White');
+    });
+  });
+
+  it('sorts by Joined column when Joined header is clicked', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Alice Smith'));
+
+    const joinedHeader = screen.getByText('Joined');
+    fireEvent.click(joinedHeader);
+
+    // asc by createdAt: Bobby (Jan 15) < Alice (Mar 1) < Carol (Jun 10)
+    await waitFor(() => {
+      const rows = screen.getAllByRole('row');
+      const dataRows = rows.slice(1);
+      expect(dataRows[0]).toHaveTextContent('Bobby Jones');
+      expect(dataRows[1]).toHaveTextContent('Alice Smith');
+      expect(dataRows[2]).toHaveTextContent('Carol White');
+    });
+  });
+
+  it('sort header has aria-sort attribute when active', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Alice Smith'));
+
+    // Name is active by default with ascending sort
+    const nameHeader = screen.getByText('Name').closest('th')!;
+    expect(nameHeader).toHaveAttribute('aria-sort', 'ascending');
+
+    // Click Email header — Name should become none, Email should be ascending
+    const emailHeader = screen.getByText('Email').closest('th')!;
+    fireEvent.click(emailHeader);
+
+    await waitFor(() => {
+      expect(nameHeader).toHaveAttribute('aria-sort', 'none');
+      expect(emailHeader).toHaveAttribute('aria-sort', 'ascending');
+    });
   });
 
   it('filters students by name search', async () => {

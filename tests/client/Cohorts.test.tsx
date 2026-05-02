@@ -26,12 +26,14 @@ const SAMPLE_COHORTS = [
     name: 'Spring 2025',
     google_ou_path: '/Students/Spring2025',
     createdAt: '2025-01-15T00:00:00Z',
+    memberCount: 10,
   },
   {
     id: 2,
     name: 'Fall 2025',
     google_ou_path: '/Students/Fall2025',
     createdAt: '2025-06-01T00:00:00Z',
+    memberCount: 8,
   },
 ];
 
@@ -105,9 +107,9 @@ describe('Cohorts page', () => {
       expect(screen.getByText('Fall 2025')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Name')).toBeInTheDocument();
-    expect(screen.getByText('Google OU Path')).toBeInTheDocument();
-    expect(screen.getByText('Created On')).toBeInTheDocument();
+    expect(screen.getByText(/^Name/)).toBeInTheDocument();
+    expect(screen.getByText(/^Google OU Path/)).toBeInTheDocument();
+    expect(screen.getByText(/^Created On/)).toBeInTheDocument();
     expect(screen.getByText('/Students/Spring2025')).toBeInTheDocument();
   });
 
@@ -132,6 +134,7 @@ describe('Cohorts page', () => {
       name: 'Winter 2025',
       google_ou_path: '/Students/Winter2025',
       createdAt: '2025-11-01T00:00:00Z',
+      memberCount: 0,
     };
 
     const mockFetch = vi.fn()
@@ -235,6 +238,99 @@ describe('Cohorts page', () => {
     renderCohorts();
     await waitFor(() => {
       expect(screen.getByText(/failed to load cohorts/i)).toBeInTheDocument();
+    });
+  });
+
+  it('renders a search bar above the cohort table', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => SAMPLE_COHORTS,
+      }),
+    );
+    renderCohorts();
+    await waitFor(() => {
+      expect(screen.getByText('Spring 2025')).toBeInTheDocument();
+    });
+    expect(screen.getByRole('searchbox', { name: /search cohorts/i })).toBeInTheDocument();
+  });
+
+  it('filters cohort rows when text is typed in the search bar', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => SAMPLE_COHORTS,
+      }),
+    );
+    renderCohorts();
+    await waitFor(() => {
+      expect(screen.getByText('Spring 2025')).toBeInTheDocument();
+      expect(screen.getByText('Fall 2025')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByRole('searchbox', { name: /search cohorts/i });
+    fireEvent.change(searchInput, { target: { value: 'spring' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Spring 2025')).toBeInTheDocument();
+      expect(screen.queryByText('Fall 2025')).not.toBeInTheDocument();
+    });
+  });
+
+  it('restores all rows when search bar is cleared', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => SAMPLE_COHORTS,
+      }),
+    );
+    renderCohorts();
+    await waitFor(() => {
+      expect(screen.getByText('Spring 2025')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByRole('searchbox', { name: /search cohorts/i });
+    fireEvent.change(searchInput, { target: { value: 'spring' } });
+    await waitFor(() => {
+      expect(screen.queryByText('Fall 2025')).not.toBeInTheDocument();
+    });
+
+    fireEvent.change(searchInput, { target: { value: '' } });
+    await waitFor(() => {
+      expect(screen.getByText('Spring 2025')).toBeInTheDocument();
+      expect(screen.getByText('Fall 2025')).toBeInTheDocument();
+    });
+  });
+
+  it('applies search filter to sorted rows (sort still works on filtered set)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => SAMPLE_COHORTS,
+      }),
+    );
+    renderCohorts();
+    await waitFor(() => {
+      expect(screen.getByText('Spring 2025')).toBeInTheDocument();
+    });
+
+    // Filter to only "fall" cohorts
+    const searchInput = screen.getByRole('searchbox', { name: /search cohorts/i });
+    fireEvent.change(searchInput, { target: { value: 'fall' } });
+    await waitFor(() => {
+      expect(screen.getByText('Fall 2025')).toBeInTheDocument();
+      expect(screen.queryByText('Spring 2025')).not.toBeInTheDocument();
+    });
+
+    // Click Name header to toggle sort — should not crash and still show the filtered row
+    fireEvent.click(screen.getByText(/^Name/));
+    await waitFor(() => {
+      expect(screen.getByText('Fall 2025')).toBeInTheDocument();
+      expect(screen.queryByText('Spring 2025')).not.toBeInTheDocument();
     });
   });
 });

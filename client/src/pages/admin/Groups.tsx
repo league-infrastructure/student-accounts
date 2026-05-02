@@ -63,6 +63,7 @@ export default function Groups() {
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<SortCol>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -140,11 +141,21 @@ export default function Groups() {
         )}
       </form>
 
+      <input
+        type="search"
+        placeholder="Search groups…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={searchInputStyle}
+        aria-label="Search groups"
+      />
+
       {groups && groups.length === 0 ? (
         <p style={emptyStyle}>No groups yet.</p>
       ) : (
         <GroupsTable
           groups={groups ?? []}
+          search={search}
           sortCol={sortCol}
           sortDir={sortDir}
           onSort={(col) => {
@@ -163,14 +174,23 @@ export default function Groups() {
 
 interface GroupsTableProps {
   groups: Group[];
+  search: string;
   sortCol: SortCol;
   sortDir: 'asc' | 'desc';
   onSort: (col: SortCol) => void;
 }
 
-function GroupsTable({ groups, sortCol, sortDir, onSort }: GroupsTableProps) {
+function GroupsTable({ groups, search, sortCol, sortDir, onSort }: GroupsTableProps) {
   const sorted = useMemo(() => {
-    const copy = [...groups];
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? groups.filter(
+          (g) =>
+            g.name.toLowerCase().includes(q) ||
+            (g.description ?? '').toLowerCase().includes(q),
+        )
+      : groups;
+    const copy = [...filtered];
     copy.sort((a, b) => {
       let cmp = 0;
       switch (sortCol) {
@@ -190,7 +210,7 @@ function GroupsTable({ groups, sortCol, sortDir, onSort }: GroupsTableProps) {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return copy;
-  }, [groups, sortCol, sortDir]);
+  }, [groups, search, sortCol, sortDir]);
 
   const arrow = (col: SortCol) => (col === sortCol ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
   const thProps = (_col: SortCol): React.CSSProperties => ({
@@ -275,6 +295,15 @@ const submitButtonStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 const inlineErrorStyle: React.CSSProperties = { color: '#dc2626', fontSize: 13 };
+const searchInputStyle: React.CSSProperties = {
+  padding: '6px 10px',
+  fontSize: 14,
+  border: '1px solid #cbd5e1',
+  borderRadius: 4,
+  minWidth: 260,
+  marginBottom: 16,
+  display: 'block',
+};
 const tableStyle: React.CSSProperties = {
   width: '100%',
   borderCollapse: 'collapse',

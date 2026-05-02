@@ -92,6 +92,9 @@ describe('GET /api/staff/directory — staff user', () => {
       cohort: { id: cohort.id, name: 'Spring 2025' },
     });
     expect(entry.externalAccountTypes).toContain('workspace');
+    // createdAt must be present in response (ISO date string)
+    expect(typeof entry.createdAt).toBe('string');
+    expect(entry.createdAt.length).toBeGreaterThan(0);
   });
 });
 

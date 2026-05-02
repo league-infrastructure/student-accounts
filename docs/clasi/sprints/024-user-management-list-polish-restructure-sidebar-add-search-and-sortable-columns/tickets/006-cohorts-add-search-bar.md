@@ -1,12 +1,12 @@
 ---
-id: "006"
-title: "Cohorts — add search bar"
-status: todo
+id: '006'
+title: "Cohorts \u2014 add search bar"
+status: done
 use-cases:
-  - SUC-006
+- SUC-006
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
@@ -22,13 +22,13 @@ name.
 
 ## Acceptance Criteria
 
-- [ ] A search bar is present above the table.
-- [ ] Typing in the search bar filters rows to those whose `name`
+- [x] A search bar is present above the table.
+- [x] Typing in the search bar filters rows to those whose `name`
       contains the query string (case-insensitive, real-time).
-- [ ] Clearing the search bar restores all rows.
-- [ ] Existing sort functionality (clicking column headers) still works
+- [x] Clearing the search bar restores all rows.
+- [x] Existing sort functionality (clicking column headers) still works
       and applies to the filtered row set.
-- [ ] `npm run test:client` passes (update Cohorts.test.tsx as needed).
+- [x] `npm run test:client` passes (update Cohorts.test.tsx as needed).
 
 ## Implementation Plan
 

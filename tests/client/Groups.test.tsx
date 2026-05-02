@@ -70,6 +70,77 @@ describe('Groups page', () => {
     );
   });
 
+  it('renders a search bar above the table', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(SAMPLE_GROUPS),
+      }),
+    );
+    renderGroups();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+    expect(screen.getByRole('searchbox', { name: /search groups/i })).toBeInTheDocument();
+  });
+
+  it('filters rows by name (case-insensitive)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(SAMPLE_GROUPS),
+      }),
+    );
+    renderGroups();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByRole('searchbox', { name: /search groups/i }), {
+      target: { value: 'alpha' },
+    });
+
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument();
+  });
+
+  it('filters rows by description', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(SAMPLE_GROUPS),
+      }),
+    );
+    renderGroups();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByRole('searchbox', { name: /search groups/i }), {
+      target: { value: 'top students' },
+    });
+
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument();
+  });
+
+  it('restores all rows when search is cleared', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(SAMPLE_GROUPS),
+      }),
+    );
+    renderGroups();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    const searchBox = screen.getByRole('searchbox', { name: /search groups/i });
+    fireEvent.change(searchBox, { target: { value: 'alpha' } });
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument();
+
+    fireEvent.change(searchBox, { target: { value: '' } });
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+  });
+
   it('renders table with name, description, member count', async () => {
     vi.stubGlobal(
       'fetch',

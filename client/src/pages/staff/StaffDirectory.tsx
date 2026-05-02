@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { prettifyName } from '../admin/utils/prettifyName';
 
 /* ------------------------------------------------------------------ */
@@ -14,8 +14,74 @@ interface DirectoryStudent {
   id: number;
   displayName: string | null;
   email: string;
+  createdAt: string;
   cohort: Cohort | null;
   externalAccountTypes: string[];
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sorting                                                             */
+/* ------------------------------------------------------------------ */
+
+type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'joined';
+
+interface SortableThProps {
+  col: SortCol;
+  activeCol: SortCol;
+  dir: 'asc' | 'desc';
+  onSort: (col: SortCol) => void;
+  children: React.ReactNode;
+}
+
+function SortableTh({ col, activeCol, dir, onSort, children }: SortableThProps) {
+  const active = col === activeCol;
+  return (
+    <th
+      style={{
+        padding: '8px 12px',
+        textAlign: 'left',
+        fontWeight: 600,
+        color: '#374151',
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        userSelect: 'none',
+      }}
+      onClick={() => onSort(col)}
+      aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      {children}
+      {active && (
+        <span style={{ marginLeft: 4, fontSize: 10 }}>{dir === 'asc' ? '▲' : '▼'}</span>
+      )}
+    </th>
+  );
+}
+
+function sortStudents(students: DirectoryStudent[], col: SortCol, dir: 'asc' | 'desc'): DirectoryStudent[] {
+  const sorted = [...students].sort((a, b) => {
+    let cmp = 0;
+    switch (col) {
+      case 'name':
+        cmp = prettifyName({ displayName: a.displayName, email: a.email })
+          .localeCompare(prettifyName({ displayName: b.displayName, email: b.email }));
+        break;
+      case 'email':
+        cmp = a.email.localeCompare(b.email);
+        break;
+      case 'cohort':
+        cmp = (a.cohort?.name ?? '').localeCompare(b.cohort?.name ?? '');
+        break;
+      case 'accounts':
+        cmp = a.externalAccountTypes.slice().sort().join(',')
+          .localeCompare(b.externalAccountTypes.slice().sort().join(','));
+        break;
+      case 'joined':
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        break;
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  return sorted;
 }
 
 /* ------------------------------------------------------------------ */
@@ -122,6 +188,18 @@ export default function StaffDirectory() {
   const [cohortFilter, setCohortFilter] = useState<string>('');
   const [accountFilter, setAccountFilter] = useState<FilterType | ''>('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [sortCol, setSortCol] = useState<SortCol>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  function handleSort(col: SortCol) {
+    if (col === sortCol) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+    setSelectedId(null);
+  }
 
   useEffect(() => {
     fetch('/api/staff/directory')
@@ -146,14 +224,17 @@ export default function StaffDirectory() {
     ).values(),
   ).sort((a, b) => a.name.localeCompare(b.name));
 
-  const filtered = students.filter((s) => {
-    const name = prettifyName({ displayName: s.displayName, email: s.email }).toLowerCase();
-    const q = search.toLowerCase();
-    if (q && !name.includes(q) && !s.email.toLowerCase().includes(q)) return false;
-    if (cohortFilter && String(s.cohort?.id ?? '') !== cohortFilter) return false;
-    if (accountFilter && !s.externalAccountTypes.includes(accountFilter)) return false;
-    return true;
-  });
+  const filtered = useMemo(() => {
+    const base = students.filter((s) => {
+      const name = prettifyName({ displayName: s.displayName, email: s.email }).toLowerCase();
+      const q = search.toLowerCase();
+      if (q && !name.includes(q) && !s.email.toLowerCase().includes(q)) return false;
+      if (cohortFilter && String(s.cohort?.id ?? '') !== cohortFilter) return false;
+      if (accountFilter && !s.externalAccountTypes.includes(accountFilter)) return false;
+      return true;
+    });
+    return sortStudents(base, sortCol, sortDir);
+  }, [students, search, cohortFilter, accountFilter, sortCol, sortDir]);
 
   const selectedStudent = selectedId !== null
     ? students.find((s) => s.id === selectedId) ?? null
@@ -244,20 +325,21 @@ export default function StaffDirectory() {
           >
             <thead>
               <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                {['Name', 'Email', 'Cohort', 'Accounts'].map((col) => (
-                  <th
-                    key={col}
-                    style={{
-                      padding: '8px 12px',
-                      textAlign: 'left',
-                      fontWeight: 600,
-                      color: '#374151',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {col}
-                  </th>
-                ))}
+                <SortableTh col="name" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+                  Name
+                </SortableTh>
+                <SortableTh col="email" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+                  Email
+                </SortableTh>
+                <SortableTh col="cohort" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+                  Cohort
+                </SortableTh>
+                <SortableTh col="accounts" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+                  Accounts
+                </SortableTh>
+                <SortableTh col="joined" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+                  Joined
+                </SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -298,6 +380,9 @@ export default function StaffDirectory() {
                         : student.externalAccountTypes.map((t) => (
                             <AccountBadge key={t} type={t} />
                           ))}
+                    </td>
+                    <td style={{ padding: '9px 12px', color: '#4b5563', whiteSpace: 'nowrap' }}>
+                      {new Date(student.createdAt).toLocaleDateString()}
                     </td>
                   </tr>
                 );

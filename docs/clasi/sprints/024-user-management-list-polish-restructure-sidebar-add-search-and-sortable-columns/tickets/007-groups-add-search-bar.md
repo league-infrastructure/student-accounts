@@ -1,12 +1,12 @@
 ---
-id: "007"
-title: "Groups — add search bar"
-status: todo
+id: '007'
+title: "Groups \u2014 add search bar"
+status: done
 use-cases:
-  - SUC-007
+- SUC-007
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
@@ -20,13 +20,13 @@ adds a search bar that filters rows by group name or description.
 
 ## Acceptance Criteria
 
-- [ ] A search bar is present above the table.
-- [ ] Typing filters rows whose `name` or `description` contains the
+- [x] A search bar is present above the table.
+- [x] Typing filters rows whose `name` or `description` contains the
       query string (case-insensitive, real-time).
-- [ ] Clearing the search bar restores all rows.
-- [ ] Existing sort functionality still works and applies to the filtered
+- [x] Clearing the search bar restores all rows.
+- [x] Existing sort functionality still works and applies to the filtered
       row set.
-- [ ] `npm run test:client` passes (update Groups.test.tsx as needed).
+- [x] `npm run test:client` passes (update Groups.test.tsx as needed).
 
 ## Implementation Plan
 
