@@ -1,22 +1,22 @@
 ---
-id: "007"
-title: "Manual smoke test — role walkthrough of new sidebar"
-status: todo
+id: '007'
+title: "Manual smoke test \u2014 role walkthrough of new sidebar"
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
 depends-on:
-  - "001"
-  - "002"
-  - "003"
-  - "004"
-  - "005"
-  - "006"
-github-issue: ""
-todo: ""
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
