@@ -498,7 +498,10 @@ export default function AppLayout() {
 
   function handleGroupClick(item: SidebarGroupItem) {
     navigate(item.defaultTo);
-    setGroupExpanded((prev) => ({ ...prev, [item.label]: !prev[item.label] }));
+    // Accordion behavior: opening a group closes any other open group.
+    setGroupExpanded((prev) =>
+      prev[item.label] ? {} : { [item.label]: true },
+    );
     closeSidebarIfMobile();
   }
 
