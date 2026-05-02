@@ -1,16 +1,16 @@
 ---
-id: "024"
-title: "User Management list polish - restructure sidebar add search and sortable columns"
-status: planning
+id: '024'
+title: User Management list polish - restructure sidebar add search and sortable columns
+status: done
 branch: sprint/024-user-management-list-polish-restructure-sidebar-add-search-and-sortable-columns
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
