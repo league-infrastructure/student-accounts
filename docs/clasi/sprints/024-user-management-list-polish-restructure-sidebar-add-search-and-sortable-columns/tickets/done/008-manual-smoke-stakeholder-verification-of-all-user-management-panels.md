@@ -1,25 +1,25 @@
 ---
-id: "008"
-title: "Manual smoke — stakeholder verification of all User Management panels"
-status: todo
+id: 008
+title: "Manual smoke \u2014 stakeholder verification of all User Management panels"
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
 depends-on:
-  - "001"
-  - "002"
-  - "003"
-  - "004"
-  - "005"
-  - "006"
-  - "007"
-github-issue: ""
-todo: ""
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
+- '007'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
