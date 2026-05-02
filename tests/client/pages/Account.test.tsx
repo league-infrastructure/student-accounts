@@ -545,3 +545,157 @@ describe('Account page — UsernamePasswordSection form', () => {
     });
   });
 });
+
+// ===========================================================================
+// WorkspaceSection — visibility and content
+// ===========================================================================
+
+describe('Account page — WorkspaceSection', () => {
+  it('does NOT render WorkspaceSection for a student with no workspace account and non-League email', async () => {
+    // STUDENT_ACCOUNT_BASE has student@example.com (not a League email) and no external accounts
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true);
+
+    renderAccount();
+
+    await waitFor(() => {
+      const elements = screen.getAllByText('student@example.com');
+      expect(elements.length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByTestId('workspace-section')).not.toBeInTheDocument();
+  });
+
+  it('does NOT render WorkspaceSection for admin', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
+    (globalThis as any).fetch = makeFetch();
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('workspace-section')).not.toBeInTheDocument();
+  });
+
+  it('does NOT render WorkspaceSection for staff', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
+    (globalThis as any).fetch = makeFetch();
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('workspace-section')).not.toBeInTheDocument();
+  });
+
+  it('renders WorkspaceSection with League email for student who has a workspace ExternalAccount', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      externalAccounts: [
+        {
+          id: 10,
+          type: 'workspace',
+          status: 'active',
+          externalId: 'student@jointheleague.org',
+          createdAt: '2025-01-01T00:00:00Z',
+        },
+      ],
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-section')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('League Email')).toBeInTheDocument();
+    expect(screen.getByText('student@jointheleague.org')).toBeInTheDocument();
+  });
+
+  it('shows temp-password inline when workspaceTempPassword is set', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { workspaceTempPassword: 'TempP@ss123' },
+      externalAccounts: [
+        {
+          id: 10,
+          type: 'workspace',
+          status: 'active',
+          externalId: 'student@jointheleague.org',
+          createdAt: '2025-01-01T00:00:00Z',
+        },
+      ],
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-section')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('TempP@ss123')).toBeInTheDocument();
+    // The "password:" label text is present as a text node within the hint span
+    expect(screen.getByTestId('workspace-section').textContent).toContain('password:');
+  });
+
+  it('does NOT show temp-password when workspaceTempPassword is not set', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { workspaceTempPassword: null },
+      externalAccounts: [
+        {
+          id: 10,
+          type: 'workspace',
+          status: 'active',
+          externalId: 'student@jointheleague.org',
+          createdAt: '2025-01-01T00:00:00Z',
+        },
+      ],
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-section')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('workspace-section').textContent).not.toContain('password:');
+  });
+
+  it('renders pending-approval banner for a pending student', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { approvalStatus: 'pending' },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-section')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent('pending approval');
+  });
+
+  it('renders WorkspaceSection for student whose primaryEmail is a League email (no ExternalAccount)', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { primaryEmail: 'alice@jointheleague.org' },
+      externalAccounts: [],
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-section')).toBeInTheDocument();
+    });
+
+    // The League email appears in both the profile meta and the workspace section
+    const matches = screen.getAllByText('alice@jointheleague.org');
+    expect(matches.length).toBeGreaterThan(0);
+  });
+});
