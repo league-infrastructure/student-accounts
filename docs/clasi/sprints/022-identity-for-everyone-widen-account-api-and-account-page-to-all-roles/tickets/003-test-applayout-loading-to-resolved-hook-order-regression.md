@@ -1,12 +1,12 @@
 ---
-id: "003"
-title: "Test — AppLayout loading-to-resolved hook-order regression"
-status: todo
+id: '003'
+title: "Test \u2014 AppLayout loading-to-resolved hook-order regression"
+status: done
 use-cases:
-  - SUC-022-004
+- SUC-022-004
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -35,19 +35,19 @@ then transitions to `loading: false`, and asserts that:
 
 ## Acceptance Criteria
 
-- [ ] A new describe block "AppLayout — loading to resolved transition" exists
+- [x] A new describe block "AppLayout — loading to resolved transition" exists
       in `tests/client/AppLayout.test.tsx`.
-- [ ] The test mounts AppLayout with `useAuth` returning `loading: true`.
-- [ ] The test asserts the loading spinner (text "Loading..." or aria attribute)
+- [x] The test mounts AppLayout with `useAuth` returning `loading: true`.
+- [x] The test asserts the loading spinner (text "Loading..." or aria attribute)
       is visible in the initial render.
-- [ ] The test updates the `useAuth` mock to return `loading: false` with a
+- [x] The test updates the `useAuth` mock to return `loading: false` with a
       valid user and triggers a re-render.
-- [ ] The test asserts that the sidebar nav item "Account" is visible after
+- [x] The test asserts that the sidebar nav item "Account" is visible after
       the transition.
-- [ ] No React "hook count changed" warning or error is thrown during the
+- [x] No React "hook count changed" warning or error is thrown during the
       transition (the test will fail with an uncaught error if it occurs).
-- [ ] Existing AppLayout tests continue to pass.
-- [ ] Client test suite passes at or above baseline.
+- [x] Existing AppLayout tests continue to pass.
+- [x] Client test suite passes at or above baseline.
 
 ## Implementation Plan
 

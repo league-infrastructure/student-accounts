@@ -1,17 +1,14 @@
 ---
-id: "001"
-title: "Server — widen GET /api/account to all authenticated roles"
-status: todo
+id: '001'
+title: "Server \u2014 widen GET /api/account to all authenticated roles"
+status: done
 use-cases:
-  - SUC-022-001
-  - SUC-022-002
-  - SUC-022-003
+- SUC-022-001
+- SUC-022-002
+- SUC-022-003
 depends-on: []
-github-issue: ""
+github-issue: ''
 todo: backlog-unshipped-follow-ups-from-sprints-020-and-021.md
-# completes_todo: false because the backlog TODO also covers items B, C, D
-# which are deferred to sprint 023. Archival is suppressed here; sprint 023
-# planning will handle final archival of the TODO.
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -35,20 +32,20 @@ access contract.
 
 ## Acceptance Criteria
 
-- [ ] `GET /api/account` with a staff session returns 200 and a valid
+- [x] `GET /api/account` with a staff session returns 200 and a valid
       `{ profile, logins, externalAccounts }` response body.
-- [ ] `GET /api/account` with an admin session returns 200 and a valid
+- [x] `GET /api/account` with an admin session returns 200 and a valid
       `{ profile, logins, externalAccounts }` response body.
-- [ ] `profile.cohort` is null for non-students (no cohort assigned).
-- [ ] `profile.workspaceTempPassword` is null for non-students.
-- [ ] `profile.llmProxyEnabled` is false for non-students.
-- [ ] `DELETE /api/account/logins/:id` with a staff session and the staff
+- [x] `profile.cohort` is null for non-students (no cohort assigned).
+- [x] `profile.workspaceTempPassword` is null for non-students.
+- [x] `profile.llmProxyEnabled` is false for non-students.
+- [x] `DELETE /api/account/logins/:id` with a staff session and the staff
       user's own login ID returns 204.
-- [ ] `DELETE /api/account/logins/:id` with a staff session and a login ID
+- [x] `DELETE /api/account/logins/:id` with a staff session and a login ID
       belonging to another user returns 404 (ownership check unchanged).
-- [ ] `GET /api/account` with an unauthenticated request still returns 401
+- [x] `GET /api/account` with an unauthenticated request still returns 401
       (requireAuth remains in place).
-- [ ] Existing server test suite passes at or above baseline.
+- [x] Existing server test suite passes at or above baseline.
 
 ## Implementation Plan
 
