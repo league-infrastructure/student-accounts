@@ -1,14 +1,14 @@
 ---
-id: "002"
-title: "New pages: ClaudeCode.tsx and LlmProxy.tsx"
-status: todo
+id: '002'
+title: 'New pages: ClaudeCode.tsx and LlmProxy.tsx'
+status: done
 use-cases:
-  - SUC-002
-  - SUC-003
+- SUC-002
+- SUC-003
 depends-on:
-  - "001"
-github-issue: ""
-todo: ""
+- '001'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -58,18 +58,18 @@ Add to the `AppLayout` route block (alongside `/account`, `/oauth-clients`):
 
 ## Acceptance Criteria
 
-- [ ] `client/src/pages/ClaudeCode.tsx` exists and renders `ClaudeCodeSection` content.
-- [ ] `client/src/pages/LlmProxy.tsx` exists and renders the LLM Proxy card content.
-- [ ] `/claude-code` route is registered in `App.tsx` under `AppLayout`.
-- [ ] `/llm-proxy` route is registered in `App.tsx` under `AppLayout`.
-- [ ] ClaudeCode page renders install/auth/verify steps for `active` claude account.
-- [ ] ClaudeCode page renders pending message for `pending` claude account.
-- [ ] ClaudeCode page shows a graceful "not enabled" state when no claude ExternalAccount.
-- [ ] LlmProxy page renders endpoint, token, and quota when `status.enabled === true`.
-- [ ] LlmProxy page renders "Not enabled" message when `status.enabled === false`.
-- [ ] `tests/client/pages/ClaudeCode.test.tsx` exists and passes.
-- [ ] `tests/client/pages/LlmProxy.test.tsx` exists and passes.
-- [ ] `npm run test:client` passes.
+- [x] `client/src/pages/ClaudeCode.tsx` exists and renders `ClaudeCodeSection` content.
+- [x] `client/src/pages/LlmProxy.tsx` exists and renders the LLM Proxy card content.
+- [x] `/claude-code` route is registered in `App.tsx` under `AppLayout`.
+- [x] `/llm-proxy` route is registered in `App.tsx` under `AppLayout`.
+- [x] ClaudeCode page renders install/auth/verify steps for `active` claude account.
+- [x] ClaudeCode page renders pending message for `pending` claude account.
+- [x] ClaudeCode page shows a graceful "not enabled" state when no claude ExternalAccount.
+- [x] LlmProxy page renders endpoint, token, and quota when `status.enabled === true`.
+- [x] LlmProxy page renders "Not enabled" message when `status.enabled === false`.
+- [x] `tests/client/pages/ClaudeCode.test.tsx` exists and passes.
+- [x] `tests/client/pages/LlmProxy.test.tsx` exists and passes.
+- [x] `npm run test:client` passes.
 
 ## Implementation Plan
 

@@ -100,6 +100,11 @@ async function patchDisplayName(displayName: string): Promise<void> {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** League emails are @jointheleague.org or any subdomain. */
+function isLeagueEmail(email: string): boolean {
+  return /@([a-z0-9-]+\.)?jointheleague\.org$/i.test(email);
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
   google: 'Google',
@@ -293,6 +298,66 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
 }
 
 // ---------------------------------------------------------------------------
+// WorkspaceSection — League Email + temp-password display (students only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shows the student's League Workspace email address and, when set, the
+ * shared temp password they need to use on first sign-in.
+ *
+ * Returns null when:
+ *  - The student has no workspace ExternalAccount AND no League-format email.
+ *  (The pending-banner variant is handled first and always renders for pending
+ *   accounts regardless of workspace status.)
+ */
+function WorkspaceSection({ data }: { data: AccountData }) {
+  if (data.profile.approvalStatus === 'pending') {
+    return (
+      <div style={styles.card} data-testid="workspace-section">
+        <h2 style={styles.sectionTitle}>League Email</h2>
+        <div style={styles.pendingBanner} role="status">
+          <strong>Your account is pending approval.</strong>
+          <span>
+            {' '}An admin will review your sign-in shortly. Once approved, your
+            League email and any other services will appear here.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const workspaceAccount = data.externalAccounts.find((a) => a.type === 'workspace');
+  const leagueEmailDisplay: string | null =
+    workspaceAccount?.externalId ??
+    (isLeagueEmail(data.profile.primaryEmail) ? data.profile.primaryEmail : null);
+
+  // Nothing to show — hide entirely.
+  if (!workspaceAccount && !leagueEmailDisplay) return null;
+
+  return (
+    <div style={styles.card} data-testid="workspace-section">
+      <h2 style={styles.sectionTitle}>League Email</h2>
+      {leagueEmailDisplay && (
+        <div style={styles.workspaceEmailRow}>
+          <span style={styles.workspaceEmailValue}>{leagueEmailDisplay}</span>
+          {data.profile.workspaceTempPassword && (
+            <span
+              style={styles.tempPasswordHint}
+              title="Shared temp password — you'll be asked to change it on first sign-in"
+            >
+              password:{' '}
+              <code style={styles.workspaceEmailValue}>
+                {data.profile.workspaceTempPassword}
+              </code>
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // HelpSection
 // ---------------------------------------------------------------------------
 
@@ -437,6 +502,8 @@ export default function Account() {
             </>
           )}
 
+          <div style={styles.spacer} />
+          <WorkspaceSection data={data} />
           <div style={styles.spacer} />
         </>
       )}
@@ -662,5 +729,28 @@ const styles: Record<string, React.CSSProperties> = {
   },
   helpLink: {
     color: '#4f46e5',
+  },
+  pendingBanner: {
+    padding: '14px 16px',
+    borderRadius: 8,
+    border: '1px solid #fcd34d',
+    background: '#fef3c7',
+    color: '#78350f',
+    fontSize: '0.9rem',
+    lineHeight: 1.5,
+  },
+  workspaceEmailRow: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+  },
+  workspaceEmailValue: {
+    fontSize: '0.85rem',
+    color: '#1e293b',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  },
+  tempPasswordHint: {
+    fontSize: '0.78rem',
+    color: '#64748b',
   },
 };

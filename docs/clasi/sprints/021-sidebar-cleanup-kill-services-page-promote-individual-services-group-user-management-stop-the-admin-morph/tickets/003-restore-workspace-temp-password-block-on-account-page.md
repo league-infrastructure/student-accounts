@@ -1,13 +1,13 @@
 ---
-id: "003"
-title: "Restore Workspace temp-password block on Account page"
-status: todo
+id: '003'
+title: Restore Workspace temp-password block on Account page
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on:
-  - "001"
-github-issue: ""
-todo: ""
+- '001'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -52,14 +52,14 @@ new API calls are needed.
 
 ## Acceptance Criteria
 
-- [ ] `Account.tsx` renders a Workspace block for students with a workspace ExternalAccount.
-- [ ] Workspace block shows the League email address from `externalId` or `primaryEmail`.
-- [ ] When `profile.workspaceTempPassword` is set, the block displays it inline.
-- [ ] Workspace block shows the pending-approval banner when `approvalStatus === 'pending'`.
-- [ ] Workspace block is not rendered for staff or admin roles.
-- [ ] Workspace block is not rendered for students with no workspace ExternalAccount and a non-League email.
-- [ ] Existing `Account.tsx` tests still pass.
-- [ ] `npm run test:client` passes.
+- [x] `Account.tsx` renders a Workspace block for students with a workspace ExternalAccount.
+- [x] Workspace block shows the League email address from `externalId` or `primaryEmail`.
+- [x] When `profile.workspaceTempPassword` is set, the block displays it inline.
+- [x] Workspace block shows the pending-approval banner when `approvalStatus === 'pending'`.
+- [x] Workspace block is not rendered for staff or admin roles.
+- [x] Workspace block is not rendered for students with no workspace ExternalAccount and a non-League email.
+- [x] Existing `Account.tsx` tests still pass.
+- [x] `npm run test:client` passes.
 
 ## Implementation Plan
 

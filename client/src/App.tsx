@@ -36,6 +36,8 @@ import SyncPanel from './pages/admin/SyncPanel';
 import MergeQueuePanel from './pages/admin/MergeQueuePanel';
 import Dashboard from './pages/admin/Dashboard';
 import OAuthClients from './pages/OAuthClients';
+import ClaudeCode from './pages/ClaudeCode';
+import LlmProxy from './pages/LlmProxy';
 
 import OAuthConsent from './pages/OAuthConsent';
 
@@ -80,6 +82,8 @@ function App() {
               <Route path="/services" element={<Services />} />
               <Route path="/mcp-setup" element={<McpSetup />} />
               <Route path="/oauth-clients" element={<OAuthClients />} />
+              <Route path="/claude-code" element={<ClaudeCode />} />
+              <Route path="/llm-proxy" element={<LlmProxy />} />
               {/* Redirect old admin path to new canonical path */}
               <Route path="/admin/oauth-clients" element={<Navigate to="/oauth-clients" replace />} />
 
