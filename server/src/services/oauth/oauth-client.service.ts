@@ -27,6 +27,8 @@ import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 
 import { AppError, ForbiddenError } from '../../errors.js';
 import type { AuditService } from '../audit.service.js';
+import { ScopePolicy } from './scope-policy.js';
+import { ClientCapPolicy } from './client-cap-policy.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -138,7 +140,39 @@ export class OAuthClientService {
   async create(
     input: CreateOAuthClientInput,
     actorUserId: number,
+    actor?: ActorContext,
   ): Promise<CreateResult> {
+    // ------------------------------------------------------------------
+    // Policy checks (cap first, then scope — see ticket 002 / 001).
+    // ------------------------------------------------------------------
+    if (actor) {
+      // Count non-disabled clients owned by this user.
+      const activeCount = await this.prisma.oAuthClient.count({
+        where: { created_by: actorUserId, disabled_at: null },
+      });
+
+      try {
+        ClientCapPolicy.assertUnderCap(actor.actorRole, activeCount);
+      } catch (capErr) {
+        // Audit the rejection outside of the create transaction (no client row exists).
+        const cap = ClientCapPolicy.maxClientsFor(actor.actorRole);
+        await this.prisma.$transaction(async (tx: any) => {
+          await this.audit.record(tx, {
+            actor_user_id: actorUserId,
+            action: 'oauth_client_create_rejected_cap',
+            details: {
+              role: actor.actorRole,
+              current_count: activeCount,
+              cap,
+            },
+          });
+        });
+        throw capErr;
+      }
+
+      ScopePolicy.assertAllowed(actor.actorRole, input.allowed_scopes);
+    }
+
     const plaintext = generatePlaintext();
     const secretHash = hashSecret(plaintext);
     // Use a random suffix for the client_id so it is opaque but readable.
@@ -242,6 +276,10 @@ export class OAuthClientService {
     if (actor) {
       const existing = await this.prisma.oAuthClient.findUnique({ where: { id } });
       if (existing) this.enforceOwnership(existing, actor);
+      // Scope ceiling check — enforce on update when allowed_scopes is being patched.
+      if (patch.allowed_scopes !== undefined) {
+        ScopePolicy.assertAllowed(actor.actorRole, patch.allowed_scopes);
+      }
     }
 
     const data: Record<string, unknown> = {};

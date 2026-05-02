@@ -8,12 +8,11 @@
  *  - Rotate flow: Rotate button → secret modal opens with new plaintext
  *  - Disable flow: Disable button + confirm → row shows Disabled status
  *  - Scope checkbox UI: profile + users:read checkboxes
- *  - Redirect: /admin/oauth-clients → /oauth-clients
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import OAuthClients from '../../client/src/pages/OAuthClients';
 
@@ -349,24 +348,3 @@ describe('OAuthClients — disable flow', () => {
   });
 });
 
-describe('OAuthClients — redirect smoke test', () => {
-  it('visiting /admin/oauth-clients renders same content as /oauth-clients', async () => {
-    mockFetch({ 'GET /api/oauth-clients': [SAMPLE_CLIENT] });
-
-    const client = makeQueryClient();
-    render(
-      <MemoryRouter initialEntries={['/admin/oauth-clients']}>
-        <QueryClientProvider client={client}>
-          <Routes>
-            <Route path="/admin/oauth-clients" element={<Navigate to="/oauth-clients" replace />} />
-            <Route path="/oauth-clients" element={<OAuthClients />} />
-          </Routes>
-        </QueryClientProvider>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('My Test App')).toBeTruthy();
-    });
-  });
-});

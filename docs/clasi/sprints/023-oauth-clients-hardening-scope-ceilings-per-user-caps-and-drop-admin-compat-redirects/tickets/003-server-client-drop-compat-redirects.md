@@ -1,12 +1,12 @@
 ---
-id: "003"
-title: "Server + Client — drop compat redirects"
-status: todo
+id: '003'
+title: "Server + Client \u2014 drop compat redirects"
+status: done
 use-cases:
-  - SUC-023-006
+- SUC-023-006
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -31,14 +31,14 @@ docs, and MCP setup guide).
 
 ## Acceptance Criteria
 
-- [ ] `oauthClientsCompatRouter` is deleted from `server/src/routes/oauth-clients.ts` — the two `oauthClientsCompatRouter.all` route definitions and the `export const oauthClientsCompatRouter` declaration are removed.
-- [ ] The `import { oauthClientsRouter, oauthClientsCompatRouter }` in `server/src/app.ts` is updated to import only `oauthClientsRouter`; the `app.use('/api', oauthClientsCompatRouter)` line is removed.
-- [ ] The `<Route path="/admin/oauth-clients" element={<Navigate to="/oauth-clients" replace />} />` line is deleted from `client/src/App.tsx`.
-- [ ] `GET /api/admin/oauth-clients` on a running server returns 404 (not a 308 redirect).
-- [ ] `GET /admin/oauth-clients` in the browser renders the NotFound page (not a redirect to `/oauth-clients`).
-- [ ] Any existing redirect tests in `tests/server/routes/oauth-clients.test.ts` are deleted.
-- [ ] A new test asserts that `GET /api/admin/oauth-clients` returns 404.
-- [ ] TypeScript compilation passes (`npm run build` or `tsc --noEmit`).
+- [x] `oauthClientsCompatRouter` is deleted from `server/src/routes/oauth-clients.ts` — the two `oauthClientsCompatRouter.all` route definitions and the `export const oauthClientsCompatRouter` declaration are removed.
+- [x] The `import { oauthClientsRouter, oauthClientsCompatRouter }` in `server/src/app.ts` is updated to import only `oauthClientsRouter`; the `app.use('/api', oauthClientsCompatRouter)` line is removed.
+- [x] The `<Route path="/admin/oauth-clients" element={<Navigate to="/oauth-clients" replace />} />` line is deleted from `client/src/App.tsx`.
+- [x] `GET /api/admin/oauth-clients` on a running server returns 404 (not a 308 redirect).
+- [x] `GET /admin/oauth-clients` in the browser renders the NotFound page (not a redirect to `/oauth-clients`).
+- [x] Any existing redirect tests in `tests/server/routes/oauth-clients.test.ts` are deleted.
+- [x] A new test asserts that `GET /api/admin/oauth-clients` returns 404.
+- [x] TypeScript compilation passes (`npm run build` or `tsc --noEmit`).
 
 ## Implementation Plan
 

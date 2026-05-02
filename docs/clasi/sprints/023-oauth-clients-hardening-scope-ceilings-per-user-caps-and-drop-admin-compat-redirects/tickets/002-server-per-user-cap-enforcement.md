@@ -1,13 +1,13 @@
 ---
-id: "002"
-title: "Server — per-user cap enforcement"
-status: todo
+id: '002'
+title: "Server \u2014 per-user cap enforcement"
+status: done
 use-cases:
-  - SUC-023-001
-  - SUC-023-002
+- SUC-023-001
+- SUC-023-002
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -35,17 +35,17 @@ Note: disabled clients (`disabled_at IS NOT NULL`) do not count toward the cap.
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/oauth/client-cap-policy.ts` exists and exports:
+- [x] `server/src/services/oauth/client-cap-policy.ts` exists and exports:
   - `ClientCapPolicy.maxClientsFor(role: string): number | null` — `null` means unlimited.
   - `ClientCapPolicy.assertUnderCap(role: string, currentCount: number): void` — throws `ForbiddenError` (with `code: 'CLIENT_CAP_REACHED'`) when count >= cap.
-- [ ] `OAuthClientService.create` counts non-disabled clients owned by `actorUserId` (`where: { created_by: actorUserId, disabled_at: null }`) and calls `ClientCapPolicy.assertUnderCap(actor.actorRole, count)` when `actor` is provided.
-- [ ] On cap violation, an audit event `oauth_client_create_rejected_cap` is recorded with `{ role: actor.actorRole, current_count: count, cap: maxClientsFor(role) }` in `details`.
-- [ ] Student with zero clients can create one → 201.
-- [ ] Student with one active client cannot create a second → 403.
-- [ ] Student who disabled their one client can create a new one → 201 (disabled not counted).
-- [ ] Staff with N clients can always create another → 201.
-- [ ] Admin with N clients can always create another → 201.
-- [ ] Cap rejection is visible in the audit log.
+- [x] `OAuthClientService.create` counts non-disabled clients owned by `actorUserId` (`where: { created_by: actorUserId, disabled_at: null }`) and calls `ClientCapPolicy.assertUnderCap(actor.actorRole, count)` when `actor` is provided.
+- [x] On cap violation, an audit event `oauth_client_create_rejected_cap` is recorded with `{ role: actor.actorRole, current_count: count, cap: maxClientsFor(role) }` in `details`.
+- [x] Student with zero clients can create one → 201.
+- [x] Student with one active client cannot create a second → 403.
+- [x] Student who disabled their one client can create a new one → 201 (disabled not counted).
+- [x] Staff with N clients can always create another → 201.
+- [x] Admin with N clients can always create another → 201.
+- [x] Cap rejection is visible in the audit log.
 
 ## Implementation Plan
 

@@ -81,9 +81,6 @@ function App() {
               <Route path="/oauth-clients" element={<OAuthClients />} />
               <Route path="/claude-code" element={<ClaudeCode />} />
               <Route path="/llm-proxy" element={<LlmProxy />} />
-              {/* Redirect old admin path to new canonical path */}
-              <Route path="/admin/oauth-clients" element={<Navigate to="/oauth-clients" replace />} />
-
               {/* Staff pages — role-gated by StaffLayout */}
               <Route element={<StaffLayout />}>
                 <Route path="/staff/directory" element={<StaffDirectory />} />

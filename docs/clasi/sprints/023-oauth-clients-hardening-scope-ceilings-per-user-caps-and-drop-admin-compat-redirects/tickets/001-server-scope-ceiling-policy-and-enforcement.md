@@ -1,13 +1,13 @@
 ---
-id: "001"
-title: "Server — scope-ceiling policy and enforcement"
-status: todo
+id: '001'
+title: "Server \u2014 scope-ceiling policy and enforcement"
+status: done
 use-cases:
-  - SUC-023-003
-  - SUC-023-004
+- SUC-023-003
+- SUC-023-004
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -32,21 +32,21 @@ any scope, creating a privilege escalation path where a student could obtain
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/oauth/scope-policy.ts` exists and exports:
+- [x] `server/src/services/oauth/scope-policy.ts` exists and exports:
   - `ScopePolicy.allowedScopesFor(role: string): string[]`
   - `ScopePolicy.assertAllowed(role: string, requestedScopes: string[]): void` — throws `ForbiddenError` when any requested scope is not in the allowed set.
-- [ ] `OAuthClientService.create` is updated to accept `actor?: ActorContext` as a third argument (matching the pattern of `update`, `rotateSecret`, `disable`).
-- [ ] When `actor` is provided to `create`, `ScopePolicy.assertAllowed(actor.actorRole, input.allowed_scopes)` is called before writing.
-- [ ] `OAuthClientService.update` calls `ScopePolicy.assertAllowed` when `patch.allowed_scopes` is present and `actor` is provided.
-- [ ] The POST `/oauth-clients` route handler passes `actorContext(req)` as the `actor` argument to `oauthClients.create`.
-- [ ] Student create with `['profile']` → 201.
-- [ ] Student create with `['users:read']` → 403.
-- [ ] Student create with `['profile', 'users:read']` → 403.
-- [ ] Student update with `['users:read']` → 403.
-- [ ] Staff create with `['profile', 'users:read']` → 201.
-- [ ] Admin create with `['profile', 'users:read']` → 201.
-- [ ] Staff update with any valid scope → 201.
-- [ ] No changes to `verifySecret`, `rotateSecret`, `disable`, or `list`.
+- [x] `OAuthClientService.create` is updated to accept `actor?: ActorContext` as a third argument (matching the pattern of `update`, `rotateSecret`, `disable`).
+- [x] When `actor` is provided to `create`, `ScopePolicy.assertAllowed(actor.actorRole, input.allowed_scopes)` is called before writing.
+- [x] `OAuthClientService.update` calls `ScopePolicy.assertAllowed` when `patch.allowed_scopes` is present and `actor` is provided.
+- [x] The POST `/oauth-clients` route handler passes `actorContext(req)` as the `actor` argument to `oauthClients.create`.
+- [x] Student create with `['profile']` → 201.
+- [x] Student create with `['users:read']` → 403.
+- [x] Student create with `['profile', 'users:read']` → 403.
+- [x] Student update with `['users:read']` → 403.
+- [x] Staff create with `['profile', 'users:read']` → 201.
+- [x] Admin create with `['profile', 'users:read']` → 201.
+- [x] Staff update with any valid scope → 201.
+- [x] No changes to `verifySecret`, `rotateSecret`, `disable`, or `list`.
 
 ## Implementation Plan
 
