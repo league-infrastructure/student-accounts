@@ -1,5 +1,14 @@
 ---
-status: pending
+status: done
+sprint: '021'
+tickets:
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
+- '006'
+- '007'
 ---
 
 # Sprint 021 (proposed): sidebar cleanup — kill Services page, promote individual services, group user management, stop the admin morph
