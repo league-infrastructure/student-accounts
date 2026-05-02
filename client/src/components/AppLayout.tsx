@@ -435,6 +435,18 @@ export default function AppLayout() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  // Fetch account data for entitlement gates (Claude Code / LLM Proxy).
+  // Uses the same ['account'] cache key as Account.tsx to avoid double fetches.
+  // Must be called unconditionally before any early return (Rules of Hooks).
+  // For non-students /api/account returns 403; the query errors silently and
+  // accountData stays undefined, which hides the entitlement-gated items.
+  const { data: accountData } = useQuery<AccountData>({
+    queryKey: ['account'],
+    queryFn: fetchAccount,
+    enabled: !loading && !!user,
+    retry: false,
+  });
+
   // Redirect to login if not authenticated
   if (loading) {
     return (
@@ -454,16 +466,6 @@ export default function AppLayout() {
   const badge = roleBadgeStyle(role);
   const isAdmin = hasAdminAccess(role);
   const avatarInitial = displayName.charAt(0).toUpperCase();
-
-  // Fetch account data for entitlement gates (Claude Code / LLM Proxy).
-  // Uses the same ['account'] cache key as Account.tsx to avoid double fetches.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const { data: accountData } = useQuery<AccountData>({
-    queryKey: ['account'],
-    queryFn: fetchAccount,
-    // Only authenticated users need this; treat as always enabled for layout.
-    // While loading, entitlement-gated items are hidden (accountData === undefined).
-  });
 
   function closeSidebarIfMobile() {
     if (isMobile) setSidebarOpen(false);
