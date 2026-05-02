@@ -1,18 +1,18 @@
 ---
-id: "004"
-title: "Manual smoke — stakeholder verification of staff and admin Account page"
-status: todo
+id: '004'
+title: "Manual smoke \u2014 stakeholder verification of staff and admin Account page"
+status: done
 use-cases:
-  - SUC-022-001
-  - SUC-022-002
-  - SUC-022-003
-  - SUC-022-004
+- SUC-022-001
+- SUC-022-002
+- SUC-022-003
+- SUC-022-004
 depends-on:
-  - "001"
-  - "002"
-  - "003"
-github-issue: ""
-todo: ""
+- '001'
+- '002'
+- '003'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
