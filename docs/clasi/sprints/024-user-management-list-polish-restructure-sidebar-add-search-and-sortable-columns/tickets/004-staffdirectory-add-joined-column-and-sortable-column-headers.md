@@ -1,12 +1,12 @@
 ---
-id: "004"
-title: "StaffDirectory — add Joined column and sortable column headers"
-status: todo
+id: '004'
+title: "StaffDirectory \u2014 add Joined column and sortable column headers"
+status: done
 use-cases:
-  - SUC-004
+- SUC-004
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
@@ -31,18 +31,18 @@ filter, click-to-expand inline student detail panel.
 
 ## Acceptance Criteria
 
-- [ ] Verify that `GET /api/staff/directory` returns `createdAt` on each
+- [x] Verify that `GET /api/staff/directory` returns `createdAt` on each
       row; if not, this ticket is blocked (note it and escalate).
-- [ ] `DirectoryStudent` TypeScript interface includes `createdAt: string`.
-- [ ] A "Joined" column is present in the table showing the formatted date.
-- [ ] Column headers Name, Email, Cohort, Accounts, Joined are sortable.
-- [ ] Clicking the same header twice toggles between ascending and
+- [x] `DirectoryStudent` TypeScript interface includes `createdAt: string`.
+- [x] A "Joined" column is present in the table showing the formatted date.
+- [x] Column headers Name, Email, Cohort, Accounts, Joined are sortable.
+- [x] Clicking the same header twice toggles between ascending and
       descending.
-- [ ] Existing search bar, cohort filter, and account-type filter still
+- [x] Existing search bar, cohort filter, and account-type filter still
       work and interact correctly with sort (sort applies to the filtered
       set).
-- [ ] The click-to-expand inline detail panel is not broken.
-- [ ] `npm run test:client` passes (update StaffDirectory.test.tsx as
+- [x] The click-to-expand inline detail panel is not broken.
+- [x] `npm run test:client` passes (update StaffDirectory.test.tsx as
       needed).
 
 ## Implementation Plan

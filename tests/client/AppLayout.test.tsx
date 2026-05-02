@@ -313,11 +313,11 @@ describe('AppLayout', () => {
       });
     });
 
-    it('shows Staff Directory after expanding User Management group', async () => {
+    it('shows Staff after expanding User Management group', async () => {
       renderLayout();
       fireEvent.click(screen.getByText('User Management'));
       await waitFor(() => {
-        expect(screen.getByText('Staff Directory')).toBeInTheDocument();
+        expect(screen.getByText('Staff')).toBeInTheDocument();
       });
     });
   });
@@ -364,12 +364,12 @@ describe('AppLayout', () => {
       renderLayout();
       fireEvent.click(screen.getByText('User Management'));
       await waitFor(() => {
-        expect(screen.getByText('Staff Directory')).toBeInTheDocument();
         expect(screen.getByText('Users')).toBeInTheDocument();
-        expect(screen.getByText('League Students')).toBeInTheDocument();
+        expect(screen.getByText('Students')).toBeInTheDocument();
+        expect(screen.getByText('Staff')).toBeInTheDocument();
         expect(screen.getByText('LLM Proxy Users')).toBeInTheDocument();
-        expect(screen.getByText('Cohorts')).toBeInTheDocument();
         expect(screen.getByText('Groups')).toBeInTheDocument();
+        expect(screen.getByText('Cohorts')).toBeInTheDocument();
       });
     });
 
@@ -454,7 +454,7 @@ describe('AppLayout', () => {
   /* ---------------------------------------------------------------- */
 
   describe('User Management group expand / navigate', () => {
-    it('clicking User Management header as staff expands the group and shows Staff Directory', async () => {
+    it('clicking User Management header as staff expands the group and shows Staff', async () => {
       mockUseAuth.mockReturnValue({
         user: makeStaffUser(),
         loading: false,
@@ -464,12 +464,12 @@ describe('AppLayout', () => {
       renderLayout();
 
       // Initially collapsed at /
-      expect(screen.queryByText('Staff Directory')).not.toBeInTheDocument();
+      expect(screen.queryByText('Staff')).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByText('User Management'));
 
       await waitFor(() => {
-        expect(screen.getByText('Staff Directory')).toBeInTheDocument();
+        expect(screen.getByText('Staff')).toBeInTheDocument();
       });
     });
 
@@ -485,7 +485,7 @@ describe('AppLayout', () => {
       fireEvent.click(screen.getByText('User Management'));
 
       await waitFor(() => {
-        expect(screen.getByText('Staff Directory')).toBeInTheDocument();
+        expect(screen.getByText('Staff')).toBeInTheDocument();
         expect(screen.getByText('Users')).toBeInTheDocument();
         expect(screen.getByText('Cohorts')).toBeInTheDocument();
         expect(screen.getByText('Groups')).toBeInTheDocument();

@@ -101,15 +101,15 @@ const SIDEBAR_NAV: SidebarItem[] = [
   {
     kind: 'group',
     label: 'User Management',
-    defaultTo: '/staff/directory',
+    defaultTo: '/admin/users',
     gate: hasStaffAccess,
     children: [
-      { to: '/staff/directory', label: 'Staff Directory', gate: hasStaffAccess },
       { to: '/admin/users', label: 'Users', gate: hasAdminAccess },
-      { to: '/users/students', label: 'League Students', gate: hasAdminAccess },
+      { to: '/users/students', label: 'Students', gate: hasAdminAccess },
+      { to: '/staff/directory', label: 'Staff', gate: hasStaffAccess },
       { to: '/users/llm-proxy', label: 'LLM Proxy Users', gate: hasAdminAccess },
-      { to: '/cohorts', label: 'Cohorts', gate: hasAdminAccess },
       { to: '/groups', label: 'Groups', gate: hasAdminAccess },
+      { to: '/cohorts', label: 'Cohorts', gate: hasAdminAccess },
     ],
   },
 

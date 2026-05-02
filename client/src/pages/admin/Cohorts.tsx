@@ -85,6 +85,7 @@ export default function Cohorts() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [newName, setNewName] = useState('');
+  const [search, setSearch] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<SortCol>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -191,12 +192,25 @@ export default function Cohorts() {
         </div>
       )}
 
+      {/* Search bar */}
+      <div style={searchBarStyle}>
+        <input
+          type="search"
+          placeholder="Search cohorts…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={inputStyle}
+          aria-label="Search cohorts"
+        />
+      </div>
+
       {/* Cohort list */}
       {cohorts && cohorts.length === 0 ? (
         <p style={emptyStyle}>No cohorts yet.</p>
       ) : (
         <CohortsTable
           cohorts={cohorts ?? []}
+          search={search}
           sortCol={sortCol}
           sortDir={sortDir}
           onSort={(col) => {
@@ -218,6 +232,7 @@ export default function Cohorts() {
 
 interface CohortsTableProps {
   cohorts: Cohort[];
+  search: string;
   sortCol: SortCol;
   sortDir: 'asc' | 'desc';
   onSort: (col: SortCol) => void;
@@ -227,6 +242,7 @@ interface CohortsTableProps {
 
 function CohortsTable({
   cohorts,
+  search,
   sortCol,
   sortDir,
   onSort,
@@ -234,7 +250,15 @@ function CohortsTable({
   syncingId,
 }: CohortsTableProps) {
   const sorted = useMemo(() => {
-    const copy = [...cohorts];
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? cohorts.filter(
+          (c) =>
+            c.name.toLowerCase().includes(q) ||
+            (c.google_ou_path ?? '').toLowerCase().includes(q),
+        )
+      : cohorts;
+    const copy = [...filtered];
     copy.sort((a, b) => {
       let cmp = 0;
       switch (sortCol) {
@@ -251,7 +275,7 @@ function CohortsTable({
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return copy;
-  }, [cohorts, sortCol, sortDir]);
+  }, [cohorts, search, sortCol, sortDir]);
 
   const arrow = (col: SortCol) => (col === sortCol ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
   const thProps = (col: SortCol): React.CSSProperties => ({
@@ -364,6 +388,10 @@ const submitButtonStyle: React.CSSProperties = {
 const inlineErrorStyle: React.CSSProperties = {
   color: '#dc2626',
   fontSize: 13,
+};
+
+const searchBarStyle: React.CSSProperties = {
+  marginBottom: 16,
 };
 
 const tableStyle: React.CSSProperties = {

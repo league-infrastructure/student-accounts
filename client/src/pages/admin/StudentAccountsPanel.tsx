@@ -5,6 +5,9 @@
  * email is on the student domain. Supports bulk suspend of their
  * workspace + claude accounts by selecting rows and clicking
  * "Suspend accounts".
+ *
+ * Includes a search bar (filter by name or email, client-side) and
+ * sortable column headers for Name, Email, Cohort, Accounts, and Joined.
  */
 
 import { useMemo, useState } from 'react';
@@ -35,6 +38,8 @@ interface BulkSuspendResult {
   totalEligible: number;
 }
 
+type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'joined';
+
 const STUDENT_EMAIL_RE = /@students\.[a-z0-9.-]+$/i;
 
 function fetchUsers(): Promise<AdminUser[]> {
@@ -58,6 +63,83 @@ async function bulkSuspendAccounts(userIds: number[]): Promise<BulkSuspendResult
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Search + sort helpers
+// ---------------------------------------------------------------------------
+
+function applySearch(users: AdminUser[], search: string): AdminUser[] {
+  const q = search.trim().toLowerCase();
+  if (!q) return users;
+  return users.filter(
+    (u) =>
+      (u.displayName ?? '').toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q),
+  );
+}
+
+function accountsSortKey(u: AdminUser): string {
+  const types = u.externalAccounts?.map((a) => a.type) ?? u.externalAccountTypes ?? [];
+  const unique = Array.from(new Set(types)).sort();
+  return `${String(9 - unique.length).padStart(2, '0')}-${unique.join(',')}`;
+}
+
+function sortStudents(users: AdminUser[], col: SortCol, dir: 'asc' | 'desc'): AdminUser[] {
+  const sorted = [...users].sort((a, b) => {
+    let cmp = 0;
+    switch (col) {
+      case 'name':
+        cmp = (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email);
+        break;
+      case 'email':
+        cmp = a.email.localeCompare(b.email);
+        break;
+      case 'cohort':
+        cmp = (a.cohort?.name ?? '').localeCompare(b.cohort?.name ?? '');
+        break;
+      case 'accounts':
+        cmp = accountsSortKey(a).localeCompare(accountsSortKey(b));
+        break;
+      case 'joined':
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        break;
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  return sorted;
+}
+
+// ---------------------------------------------------------------------------
+// Sortable column header
+// ---------------------------------------------------------------------------
+
+interface SortableThProps {
+  col: SortCol;
+  activeCol: SortCol;
+  dir: 'asc' | 'desc';
+  onSort: (col: SortCol) => void;
+  children: React.ReactNode;
+}
+
+function SortableTh({ col, activeCol, dir, onSort, children }: SortableThProps) {
+  const active = col === activeCol;
+  return (
+    <th
+      style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
+      onClick={() => onSort(col)}
+      aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      {children}
+      {active && (
+        <span style={{ marginLeft: 4, fontSize: 10 }}>{dir === 'asc' ? '▲' : '▼'}</span>
+      )}
+    </th>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export default function StudentAccountsPanel() {
   const queryClient = useQueryClient();
   const { data: users, isLoading, error } = useQuery<AdminUser[], Error>({
@@ -67,6 +149,11 @@ export default function StudentAccountsPanel() {
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [banner, setBanner] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Search + sort state. Default: newest-first (joined desc).
+  const [search, setSearch] = useState('');
+  const [sortCol, setSortCol] = useState<SortCol>('joined');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const suspendMutation = useMutation<BulkSuspendResult, Error, number[]>({
     mutationFn: bulkSuspendAccounts,
@@ -87,25 +174,37 @@ export default function StudentAccountsPanel() {
     onError: (err) => setBanner({ ok: false, msg: err.message }),
   });
 
-  // Newest students first — admins usually want to see the latest
-  // arrivals immediately. Rows inside the 24h window also get the
-  // `NEW_USER_BG` background.
-  const studentUsers = useMemo(() => {
-    const filtered = (users ?? []).filter((u) => STUDENT_EMAIL_RE.test(u.email));
-    return [...filtered].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-  }, [users]);
+  // Filter to students, apply search, then sort.
+  const visibleStudents = useMemo(() => {
+    const students = (users ?? []).filter((u) => STUDENT_EMAIL_RE.test(u.email));
+    const searched = applySearch(students, search);
+    return sortStudents(searched, sortCol, sortDir);
+  }, [users, search, sortCol, sortDir]);
+
+  function handleSort(col: SortCol) {
+    if (col === sortCol) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  // Total count of students (before search filter, for the subtitle).
+  const totalStudents = useMemo(
+    () => (users ?? []).filter((u) => STUDENT_EMAIL_RE.test(u.email)).length,
+    [users],
+  );
 
   const allSelected =
-    studentUsers.length > 0 && studentUsers.every((u) => selected.has(u.id));
-  const someSelected = studentUsers.some((u) => selected.has(u.id));
+    visibleStudents.length > 0 && visibleStudents.every((u) => selected.has(u.id));
+  const someSelected = visibleStudents.some((u) => selected.has(u.id));
 
   function toggleAll() {
     if (allSelected) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(studentUsers.map((u) => u.id)));
+      setSelected(new Set(visibleStudents.map((u) => u.id)));
     }
   }
 
@@ -152,7 +251,8 @@ export default function StudentAccountsPanel() {
         </div>
       )}
 
-      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+      {/* Toolbar: suspend button + count + search */}
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           type="button"
           onClick={handleSuspend}
@@ -162,8 +262,16 @@ export default function StudentAccountsPanel() {
           {suspendMutation.isPending ? 'Suspending…' : `Suspend accounts (${selected.size})`}
         </button>
         <span style={{ fontSize: 13, color: '#64748b' }}>
-          {studentUsers.length} student{studentUsers.length === 1 ? '' : 's'}
+          {totalStudents} student{totalStudents === 1 ? '' : 's'}
         </span>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name or email…"
+          aria-label="Search students"
+          style={searchInputStyle}
+        />
       </div>
 
       <table style={tableStyle}>
@@ -178,18 +286,28 @@ export default function StudentAccountsPanel() {
                   if (el) el.indeterminate = !allSelected && someSelected;
                 }}
                 onChange={toggleAll}
-                disabled={studentUsers.length === 0}
+                disabled={visibleStudents.length === 0}
               />
             </th>
-            <th style={th}>Name</th>
-            <th style={th}>Email</th>
-            <th style={th}>Cohort</th>
-            <th style={th}>Accounts</th>
-            <th style={th}>Joined</th>
+            <SortableTh col="name" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+              Name
+            </SortableTh>
+            <SortableTh col="email" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+              Email
+            </SortableTh>
+            <SortableTh col="cohort" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+              Cohort
+            </SortableTh>
+            <SortableTh col="accounts" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+              Accounts
+            </SortableTh>
+            <SortableTh col="joined" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
+              Joined
+            </SortableTh>
           </tr>
         </thead>
         <tbody>
-          {studentUsers.map((u) => {
+          {visibleStudents.map((u) => {
             const highlight = isRecent(u.createdAt);
             return (
               <tr
@@ -216,10 +334,10 @@ export default function StudentAccountsPanel() {
               </tr>
             );
           })}
-          {studentUsers.length === 0 && (
+          {visibleStudents.length === 0 && (
             <tr>
               <td colSpan={6} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
-                No students yet.
+                {search ? 'No students match your search.' : 'No students yet.'}
               </td>
             </tr>
           )}
@@ -247,6 +365,16 @@ function bulkButtonStyle(disabled: boolean): React.CSSProperties {
     cursor: disabled ? 'not-allowed' : 'pointer',
   };
 }
+
+const searchInputStyle: React.CSSProperties = {
+  flex: '1 1 auto',
+  maxWidth: 320,
+  padding: '6px 10px',
+  fontSize: 13,
+  border: '1px solid #cbd5e1',
+  borderRadius: 6,
+  outline: 'none',
+};
 
 const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 14 };
 const th: React.CSSProperties = {
