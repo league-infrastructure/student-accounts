@@ -23,7 +23,6 @@ import LogViewer from './pages/admin/LogViewer';
 import SessionViewer from './pages/admin/SessionViewer';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
-import UsersPanel from './pages/admin/UsersPanel';
 import UserDetailPanel from './pages/admin/UserDetailPanel';
 import StudentAccountsPanel from './pages/admin/StudentAccountsPanel';
 import LlmProxyUsersPanel from './pages/admin/LlmProxyUsersPanel';
@@ -100,7 +99,8 @@ function App() {
                 <Route path="/cohorts/:id" element={<CohortDetailPanel />} />
                 <Route path="/groups" element={<Groups />} />
                 <Route path="/groups/:id" element={<GroupDetailPanel />} />
-                <Route path="/users" element={<UsersPanel />} />
+                {/* /users redirects to the canonical /admin/users route (AdminUsersPanel) */}
+                <Route path="/users" element={<Navigate to="/admin/users" replace />} />
                 {/* Literal sub-paths come BEFORE /users/:id so they win
                    the match against the dynamic segment. */}
                 <Route path="/users/students" element={<StudentAccountsPanel />} />
