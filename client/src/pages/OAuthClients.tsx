@@ -22,13 +22,27 @@ import { hasAdminAccess } from '../lib/roles';
 import { SecretShownOnceModal } from '../components/SecretShownOnceModal';
 
 // ---------------------------------------------------------------------------
-// Supported scopes — the two scopes this sprint enables.
-// TODO (sprint.md "Out of Scope: Scope ceilings"): add server-side gating
-// so that non-admin users cannot register clients with elevated scopes.
+// Supported scopes — the two scopes this application enables.
 // ---------------------------------------------------------------------------
 
 const SUPPORTED_SCOPES = ['profile', 'users:read'] as const;
 type SupportedScope = (typeof SUPPORTED_SCOPES)[number];
+
+// ---------------------------------------------------------------------------
+// Per-role policy mirrors (client-side UX only; server is authoritative).
+// ---------------------------------------------------------------------------
+
+const ALLOWED_SCOPES_BY_ROLE: Record<string, string[]> = {
+  student: ['profile'],
+  staff: ['profile', 'users:read'],
+  admin: ['profile', 'users:read'],
+};
+
+const MAX_CLIENTS_BY_ROLE: Record<string, number | null> = {
+  student: 1,
+  staff: null,
+  admin: null,
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,9 +91,15 @@ interface ScopeCheckboxGroupProps {
   selected: string[];
   onChange: (scopes: string[]) => void;
   disabled?: boolean;
+  /** Restrict displayed checkboxes to this subset. Defaults to all SUPPORTED_SCOPES. */
+  visibleScopes?: string[];
 }
 
-function ScopeCheckboxGroup({ selected, onChange, disabled }: ScopeCheckboxGroupProps) {
+function ScopeCheckboxGroup({ selected, onChange, disabled, visibleScopes }: ScopeCheckboxGroupProps) {
+  const displayScopes = visibleScopes
+    ? SUPPORTED_SCOPES.filter((s) => visibleScopes.includes(s))
+    : SUPPORTED_SCOPES;
+
   function toggle(scope: SupportedScope) {
     if (selected.includes(scope)) {
       onChange(selected.filter((s) => s !== scope));
@@ -90,7 +110,7 @@ function ScopeCheckboxGroup({ selected, onChange, disabled }: ScopeCheckboxGroup
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-      {SUPPORTED_SCOPES.map((scope) => (
+      {displayScopes.map((scope) => (
         <label key={scope} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}>
           <input
             type="checkbox"
@@ -116,6 +136,11 @@ export default function OAuthClients() {
   const isAdmin = hasAdminAccess(user?.role);
   const queryClient = useQueryClient();
 
+  // Derive role-based policy.
+  const role = (user?.role ?? 'student').toLowerCase();
+  const allowedScopes = ALLOWED_SCOPES_BY_ROLE[role] ?? SUPPORTED_SCOPES;
+  const maxClients = MAX_CLIENTS_BY_ROLE[role] ?? null;
+
   // Secret modal — non-null when a secret should be shown.
   const [secretModal, setSecretModal] = useState<{ title: string; secret: string } | null>(null);
 
@@ -140,6 +165,9 @@ export default function OAuthClients() {
     queryKey: ['oauth-clients'],
     queryFn: () => apiFetch<OAuthClientRow[]>('/api/oauth-clients'),
   });
+
+  const activeClientCount = clients.filter((c) => !c.disabled_at).length;
+  const isAtCap = maxClients !== null && activeClientCount >= maxClients;
 
   // ---------------------------------------------------------------------------
   // Mutations
@@ -217,9 +245,15 @@ export default function OAuthClients() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>OAuth Clients</h1>
-        <button onClick={() => setShowCreateForm(true)} style={primaryButtonStyle}>
-          + New OAuth Client
-        </button>
+        {isAtCap ? (
+          <p style={capMessageStyle} data-testid="cap-message">
+            You have reached your OAuth client limit (1). Disable your existing client to create a new one.
+          </p>
+        ) : (
+          <button onClick={() => setShowCreateForm(true)} style={primaryButtonStyle}>
+            + New OAuth Client
+          </button>
+        )}
       </div>
 
       {/* Banner */}
@@ -330,13 +364,11 @@ export default function OAuthClients() {
                 disabled={createMutation.isPending}
               />
               <FieldLabel>Allowed Scopes</FieldLabel>
-              {/* TODO (sprint.md "Out of Scope: Scope ceilings"): disable
-                  scope checkboxes for non-admin users once the server gates
-                  allowed_scopes to admin-only changes. */}
               <ScopeCheckboxGroup
                 selected={createForm.allowed_scopes}
                 onChange={(scopes) => setCreateForm({ ...createForm, allowed_scopes: scopes })}
                 disabled={createMutation.isPending}
+                visibleScopes={allowedScopes}
               />
               <FieldLabel>Redirect URIs (one per line)</FieldLabel>
               <textarea
@@ -392,6 +424,16 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
+
+const capMessageStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: '#92400e',
+  background: '#fef3c7',
+  border: '1px solid #fde68a',
+  borderRadius: 6,
+  padding: '8px 14px',
+  margin: 0,
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   padding: '8px 16px',
