@@ -453,7 +453,7 @@ describe('Account page — LoginsSection Add buttons', () => {
     expect(screen.getByRole('link', { name: 'Add Pike 13' })).toBeInTheDocument();
   });
 
-  it('renders all three Add buttons even when user already has all three linked', async () => {
+  it('hides Add Pike 13 once a Pike 13 login is present; keeps Google + GitHub', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
     (globalThis as any).fetch = makeFetch(true, {
       logins: [
@@ -469,10 +469,11 @@ describe('Account page — LoginsSection Add buttons', () => {
       expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
     });
 
-    // All three Add buttons should still be visible
-    expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Add Pike 13' })).toBeInTheDocument();
+    // Google and GitHub allow multiple accounts — Add buttons stay visible.
+    expect(screen.getByRole('link', { name: /Add Google/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Add GitHub/i })).toBeInTheDocument();
+    // Pike 13 is one-per-account — Add button is hidden once linked.
+    expect(screen.queryByRole('link', { name: /Add Pike 13/i })).not.toBeInTheDocument();
   });
 
   it('Pike 13 button targets /api/auth/pike13?link=1', async () => {
