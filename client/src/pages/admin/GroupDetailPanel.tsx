@@ -749,9 +749,6 @@ export default function GroupDetailPanel() {
             </th>
             <th style={th}>Name</th>
             <th style={th}>Email</th>
-            <th style={th}>League</th>
-            <th style={th}>Claude</th>
-            <th style={th}>LLM Proxy</th>
             <th style={{ ...th, textAlign: 'center' }}>OAuth</th>
             <th style={{ ...th, textAlign: 'center' }}>LLM Proxy</th>
             <th style={{ ...th, textAlign: 'center' }}>Lg Acct</th>
@@ -760,8 +757,6 @@ export default function GroupDetailPanel() {
         </thead>
         <tbody>
           {data.users.map((m) => {
-            const ws = m.externalAccounts.find((a) => a.type === 'workspace');
-            const cl = m.externalAccounts.find((a) => a.type === 'claude');
             return (
               <tr key={m.id}>
                 <td style={{ ...td, width: 40 }}>
@@ -782,15 +777,6 @@ export default function GroupDetailPanel() {
                   </Link>
                 </td>
                 <td style={td}>{m.email}</td>
-                <td style={td}>
-                  {ws ? <StatusPill status={ws.status} /> : <em style={{ color: '#94a3b8' }}>none</em>}
-                </td>
-                <td style={td}>
-                  {cl ? <StatusPill status={cl.status} /> : <em style={{ color: '#94a3b8' }}>none</em>}
-                </td>
-                <td style={td}>
-                  <StatusPill status={m.llmProxyToken.status} />
-                </td>
                 <td style={{ ...td, textAlign: 'center' }}>
                   <input
                     type="checkbox"
@@ -852,7 +838,7 @@ export default function GroupDetailPanel() {
           })}
           {data.users.length === 0 && (
             <tr>
-              <td colSpan={10} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
+              <td colSpan={7} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
                 No members yet. Search above to add one.
               </td>
             </tr>
