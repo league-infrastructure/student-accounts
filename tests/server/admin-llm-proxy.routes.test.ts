@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app from '../../server/src/app';
 import { prisma } from '../../server/src/services/prisma';
-import { makeUser, makeGroup, makeMembership } from './helpers/factories';
+import { makeUser } from './helpers/factories';
 
 let adminAgent: ReturnType<typeof request.agent>;
 let adminUserId: number;
@@ -53,12 +53,9 @@ afterEach(async () => {
 
 // Helpers -----------------------------------------------------------------
 
-/** Create a user pre-enrolled in an llm-proxy-enabled group. */
+/** Create a user with allows_llm_proxy=true (Sprint 027 T002: permission on User row). */
 async function makeEligibleUser(opts: { role?: 'student' | 'staff' | 'admin' } = {}) {
-  const user = await makeUser({ role: opts.role ?? 'student' });
-  const group = await makeGroup({ allows_llm_proxy: true });
-  await makeMembership(group, user);
-  return user;
+  return makeUser({ role: opts.role ?? 'student', allows_llm_proxy: true });
 }
 
 function futureIso(daysAhead = 30): string {

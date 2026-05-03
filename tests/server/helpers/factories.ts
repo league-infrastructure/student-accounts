@@ -57,6 +57,9 @@ export async function makeUser(
     role: 'student' | 'staff' | 'admin';
     created_via: 'social_login' | 'pike13_sync' | 'admin_created';
     cohort_id: number | null;
+    allows_oauth_client: boolean;
+    allows_llm_proxy: boolean;
+    allows_league_account: boolean;
   }> = {},
 ): Promise<User> {
   const n = seq();
@@ -173,9 +176,6 @@ export async function makeGroup(
   overrides: Partial<{
     name: string;
     description: string | null;
-    allows_oauth_client: boolean;
-    allows_llm_proxy: boolean;
-    allows_league_account: boolean;
   }> = {},
 ): Promise<Group> {
   const n = seq();

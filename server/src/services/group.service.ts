@@ -37,10 +37,10 @@ const logger = createLogger('group-service');
 // autocomplete endpoint on single-character input.
 const MIN_SEARCH_LEN = 2;
 
-/** Names of the three boolean permission flags. */
+/** Names of the three boolean permission flags on a User row. */
 export type PermissionKey = 'oauthClient' | 'llmProxy' | 'leagueAccount';
 
-/** Maps camelCase PermissionKey to the Prisma column name. */
+/** Maps camelCase PermissionKey to the Prisma column name (used by setPermission — removed by ticket 005). */
 const PERM_COLUMN_MAP: Record<PermissionKey, string> = {
   oauthClient: 'allows_oauth_client',
   llmProxy: 'allows_llm_proxy',
@@ -64,6 +64,9 @@ export type GroupDetail = {
     role: string;
     externalAccounts: Array<{ type: string; status: string; externalId: string | null }>;
     llmProxyToken?: { status: 'active' | 'pending' | 'none' };
+    allowsOauthClient: boolean;
+    allowsLlmProxy: boolean;
+    allowsLeagueAccount: boolean;
   }>;
 };
 
@@ -346,6 +349,9 @@ export class GroupService {
         llmProxyToken: {
           status: computeProxyStatus((u as any).llm_proxy_tokens ?? []),
         },
+        allowsOauthClient: u.allows_oauth_client ?? false,
+        allowsLlmProxy: u.allows_llm_proxy ?? false,
+        allowsLeagueAccount: u.allows_league_account ?? false,
       })),
     };
   }
@@ -482,36 +488,29 @@ export class GroupService {
   // --------------------------------------------------------------------
 
   /**
-   * Compute the effective permissions for a user by taking the additive
-   * union across all groups the user belongs to.
+   * Return the effective permissions for a user by reading the three
+   * boolean columns directly from the User row.
    *
-   * Multi-group rule: a user gets a permission if ANY of their groups has
-   * the corresponding flag set to `true`. A user with no groups gets all
-   * three `false`.
-   *
-   * Sprint 026 T002.
+   * Sprint 027 T002: permission flags moved from Group to User.
+   * A non-existent userId returns all false (findUnique returns null).
    */
   async userPermissions(userId: number): Promise<{
     oauthClient: boolean;
     llmProxy: boolean;
     leagueAccount: boolean;
   }> {
-    const memberships = await (this.prisma as any).userGroup.findMany({
-      where: { user_id: userId },
-      include: {
-        group: {
-          select: {
-            allows_oauth_client: true,
-            allows_llm_proxy: true,
-            allows_league_account: true,
-          },
-        },
+    const user = await (this.prisma as any).user.findUnique({
+      where: { id: userId },
+      select: {
+        allows_oauth_client: true,
+        allows_llm_proxy: true,
+        allows_league_account: true,
       },
     });
     return {
-      oauthClient: memberships.some((m: any) => m.group.allows_oauth_client),
-      llmProxy: memberships.some((m: any) => m.group.allows_llm_proxy),
-      leagueAccount: memberships.some((m: any) => m.group.allows_league_account),
+      oauthClient: user?.allows_oauth_client ?? false,
+      llmProxy: user?.allows_llm_proxy ?? false,
+      leagueAccount: user?.allows_league_account ?? false,
     };
   }
 }

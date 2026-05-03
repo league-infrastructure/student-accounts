@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app, { registry } from '../../../server/src/app.js';
 import { prisma } from '../../../server/src/services/prisma.js';
-import { makeGroup, makeMembership, makeUser } from '../helpers/factories.js';
+import { makeUser } from '../helpers/factories.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,29 +60,25 @@ async function asStaff(email = 'staff@test.com') {
 }
 
 /**
- * Create a student in a group that grants allows_oauth_client=true.
+ * Create a student with allows_oauth_client=true on the User row.
  * Used wherever POST /api/oauth-clients needs to succeed for a student
- * with zero existing clients (Sprint 026 T003).
+ * with zero existing clients (Sprint 027 T002: permission now on User row).
  */
 async function asStudentWithOauthGroup(email = 'student@test.com') {
-  const user = await makeUser({ role: 'student', primary_email: email });
-  const group = await makeGroup({ allows_oauth_client: true });
-  await makeMembership(group, user);
+  const user = await makeUser({ role: 'student', primary_email: email, allows_oauth_client: true });
   const agent = await loginAs(email, 'student');
-  return { agent, user, group };
+  return { agent, user };
 }
 
 /**
- * Create a staff user in a group that grants allows_oauth_client=true.
+ * Create a staff user with allows_oauth_client=true on the User row.
  * Used wherever POST /api/oauth-clients needs to succeed for staff
- * with zero existing clients (Sprint 026 T003).
+ * with zero existing clients (Sprint 027 T002: permission now on User row).
  */
 async function asStaffWithOauthGroup(email = 'staff@test.com') {
-  const user = await makeUser({ role: 'staff', primary_email: email });
-  const group = await makeGroup({ allows_oauth_client: true });
-  await makeMembership(group, user);
+  const user = await makeUser({ role: 'staff', primary_email: email, allows_oauth_client: true });
   const agent = await loginAs(email, 'staff');
-  return { agent, user, group };
+  return { agent, user };
 }
 
 // ---------------------------------------------------------------------------
@@ -671,11 +667,12 @@ describe('Per-user cap — POST /api/oauth-clients', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Group permission gate — POST /api/oauth-clients (Sprint 026 ticket 003)
+// User permission gate — POST /api/oauth-clients (Sprint 027 T002)
+// Permission now lives on User.allows_oauth_client, not on Group.
 // ---------------------------------------------------------------------------
 
-describe('Group permission gate — POST /api/oauth-clients', () => {
-  it('student with no group and no existing clients → 403 (denied)', async () => {
+describe('User permission gate — POST /api/oauth-clients', () => {
+  it('student with allows_oauth_client=false and no existing clients → 403 (denied)', async () => {
     const { agent } = await asStudent('gate-denied@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'DeniedApp',
@@ -686,7 +683,7 @@ describe('Group permission gate — POST /api/oauth-clients', () => {
     expect(res.body.error).toMatch(/allowsOauthClient/);
   });
 
-  it('student with no group and no existing clients: 403 message names missing permission', async () => {
+  it('student with allows_oauth_client=false: 403 message names missing permission', async () => {
     const { agent } = await asStudent('gate-message@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'NoPermApp',
@@ -697,7 +694,7 @@ describe('Group permission gate — POST /api/oauth-clients', () => {
     expect(res.body.error).toContain('allowsOauthClient');
   });
 
-  it('student in an OAuth-client group → 201 (permitted)', async () => {
+  it('student with allows_oauth_client=true → 201 (permitted)', async () => {
     const { agent } = await asStudentWithOauthGroup('gate-permitted@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'PermittedApp',
@@ -707,16 +704,16 @@ describe('Group permission gate — POST /api/oauth-clients', () => {
     expect(res.status).toBe(201);
   });
 
-  it('staff with one existing non-disabled client but no group → 201 (grandfather bypass)', async () => {
-    // Grandfather: activeCount > 0 bypasses the group permission gate.
-    // Use staff (no per-user cap) so the test isolates the group gate, not the cap.
+  it('staff with one existing non-disabled client but allows_oauth_client=false → 201 (grandfather bypass)', async () => {
+    // Grandfather: activeCount > 0 bypasses the permission gate.
+    // Use staff (no per-user cap) so the test isolates the permission gate, not the cap.
     const { agent, user } = await asStaff('gate-grandfather-staff@test.com');
     // Pre-create a client directly via service (no actor → bypasses policy; staff has no cap).
     await registry.oauthClients.create(
       { name: 'StaffExisting', redirect_uris: [], allowed_scopes: [] },
       user.id,
     );
-    // Now staff has 1 active client → grandfathered; group gate is bypassed.
+    // Now staff has 1 active client → grandfathered; permission gate is bypassed.
     const res = await agent.post('/api/oauth-clients').send({
       name: 'StaffGrandfathered',
       redirect_uris: [],
@@ -725,17 +722,17 @@ describe('Group permission gate — POST /api/oauth-clients', () => {
     expect(res.status).toBe(201);
   });
 
-  it('admin user with no group → 201 (admin bypass)', async () => {
+  it('admin user without allows_oauth_client → 201 (admin bypass)', async () => {
     const { agent } = await asAdmin();
     const res = await agent.post('/api/oauth-clients').send({
-      name: 'AdminNoGroupApp',
+      name: 'AdminNoPermApp',
       redirect_uris: [],
       allowed_scopes: ['profile', 'users:read'],
     });
     expect(res.status).toBe(201);
   });
 
-  it('staff with group permission and no existing clients → 201', async () => {
+  it('staff with allows_oauth_client=true and no existing clients → 201', async () => {
     const { agent } = await asStaffWithOauthGroup('gate-staff-permitted@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'StaffPermittedApp',
@@ -745,8 +742,8 @@ describe('Group permission gate — POST /api/oauth-clients', () => {
     expect(res.status).toBe(201);
   });
 
-  it('cap from sprint 023 still applies after group gate passes', async () => {
-    // Student has group permission and no existing clients → gate passes.
+  it('cap still applies after permission gate passes', async () => {
+    // Student has allows_oauth_client=true and no existing clients → gate passes.
     // Then attempts to create a second → cap (student cap=1) blocks it.
     const { agent, user } = await asStudentWithOauthGroup('gate-cap-still@test.com');
     // Create first client via service (bypasses policy for setup).
@@ -761,7 +758,7 @@ describe('Group permission gate — POST /api/oauth-clients', () => {
       allowed_scopes: ['profile'],
     });
     expect(res.status).toBe(403);
-    // Verify it was a cap rejection, not a group gate rejection.
+    // Verify it was a cap rejection, not a permission gate rejection.
     const capEvents = await (prisma as any).auditEvent.findMany({
       where: { action: 'oauth_client_create_rejected_cap' },
     });

@@ -48,6 +48,9 @@ export type GroupWithMemberCount = Group & { memberCount: number };
 
 export type MemberRow = User & {
   external_accounts: Array<{ type: string; status: string; external_id: string | null }>;
+  allows_oauth_client: boolean;
+  allows_llm_proxy: boolean;
+  allows_league_account: boolean;
 };
 
 // ---------------------------------------------------------------------------

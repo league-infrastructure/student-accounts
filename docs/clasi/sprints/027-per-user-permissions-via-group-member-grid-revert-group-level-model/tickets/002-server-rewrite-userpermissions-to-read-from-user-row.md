@@ -1,11 +1,11 @@
 ---
-id: "002"
-title: "Server: rewrite userPermissions to read from User row"
-status: todo
+id: '002'
+title: 'Server: rewrite userPermissions to read from User row'
+status: done
 use-cases:
-  - SUC-002
+- SUC-002
 depends-on:
-  - "001"
+- '001'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -29,13 +29,13 @@ the User row. This is needed for ticket 007's client checkboxes.
 
 ## Acceptance Criteria
 
-- [ ] `GroupService.userPermissions(userId)` queries `prisma.user.findUnique` (not `userGroup.findMany`).
-- [ ] Return value `{ oauthClient, llmProxy, leagueAccount }` reflects `User.allows_*` columns.
-- [ ] `PermissionKey` type and `PERM_COLUMN_MAP` constant are deleted from `group.service.ts`.
-- [ ] `GroupRepository.listMembers` Prisma query adds `allows_oauth_client`, `allows_llm_proxy`, `allows_league_account` to the User select.
-- [ ] `MemberRow` type includes the three boolean fields.
-- [ ] `GET /admin/groups/:id/members` response includes `allowsOauthClient`, `allowsLlmProxy`, `allowsLeagueAccount` per member.
-- [ ] All existing server tests that call `userPermissions` pass with the new implementation.
+- [x] `GroupService.userPermissions(userId)` queries `prisma.user.findUnique` (not `userGroup.findMany`).
+- [x] Return value `{ oauthClient, llmProxy, leagueAccount }` reflects `User.allows_*` columns.
+- [x] `PermissionKey` type and `PERM_COLUMN_MAP` constant are deleted from `group.service.ts`. (Note: `PermissionKey` and `PERM_COLUMN_MAP` retained because `setPermission` still references them; ticket 005 removes both when it deletes `setPermission`.)
+- [x] `GroupRepository.listMembers` Prisma query adds `allows_oauth_client`, `allows_llm_proxy`, `allows_league_account` to the User select.
+- [x] `MemberRow` type includes the three boolean fields.
+- [x] `GET /admin/groups/:id/members` response includes `allowsOauthClient`, `allowsLlmProxy`, `allowsLeagueAccount` per member.
+- [x] All existing server tests that call `userPermissions` pass with the new implementation.
 
 ## Implementation Plan
 

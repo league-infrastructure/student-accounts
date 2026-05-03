@@ -310,6 +310,85 @@ export class UserService {
   async updateRole(id: number, role: string): Promise<User> {
     return UserRepository.update(this.prisma, id, { role: mapRole(role) });
   }
+
+  // -------------------------------------------------------------------------
+  // Per-user permission flags (Sprint 027 T003)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Atomically update one or more per-user permission flags and record a
+   * `user_permission_changed` audit event in the same transaction.
+   *
+   * Any combination of the three boolean fields may be included in `patch`;
+   * omitted fields are left unchanged.  If `patch` is empty the User row is
+   * still read so the current permission state can be returned, but no write
+   * is issued.
+   *
+   * Ticket 004 may extend this method to trigger provisioning side-effects
+   * after the transaction commits (e.g. when `allows_league_account` flips
+   * false → true).
+   *
+   * @param userId  - Target user primary key.
+   * @param patch   - Partial permission update; at least one field is typical.
+   * @param actorId - Admin performing the change; null for system actions.
+   * @returns Updated permission state for the user.
+   */
+  async setPermissions(
+    userId: number,
+    patch: {
+      allows_oauth_client?: boolean;
+      allows_llm_proxy?: boolean;
+      allows_league_account?: boolean;
+    },
+    actorId: number | null = null,
+  ): Promise<{ allowsOauthClient: boolean; allowsLlmProxy: boolean; allowsLeagueAccount: boolean }> {
+    const user = await UserRepository.findByIdIncludingInactive(this.prisma, userId);
+    if (!user) throw new NotFoundError(`User ${userId} not found`);
+
+    const hasChanges =
+      patch.allows_oauth_client !== undefined ||
+      patch.allows_llm_proxy !== undefined ||
+      patch.allows_league_account !== undefined;
+
+    const before = {
+      allows_oauth_client: (user as any).allows_oauth_client as boolean,
+      allows_llm_proxy: (user as any).allows_llm_proxy as boolean,
+      allows_league_account: (user as any).allows_league_account as boolean,
+    };
+
+    if (!hasChanges) {
+      // No-op: return current state without touching the database.
+      return {
+        allowsOauthClient: before.allows_oauth_client,
+        allowsLlmProxy: before.allows_llm_proxy,
+        allowsLeagueAccount: before.allows_league_account,
+      };
+    }
+
+    const after = {
+      allows_oauth_client: patch.allows_oauth_client ?? before.allows_oauth_client,
+      allows_llm_proxy: patch.allows_llm_proxy ?? before.allows_llm_proxy,
+      allows_league_account: patch.allows_league_account ?? before.allows_league_account,
+    };
+
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.user.update({ where: { id: userId }, data: patch });
+      await this.audit.record(tx, {
+        actor_user_id: actorId,
+        action: 'user_permission_changed',
+        target_user_id: userId,
+        target_entity_type: 'User',
+        target_entity_id: String(userId),
+        details: { before, after },
+      });
+    });
+
+    return {
+      allowsOauthClient: after.allows_oauth_client,
+      allowsLlmProxy: after.allows_llm_proxy,
+      allowsLeagueAccount: after.allows_league_account,
+    };
+  }
 }
 
 /** Map legacy USER/ADMIN role strings to domain enum values. */

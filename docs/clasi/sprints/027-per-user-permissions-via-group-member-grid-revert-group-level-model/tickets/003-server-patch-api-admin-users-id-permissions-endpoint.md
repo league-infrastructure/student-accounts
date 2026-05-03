@@ -1,11 +1,11 @@
 ---
-id: "003"
-title: "Server: PATCH /api/admin/users/:id/permissions endpoint"
-status: todo
+id: '003'
+title: 'Server: PATCH /api/admin/users/:id/permissions endpoint'
+status: done
 use-cases:
-  - SUC-003
+- SUC-003
 depends-on:
-  - "001"
+- '001'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -21,14 +21,14 @@ and is wired into this handler there.
 
 ## Acceptance Criteria
 
-- [ ] `PATCH /admin/users/:id/permissions` is mounted and reachable.
-- [ ] Body fields `allows_oauth_client`, `allows_llm_proxy`, `allows_league_account` are all optional booleans; any combination may be present.
-- [ ] Returns 400 if any provided field is not a boolean.
-- [ ] Returns 404 if the user does not exist.
-- [ ] Returns 200 with `{ allowsOauthClient, allowsLlmProxy, allowsLeagueAccount }` on success.
-- [ ] If body is empty (no recognized fields), returns 200 with current permission state (no-op).
-- [ ] An audit event `user_permission_changed` is recorded in the same transaction as the User row update.
-- [ ] `adminBus.notify('users')` and `userBus.notifyUser(id)` are emitted on successful update.
+- [x] `PATCH /admin/users/:id/permissions` is mounted and reachable.
+- [x] Body fields `allows_oauth_client`, `allows_llm_proxy`, `allows_league_account` are all optional booleans; any combination may be present.
+- [x] Returns 400 if any provided field is not a boolean.
+- [x] Returns 404 if the user does not exist.
+- [x] Returns 200 with `{ allowsOauthClient, allowsLlmProxy, allowsLeagueAccount }` on success.
+- [x] If body is empty (no recognized fields), returns 200 with current permission state (no-op).
+- [x] An audit event `user_permission_changed` is recorded in the same transaction as the User row update.
+- [x] `adminBus.notify('users')` and `userBus.notifyUser(id)` are emitted on successful update.
 
 ## Implementation Plan
 
