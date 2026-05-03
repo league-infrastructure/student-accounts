@@ -1,5 +1,15 @@
 ---
-status: pending
+status: done
+sprint: '027'
+tickets:
+- 027-001
+- 027-002
+- 027-003
+- 027-004
+- 027-005
+- 027-006
+- 027-007
+- 027-008
 ---
 
 # Per-user permissions via group member grid (reverses sprint 026 group-level model)
