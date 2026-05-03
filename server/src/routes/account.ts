@@ -45,11 +45,12 @@ accountRouter.get(
     const { users, cohorts, logins, externalAccounts, llmProxyTokens } = req.services;
 
     // Fetch account data in parallel.
-    const [user, userLogins, userAccounts, llmActive] = await Promise.all([
+    const [user, userLogins, userAccounts, llmActive, oauthClientCount] = await Promise.all([
       users.findById(userId),
       logins.findAllByUser(userId),
       externalAccounts.findAllByUser(userId),
       llmProxyTokens.getActiveForUser(userId),
+      prisma.oAuthClient.count({ where: { created_by: userId, disabled_at: null } }),
     ]);
     const llmProxyEnabled = llmActive != null;
 
@@ -70,17 +71,60 @@ accountRouter.get(
       ? (process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD ?? null)
       : null;
 
+    // Build the available-emails set: primary + each provider's email +
+    // each workspace ExternalAccount's external_id. Dedupe case-insensitively
+    // but preserve original casing in the output.
+    const availableEmails = (() => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      const add = (e?: string | null) => {
+        if (!e) return;
+        const norm = e.toLowerCase();
+        if (seen.has(norm)) return;
+        seen.add(norm);
+        out.push(e);
+      };
+      add(user.primary_email);
+      for (const l of userLogins) add(l.provider_email);
+      for (const a of userAccounts) {
+        if (a.type === 'workspace') add(a.external_id);
+      }
+      return out;
+    })();
+    const notificationEmail = (user as any).notification_email ?? null;
+
+    // LLM proxy details (mirror of /api/account/llm-proxy fields). Returned
+    // here so the Account page Features section can display token + endpoint
+    // inline without an extra round-trip.
+    const forwardedProto = req.header('x-forwarded-proto');
+    const scheme = forwardedProto
+      ? forwardedProto.split(',')[0].trim()
+      : req.secure
+        ? 'https'
+        : 'http';
+    const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
+    const llmProxy = llmActive
+      ? {
+          token: (llmActive as any).token_plaintext ?? null,
+          endpoint: `${scheme}://${host}/proxy`,
+        }
+      : null;
+
     const body = {
       profile: {
         id: user.id,
         displayName: user.display_name,
         primaryEmail: user.primary_email,
+        notificationEmail,
+        availableEmails,
         cohort,
         role: user.role,
         approvalStatus: (user as any).approval_status ?? 'approved',
         createdAt: user.created_at,
         workspaceTempPassword,
         llmProxyEnabled,
+        oauthClientCount,
+        llmProxy,
         username: (user as any).username ?? null,
         has_password: ((user as any).password_hash ?? null) !== null,
         allowsOauthClient: (user as any).allows_oauth_client ?? false,
@@ -174,19 +218,71 @@ accountRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId: number = (req.session as any).userId;
-      const raw = (req.body as { displayName?: unknown } | undefined)?.displayName;
-      const displayName = typeof raw === 'string' ? raw.trim() : '';
-      if (displayName.length === 0 || displayName.length > 120) {
-        return res
-          .status(400)
-          .json({ error: 'displayName must be a non-empty string under 120 characters' });
+      const body = (req.body ?? {}) as { displayName?: unknown; notificationEmail?: unknown };
+      const update: { display_name?: string; notification_email?: string | null } = {};
+
+      // displayName: optional. If present, validate; if absent, leave alone.
+      if (body.displayName !== undefined) {
+        const raw = body.displayName;
+        const displayName = typeof raw === 'string' ? raw.trim() : '';
+        if (displayName.length === 0 || displayName.length > 120) {
+          return res
+            .status(400)
+            .json({ error: 'displayName must be a non-empty string under 120 characters' });
+        }
+        update.display_name = displayName;
       }
-      await prisma.user.update({
+
+      // notificationEmail: optional. null clears it (use primary_email);
+      // string must be one of the user's owned emails.
+      if (body.notificationEmail !== undefined) {
+        const raw = body.notificationEmail;
+        if (raw === null || raw === '') {
+          update.notification_email = null;
+        } else if (typeof raw === 'string') {
+          // Validate ownership: must match primary_email, a Login's
+          // provider_email, or a workspace ExternalAccount's external_id.
+          const [user, userLogins, userAccounts] = await Promise.all([
+            req.services.users.findById(userId),
+            req.services.logins.findAllByUser(userId),
+            req.services.externalAccounts.findAllByUser(userId),
+          ]);
+          const owned = new Set<string>();
+          const add = (e?: string | null) => {
+            if (e) owned.add(e.toLowerCase());
+          };
+          add(user.primary_email);
+          for (const l of userLogins) add(l.provider_email);
+          for (const a of userAccounts) {
+            if (a.type === 'workspace') add(a.external_id);
+          }
+          if (!owned.has(raw.toLowerCase())) {
+            return res
+              .status(400)
+              .json({ error: 'notificationEmail must be one of your linked addresses' });
+          }
+          update.notification_email = raw;
+        } else {
+          return res
+            .status(400)
+            .json({ error: 'notificationEmail must be a string or null' });
+        }
+      }
+
+      if (Object.keys(update).length === 0) {
+        return res.status(400).json({ error: 'No editable fields provided' });
+      }
+
+      const updated = await prisma.user.update({
         where: { id: userId },
-        data: { display_name: displayName },
+        data: update,
       });
       adminBus.notify('users');
-      res.json({ ok: true, displayName });
+      res.json({
+        ok: true,
+        displayName: updated.display_name,
+        notificationEmail: (updated as any).notification_email ?? null,
+      });
     } catch (err) {
       next(err);
     }
