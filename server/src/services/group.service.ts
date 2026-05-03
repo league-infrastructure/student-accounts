@@ -325,4 +325,42 @@ export class GroupService {
     const rows = await GroupRepository.listGroupsForUser(this.prisma, userId);
     return rows.map((g) => ({ id: g.id, name: g.name }));
   }
+
+  // --------------------------------------------------------------------
+  // Permission helpers
+  // --------------------------------------------------------------------
+
+  /**
+   * Compute the effective permissions for a user by taking the additive
+   * union across all groups the user belongs to.
+   *
+   * Multi-group rule: a user gets a permission if ANY of their groups has
+   * the corresponding flag set to `true`. A user with no groups gets all
+   * three `false`.
+   *
+   * Sprint 026 T002.
+   */
+  async userPermissions(userId: number): Promise<{
+    oauthClient: boolean;
+    llmProxy: boolean;
+    leagueAccount: boolean;
+  }> {
+    const memberships = await (this.prisma as any).userGroup.findMany({
+      where: { user_id: userId },
+      include: {
+        group: {
+          select: {
+            allows_oauth_client: true,
+            allows_llm_proxy: true,
+            allows_league_account: true,
+          },
+        },
+      },
+    });
+    return {
+      oauthClient: memberships.some((m: any) => m.group.allows_oauth_client),
+      llmProxy: memberships.some((m: any) => m.group.allows_llm_proxy),
+      leagueAccount: memberships.some((m: any) => m.group.allows_league_account),
+    };
+  }
 }
