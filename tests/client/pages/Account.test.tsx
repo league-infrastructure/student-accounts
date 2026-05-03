@@ -442,7 +442,7 @@ describe('Account page — student', () => {
 // ===========================================================================
 
 describe('Account page — LoginsSection Add buttons', () => {
-  it('renders all three Add buttons when integrations are configured and user has no logins', async () => {
+  it('renders Google + GitHub for a fresh student; Pike 13 is hidden for students', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
     (globalThis as any).fetch = makeFetch(true, {
       profile: { logins: [] },
@@ -455,7 +455,21 @@ describe('Account page — LoginsSection Add buttons', () => {
       expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
     });
 
-    // All three buttons should be present
+    expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Add Pike 13' })).not.toBeInTheDocument();
+  });
+
+  it('renders all three Add buttons (incl. Pike 13) for staff', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, { profile: { logins: [] }, logins: [] }, {}, STAFF_ACCOUNT_BASE);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
     expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Add Pike 13' })).toBeInTheDocument();
@@ -484,9 +498,9 @@ describe('Account page — LoginsSection Add buttons', () => {
     expect(screen.queryByRole('link', { name: /Add Pike 13/i })).not.toBeInTheDocument();
   });
 
-  it('Pike 13 button targets /api/auth/pike13?link=1', async () => {
-    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
-    (globalThis as any).fetch = makeFetch(true);
+  it('Pike 13 button targets /api/auth/pike13?link=1 (staff/admin context)', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, undefined, undefined, STAFF_ACCOUNT_BASE);
 
     renderAccount();
 

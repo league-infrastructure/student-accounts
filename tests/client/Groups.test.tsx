@@ -160,108 +160,79 @@ describe('Groups page', () => {
     expect(screen.getByText('0')).toBeInTheDocument();
   });
 
-  it('submits create form and invalidates query', async () => {
+  it('opens the New Group dialog and submits, posting the body and navigating to the group page', async () => {
     const fetchMock = vi
       .fn()
-      // 1st call: initial list
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) })
       .mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve([]),
+        json: () => Promise.resolve({
+          id: 3,
+          name: 'Gamma',
+          description: 'd',
+          memberCount: 0,
+          createdAt: '2026-03-01T00:00:00Z',
+        }),
       })
-      // 2nd call: POST
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 3,
-            name: 'Gamma',
-            description: 'd',
-            memberCount: 0,
-            createdAt: '2026-03-01T00:00:00Z',
-          }),
-      })
-      // 3rd call: re-fetch after invalidate
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve([
-            {
-              id: 3,
-              name: 'Gamma',
-              description: 'd',
-              memberCount: 0,
-              createdAt: '2026-03-01T00:00:00Z',
-            },
-          ]),
-      });
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
 
     vi.stubGlobal('fetch', fetchMock);
     renderGroups();
 
     await waitFor(() => expect(screen.getByText(/no groups yet/i)).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText(/new group name/i), {
-      target: { value: 'Gamma' },
-    });
-    fireEvent.change(screen.getByPlaceholderText(/description/i), {
-      target: { value: 'd' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /create group/i }));
+    // Dialog is closed by default — fields not yet present.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText('Gamma')).toBeInTheDocument());
+    // Click "New +" — dialog opens.
+    fireEvent.click(screen.getByRole('button', { name: /new group/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
 
-    // Verify the POST body
-    const postCall = fetchMock.mock.calls.find(
-      (c) => c[1]?.method === 'POST',
-    );
-    expect(postCall).toBeTruthy();
-    const postBody = JSON.parse(postCall![1].body);
-    expect(postBody).toEqual({ name: 'Gamma', description: 'd' });
+    fireEvent.change(screen.getByLabelText(/^group name$/i), { target: { value: 'Gamma' } });
+    fireEvent.change(screen.getByLabelText(/^group description$/i), { target: { value: 'd' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find((c) => c[1]?.method === 'POST');
+      expect(postCall).toBeTruthy();
+      expect(JSON.parse(postCall![1].body)).toEqual({ name: 'Gamma', description: 'd' });
+    });
   });
 
-  it('shows inline error on blank name', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve([]),
-      }),
-    );
+  it('shows inline error on blank name without firing the request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+    vi.stubGlobal('fetch', fetchMock);
     renderGroups();
     await waitFor(() => expect(screen.getByText(/no groups yet/i)).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText(/new group name/i), {
-      target: { value: '   ' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /create group/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new group/i }));
+    fireEvent.change(screen.getByLabelText(/^group name$/i), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/must not be blank/i),
     );
+    // No POST should have fired.
+    expect(fetchMock.mock.calls.find((c) => c[1]?.method === 'POST')).toBeUndefined();
   });
 
   it('shows inline error from API on duplicate', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve([]),
-      })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) })
       .mockResolvedValueOnce({
         ok: false,
         status: 409,
-        json: () =>
-          Promise.resolve({ error: 'A group named "Dup" already exists.' }),
+        json: () => Promise.resolve({ error: 'A group named "Dup" already exists.' }),
       });
     vi.stubGlobal('fetch', fetchMock);
 
     renderGroups();
     await waitFor(() => expect(screen.getByText(/no groups yet/i)).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText(/new group name/i), {
-      target: { value: 'Dup' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /create group/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new group/i }));
+    fireEvent.change(screen.getByLabelText(/^group name$/i), { target: { value: 'Dup' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/already exists/i),
