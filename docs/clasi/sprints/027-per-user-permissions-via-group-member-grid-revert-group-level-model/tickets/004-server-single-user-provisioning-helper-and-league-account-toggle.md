@@ -1,11 +1,11 @@
 ---
-id: "004"
-title: "Server: single-user provisioning helper and League Account toggle"
-status: todo
+id: '004'
+title: 'Server: single-user provisioning helper and League Account toggle'
+status: done
 use-cases:
-  - SUC-004
+- SUC-004
 depends-on:
-  - "003"
+- '003'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -26,14 +26,14 @@ carries that flag, so the side-effect is a dead code path.
 
 ## Acceptance Criteria
 
-- [ ] A helper `provisionUserIfNeeded(prisma, workspaceProvisioning, userId, actorId)` exists (in `group.service.ts` or a shared helper module).
-- [ ] Helper checks for an active/pending workspace `ExternalAccount` for the user; skips provisioning if found.
-- [ ] Helper calls `workspaceProvisioning.provision(userId, actorId, tx)` inside a `prisma.$transaction` when provisioning is needed.
-- [ ] Helper is fail-soft: provisioning errors are logged but do not propagate or affect the HTTP response.
-- [ ] `PATCH /admin/users/:id/permissions` handler calls `provisionUserIfNeeded` when `allows_league_account` transitions to `true` (previous value was `false`).
-- [ ] `GroupService.addMember` no longer checks `group.allows_league_account` or triggers provisioning.
-- [ ] `GroupService._provisionMembersWithoutWorkspace` is deleted (its logic is now in the helper).
-- [ ] `GroupService` constructor: `workspaceProvisioning` optional dep is removed if `addMember` no longer uses it (assess during implementation).
+- [x] A helper `provisionUserIfNeeded(prisma, workspaceProvisioning, userId, actorId)` exists (in `group.service.ts` or a shared helper module).
+- [x] Helper checks for an active/pending workspace `ExternalAccount` for the user; skips provisioning if found.
+- [x] Helper calls `workspaceProvisioning.provision(userId, actorId, tx)` inside a `prisma.$transaction` when provisioning is needed.
+- [x] Helper is fail-soft: provisioning errors are logged but do not propagate or affect the HTTP response.
+- [x] `PATCH /admin/users/:id/permissions` handler calls `provisionUserIfNeeded` when `allows_league_account` transitions to `true` (previous value was `false`).
+- [x] `GroupService.addMember` no longer checks `group.allows_league_account` or triggers provisioning.
+- [x] `GroupService._provisionMembersWithoutWorkspace` is deleted (its logic is now in the helper).
+- [x] `GroupService` constructor: `workspaceProvisioning` optional dep is removed if `addMember` no longer uses it (assess during implementation).
 
 ## Implementation Plan
 

@@ -1,11 +1,11 @@
 ---
-id: "005"
-title: "Server: drop GroupService.setPermission and group PATCH permission endpoint"
-status: todo
+id: '005'
+title: 'Server: drop GroupService.setPermission and group PATCH permission endpoint'
+status: done
 use-cases:
-  - SUC-006
+- SUC-006
 depends-on:
-  - "002"
+- '002'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -26,13 +26,13 @@ method is dead code. Delete it. Also:
 
 ## Acceptance Criteria
 
-- [ ] `GroupService.setPermission` method is deleted from `group.service.ts`.
-- [ ] `PermissionKey` type (if not already deleted in ticket 002) is deleted.
-- [ ] `PERM_COLUMN_MAP` constant (if not already deleted in ticket 002) is deleted.
-- [ ] `PATCH /admin/groups/:id` route is removed from `groups.ts`.
-- [ ] `GET /admin/groups/:id` response no longer includes `allowsOauthClient`, `allowsLlmProxy`, or `allowsLeagueAccount`.
-- [ ] Any sprint 026 tests that tested `setPermission` or the group PATCH endpoint are deleted.
-- [ ] All remaining server tests pass (`npm run test:server`).
+- [x] `GroupService.setPermission` method is deleted from `group.service.ts`.
+- [x] `PermissionKey` type (if not already deleted in ticket 002) is deleted.
+- [x] `PERM_COLUMN_MAP` constant (if not already deleted in ticket 002) is deleted.
+- [x] `PATCH /admin/groups/:id` route is removed from `groups.ts`.
+- [x] `GET /admin/groups/:id` response no longer includes `allowsOauthClient`, `allowsLlmProxy`, or `allowsLeagueAccount`.
+- [x] Any sprint 026 tests that tested `setPermission` or the group PATCH endpoint are deleted.
+- [x] All remaining server tests pass (`npm run test:server`).
 
 ## Implementation Plan
 

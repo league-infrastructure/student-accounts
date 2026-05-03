@@ -324,14 +324,15 @@ export class UserService {
    * still read so the current permission state can be returned, but no write
    * is issued.
    *
-   * Ticket 004 may extend this method to trigger provisioning side-effects
-   * after the transaction commits (e.g. when `allows_league_account` flips
-   * false → true).
+   * Returns the updated permission state along with a `leagueAccountFlipped`
+   * flag that is `true` when `allows_league_account` transitioned from `false`
+   * to `true` in this call.  The caller (route handler) uses this to decide
+   * whether to trigger `provisionUserIfNeeded` as a fail-soft side-effect.
    *
    * @param userId  - Target user primary key.
    * @param patch   - Partial permission update; at least one field is typical.
    * @param actorId - Admin performing the change; null for system actions.
-   * @returns Updated permission state for the user.
+   * @returns Updated permission state plus transition indicator.
    */
   async setPermissions(
     userId: number,
@@ -341,7 +342,12 @@ export class UserService {
       allows_league_account?: boolean;
     },
     actorId: number | null = null,
-  ): Promise<{ allowsOauthClient: boolean; allowsLlmProxy: boolean; allowsLeagueAccount: boolean }> {
+  ): Promise<{
+    allowsOauthClient: boolean;
+    allowsLlmProxy: boolean;
+    allowsLeagueAccount: boolean;
+    leagueAccountFlipped: boolean;
+  }> {
     const user = await UserRepository.findByIdIncludingInactive(this.prisma, userId);
     if (!user) throw new NotFoundError(`User ${userId} not found`);
 
@@ -362,6 +368,7 @@ export class UserService {
         allowsOauthClient: before.allows_oauth_client,
         allowsLlmProxy: before.allows_llm_proxy,
         allowsLeagueAccount: before.allows_league_account,
+        leagueAccountFlipped: false,
       };
     }
 
@@ -383,10 +390,14 @@ export class UserService {
       });
     });
 
+    const leagueAccountFlipped =
+      !before.allows_league_account && after.allows_league_account;
+
     return {
       allowsOauthClient: after.allows_oauth_client,
       allowsLlmProxy: after.allows_llm_proxy,
       allowsLeagueAccount: after.allows_league_account,
+      leagueAccountFlipped,
     };
   }
 }
