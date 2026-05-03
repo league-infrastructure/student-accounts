@@ -1,11 +1,11 @@
 ---
-id: "006"
-title: "Client: remove GroupDetailPanel Permissions section"
-status: todo
+id: '006'
+title: 'Client: remove GroupDetailPanel Permissions section'
+status: done
 use-cases:
-  - SUC-006
+- SUC-006
 depends-on:
-  - "005"
+- '005'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -22,15 +22,15 @@ this entire section and all supporting code must be deleted.
 
 ## Acceptance Criteria
 
-- [ ] `permissionsQuery` state and its `useQuery` call are removed.
-- [ ] `GroupPermissions` interface is removed.
-- [ ] `patchPermission` function is removed.
-- [ ] `PermissionToggleRow` subcomponent is removed.
-- [ ] `leagueAccountPending` and `permPatchError` state variables are removed.
-- [ ] `permSectionStyle` CSS constant is removed.
-- [ ] The Permissions section JSX block (`{permissionsQuery.data && ...}`) is removed.
-- [ ] No dead imports remain.
-- [ ] The component renders without errors; no console warnings or TypeScript errors.
+- [x] `permissionsQuery` state and its `useQuery` call are removed.
+- [x] `GroupPermissions` interface is removed.
+- [x] `patchPermission` function is removed.
+- [x] `PermissionToggleRow` subcomponent is removed.
+- [x] `leagueAccountPending` and `permPatchError` state variables are removed.
+- [x] `permSectionStyle` CSS constant is removed.
+- [x] The Permissions section JSX block (`{permissionsQuery.data && ...}`) is removed.
+- [x] No dead imports remain.
+- [x] The component renders without errors; no console warnings or TypeScript errors.
 
 ## Implementation Plan
 
