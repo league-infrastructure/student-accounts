@@ -1,13 +1,13 @@
 ---
-id: "002"
-title: "Server: GroupService.userPermissions helper + unit tests"
-status: todo
+id: '002'
+title: 'Server: GroupService.userPermissions helper + unit tests'
+status: done
 use-cases:
-  - SUC-002
+- SUC-002
 depends-on:
-  - "001"
-github-issue: ""
-todo: ""
+- '001'
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -27,13 +27,13 @@ methods (tickets 003, 004, 005).
 
 ## Acceptance Criteria
 
-- [ ] `GroupService` has a `userPermissions(userId: number)` method returning `{ oauthClient: boolean, llmProxy: boolean, leagueAccount: boolean }`.
-- [ ] User in zero groups returns all three `false`.
-- [ ] User in one group with `allowsOauthClient=true` returns `oauthClient: true`.
-- [ ] User in two groups where only one has `allowsLlmProxy=true` returns `llmProxy: true`.
-- [ ] User in two groups where both have `allowsLeagueAccount=false` returns `leagueAccount: false`.
-- [ ] User in two groups each with a different permission returns the correct union.
-- [ ] Unit/integration tests cover all branches above and pass (`npm run test:server`).
+- [x] `GroupService` has a `userPermissions(userId: number)` method returning `{ oauthClient: boolean, llmProxy: boolean, leagueAccount: boolean }`.
+- [x] User in zero groups returns all three `false`.
+- [x] User in one group with `allowsOauthClient=true` returns `oauthClient: true`.
+- [x] User in two groups where only one has `allowsLlmProxy=true` returns `llmProxy: true`.
+- [x] User in two groups where both have `allowsLeagueAccount=false` returns `leagueAccount: false`.
+- [x] User in two groups each with a different permission returns the correct union.
+- [x] Unit/integration tests cover all branches above and pass (`npm run test:server`).
 
 ## Implementation Plan
 
