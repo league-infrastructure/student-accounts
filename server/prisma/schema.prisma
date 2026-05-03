@@ -164,6 +164,10 @@ model User {
   oauth_refresh_tokens        OAuthRefreshToken[]
   oauth_consents              OAuthConsent[]
 
+  allows_oauth_client   Boolean @default(false)
+  allows_llm_proxy      Boolean @default(false)
+  allows_league_account Boolean @default(false)
+
   @@index([role])
   @@index([cohort_id])
 }
@@ -188,10 +192,6 @@ model Group {
   signup_passphrase_expires_at      DateTime?
   signup_passphrase_created_at      DateTime?
   signup_passphrase_created_by      Int?
-
-  allows_oauth_client   Boolean @default(false)
-  allows_llm_proxy      Boolean @default(false)
-  allows_league_account Boolean @default(false)
 
   users       UserGroup[]
 }
