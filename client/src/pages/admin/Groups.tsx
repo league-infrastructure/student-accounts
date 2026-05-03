@@ -14,8 +14,8 @@
  *   - Inline form error on create failure (409 duplicate, 422 blank).
  */
 
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 type SortCol = 'name' | 'description' | 'memberCount' | 'createdAt';
@@ -60,12 +60,11 @@ async function createGroup(input: { name: string; description?: string }): Promi
 
 export default function Groups() {
   const queryClient = useQueryClient();
-  const [newName, setNewName] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<SortCol>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [createOpen, setCreateOpen] = useState(false);
 
   const { data: groups, isLoading, error } = useQuery<Group[], Error>({
     queryKey: ['admin', 'groups'],
@@ -78,68 +77,29 @@ export default function Groups() {
     { name: string; description?: string }
   >({
     mutationFn: createGroup,
-    onSuccess: () => {
-      setNewName('');
-      setNewDesc('');
-      setFormError(null);
+    onSuccess: (group) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'groups'] });
+      setCreateOpen(false);
+      navigate(`/groups/${group.id}`);
     },
-    onError: (err) => setFormError(err.message),
   });
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    const trimmed = newName.trim();
-    if (!trimmed) {
-      setFormError('Group name must not be blank.');
-      return;
-    }
-    createMutation.mutate({
-      name: trimmed,
-      description: newDesc.trim() || undefined,
-    });
-  }
 
   if (isLoading) return <p style={loadingStyle}>Loading groups…</p>;
   if (error) return <p style={errorStyle}>Failed to load groups: {error.message}</p>;
 
   return (
     <div>
-      <h2 style={headingStyle}>Groups</h2>
-
-      <form onSubmit={handleSubmit} style={formStyle}>
-        <input
-          type="text"
-          placeholder="New group name"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          style={inputStyle}
-          aria-label="New group name"
-          disabled={createMutation.isPending}
-        />
-        <input
-          type="text"
-          placeholder="Description (optional)"
-          value={newDesc}
-          onChange={(e) => setNewDesc(e.target.value)}
-          style={{ ...inputStyle, minWidth: 280 }}
-          aria-label="New group description"
-          disabled={createMutation.isPending}
-        />
+      <div style={titleRowStyle}>
+        <h2 style={{ ...headingStyle, marginBottom: 0 }}>Groups</h2>
         <button
-          type="submit"
-          style={submitButtonStyle}
-          disabled={createMutation.isPending}
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          style={newButtonStyle}
+          aria-label="New group"
         >
-          {createMutation.isPending ? 'Creating…' : 'Create Group'}
+          New +
         </button>
-        {formError && (
-          <span style={inlineErrorStyle} role="alert">
-            {formError}
-          </span>
-        )}
-      </form>
+      </div>
 
       <input
         type="search"
@@ -164,6 +124,123 @@ export default function Groups() {
           }}
         />
       )}
+
+      {createOpen && (
+        <NewGroupDialog
+          onCancel={() => {
+            setCreateOpen(false);
+            createMutation.reset();
+          }}
+          onSubmit={(name, description) =>
+            createMutation.mutate({ name, description: description || undefined })
+          }
+          submitting={createMutation.isPending}
+          error={createMutation.error?.message ?? null}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// New group dialog (modal with name + description; closes on ESC)
+// ---------------------------------------------------------------------------
+
+interface NewGroupDialogProps {
+  onCancel: () => void;
+  onSubmit: (name: string, description: string) => void;
+  submitting: boolean;
+  error: string | null;
+}
+
+function NewGroupDialog({ onCancel, onSubmit, submitting, error }: NewGroupDialogProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !submitting) onCancel();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel, submitting]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setLocalError('Group name must not be blank.');
+      return;
+    }
+    setLocalError(null);
+    onSubmit(trimmed, description.trim());
+  }
+
+  const shownError = localError ?? error;
+
+  return (
+    <div
+      style={overlayStyle}
+      onClick={() => {
+        if (!submitting) onCancel();
+      }}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-group-title"
+        style={dialogStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="new-group-title" style={dialogTitleStyle}>New group</h3>
+        <form onSubmit={handleSubmit} style={dialogFormStyle}>
+          <label style={dialogLabelStyle}>
+            Name
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={inputStyle}
+              autoFocus
+              disabled={submitting}
+              aria-label="Group name"
+            />
+          </label>
+          <label style={dialogLabelStyle}>
+            Description (optional)
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              style={inputStyle}
+              disabled={submitting}
+              aria-label="Group description"
+            />
+          </label>
+          {shownError && (
+            <p style={inlineErrorStyle} role="alert">{shownError}</p>
+          )}
+          <div style={dialogActionsStyle}>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={submitting}
+              style={cancelButtonStyle}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              style={submitButtonStyle}
+            >
+              {submitting ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -270,13 +347,6 @@ const emptyStyle: React.CSSProperties = {
   textAlign: 'center',
   marginTop: 24,
 };
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 8,
-  alignItems: 'center',
-  flexWrap: 'wrap',
-  marginBottom: 24,
-};
 const inputStyle: React.CSSProperties = {
   padding: '6px 10px',
   fontSize: 14,
@@ -295,6 +365,68 @@ const submitButtonStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 const inlineErrorStyle: React.CSSProperties = { color: '#dc2626', fontSize: 13 };
+const titleRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  marginBottom: 16,
+};
+const newButtonStyle: React.CSSProperties = {
+  padding: '6px 14px',
+  fontSize: 13,
+  background: '#4f46e5',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 999,
+  cursor: 'pointer',
+  fontWeight: 600,
+};
+const overlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.5)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 1000,
+};
+const dialogStyle: React.CSSProperties = {
+  background: '#fff',
+  borderRadius: 12,
+  padding: '20px 24px',
+  minWidth: 360,
+  maxWidth: 520,
+  boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)',
+};
+const dialogTitleStyle: React.CSSProperties = { margin: '0 0 16px', fontSize: 18 };
+const dialogFormStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+};
+const dialogLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  fontSize: 13,
+  color: '#475569',
+};
+const dialogActionsStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: 8,
+  marginTop: 4,
+};
+const cancelButtonStyle: React.CSSProperties = {
+  padding: '6px 14px',
+  fontSize: 14,
+  background: '#fff',
+  color: '#1e293b',
+  border: '1px solid #cbd5e1',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontWeight: 600,
+};
 const searchInputStyle: React.CSSProperties = {
   padding: '6px 10px',
   fontSize: 14,

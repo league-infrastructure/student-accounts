@@ -584,6 +584,10 @@ export default function AdminUsersPanel() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     },
+    // Always refetch on mount so a freshly-linked provider on a user (or
+    // any other server-side mutation while we were away) shows up
+    // immediately when an admin navigates back to this page.
+    refetchOnMount: 'always',
   });
 
   const [mutationError, setMutationError] = useState('');

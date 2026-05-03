@@ -239,14 +239,18 @@ function Pike13Logo() {
 
 interface LoginsSectionProps {
   logins: AccountLogin[];
+  role: string | undefined;
   onRemoveError: string | null;
   onRemove: (login: AccountLogin) => void;
   removingId: number | null;
 }
 
-function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSectionProps) {
+function LoginsSection({ logins, role, onRemoveError, onRemove, removingId }: LoginsSectionProps) {
   const canRemove = logins.length > 1;
   const hasPike13 = logins.some((l) => l.provider === 'pike13');
+  const isStudent = role?.toLowerCase() === 'student';
+  // Pike 13 is for staff/admin onboarding; students never see the link button.
+  const showPike13 = !hasPike13 && !isStudent;
 
   return (
     <div style={styles.card}>
@@ -315,7 +319,7 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
         >
           <GitHubLogo />
         </a>
-        {!hasPike13 && (
+        {showPike13 && (
           <a
             href="/api/auth/pike13?link=1"
             aria-label="Add Pike 13"
@@ -553,6 +557,7 @@ export default function Account() {
 
         <LoginsSection
           logins={data.logins}
+          role={user?.role}
           onRemoveError={
             removeLoginMutation.isError
               ? removeLoginMutation.error instanceof Error
