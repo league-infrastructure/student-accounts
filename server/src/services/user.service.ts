@@ -348,6 +348,7 @@ export class UserService {
     allowsLeagueAccount: boolean;
     leagueAccountFlipped: boolean;
     llmProxyFlipped: boolean;
+    llmProxyUnflipped: boolean;
   }> {
     const user = await UserRepository.findByIdIncludingInactive(this.prisma, userId);
     if (!user) throw new NotFoundError(`User ${userId} not found`);
@@ -371,6 +372,7 @@ export class UserService {
         allowsLeagueAccount: before.allows_league_account,
         leagueAccountFlipped: false,
         llmProxyFlipped: false,
+        llmProxyUnflipped: false,
       };
     }
 
@@ -395,6 +397,7 @@ export class UserService {
     const leagueAccountFlipped =
       !before.allows_league_account && after.allows_league_account;
     const llmProxyFlipped = !before.allows_llm_proxy && after.allows_llm_proxy;
+    const llmProxyUnflipped = before.allows_llm_proxy && !after.allows_llm_proxy;
 
     return {
       allowsOauthClient: after.allows_oauth_client,
@@ -402,6 +405,7 @@ export class UserService {
       allowsLeagueAccount: after.allows_league_account,
       leagueAccountFlipped,
       llmProxyFlipped,
+      llmProxyUnflipped,
     };
   }
 }

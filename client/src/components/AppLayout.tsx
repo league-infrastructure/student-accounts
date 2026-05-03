@@ -100,7 +100,11 @@ const SIDEBAR_NAV: SidebarItem[] = [
     kind: 'link',
     to: '/llm-proxy',
     label: 'LLM Proxy',
-    gate: (_role, account) => account?.profile.llmProxyEnabled === true,
+    // Mirror the OAuth Clients gate: visible when the permission flag
+    // is on OR when the user is grandfathered with an active token.
+    gate: (_role, account) =>
+      account?.profile.allowsLlmProxy === true ||
+      account?.profile.llmProxyEnabled === true,
   },
 
   // --- User Management group (admin only) ---
