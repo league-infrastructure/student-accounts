@@ -553,7 +553,7 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
       }
     }
 
-    const { leagueAccountFlipped, llmProxyFlipped, ...permissions } =
+    const { leagueAccountFlipped, llmProxyFlipped, llmProxyUnflipped, ...permissions } =
       await req.services.users.setPermissions(id, patch, actorId);
 
     adminBus.notify('users');
@@ -586,6 +586,21 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
           if (err?.constructor?.name !== 'ConflictError') {
             // eslint-disable-next-line no-console
             console.warn('[users PATCH /:id/permissions] auto-grant LLM proxy failed', err);
+          }
+        });
+    }
+
+    // Fire-and-soft-fail: if allows_llm_proxy just flipped true→false,
+    // revoke the user's active token. Skip silently if no active token
+    // exists (NotFoundError).
+    if (llmProxyUnflipped) {
+      void req.services.llmProxyTokens
+        .revoke(id, actorId)
+        .then(() => userBus.notifyUser(id))
+        .catch((err: any) => {
+          if (err?.constructor?.name !== 'NotFoundError') {
+            // eslint-disable-next-line no-console
+            console.warn('[users PATCH /:id/permissions] auto-revoke LLM proxy failed', err);
           }
         });
     }
