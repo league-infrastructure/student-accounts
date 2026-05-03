@@ -1,9 +1,9 @@
 ---
-id: "001"
-title: "Schema: move permission flags from Group to User"
-status: todo
+id: '001'
+title: 'Schema: move permission flags from Group to User'
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on: []
 todo: per-user-permissions-via-group-grid.md
 completes_todo: false
@@ -22,10 +22,10 @@ were never set in production.
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma` — `model User` has `allows_oauth_client Boolean @default(false)`, `allows_llm_proxy Boolean @default(false)`, `allows_league_account Boolean @default(false)`.
-- [ ] `server/prisma/schema.prisma` — `model Group` does NOT have `allows_oauth_client`, `allows_llm_proxy`, or `allows_league_account`.
-- [ ] `prisma db push` succeeds against the dev database (no migration file needed in dev).
-- [ ] The Prisma client regenerates without errors.
+- [x] `server/prisma/schema.prisma` — `model User` has `allows_oauth_client Boolean @default(false)`, `allows_llm_proxy Boolean @default(false)`, `allows_league_account Boolean @default(false)`.
+- [x] `server/prisma/schema.prisma` — `model Group` does NOT have `allows_oauth_client`, `allows_llm_proxy`, or `allows_league_account`.
+- [x] `prisma db push` succeeds against the dev database (no migration file needed in dev).
+- [x] The Prisma client regenerates without errors.
 
 ## Implementation Plan
 
