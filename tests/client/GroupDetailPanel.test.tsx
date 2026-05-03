@@ -43,6 +43,9 @@ const GROUP_WITH_TWO = {
         { type: 'workspace', status: 'active', externalId: 'alice@league' },
       ],
       llmProxyToken: { status: 'active' as const },
+      allowsOauthClient: true,
+      allowsLlmProxy: true,
+      allowsLeagueAccount: false,
     },
     {
       id: 12,
@@ -51,6 +54,9 @@ const GROUP_WITH_TWO = {
       role: 'student',
       externalAccounts: [],
       llmProxyToken: { status: 'none' as const },
+      allowsOauthClient: false,
+      allowsLlmProxy: false,
+      allowsLeagueAccount: false,
     },
   ],
 };
@@ -123,6 +129,9 @@ describe('GroupDetailPanel', () => {
           role: 'student',
           externalAccounts: [],
           llmProxyToken: { status: 'none' as const },
+          allowsOauthClient: false,
+          allowsLlmProxy: false,
+          allowsLeagueAccount: false,
         },
       ],
     };
@@ -246,6 +255,142 @@ describe('GroupDetailPanel', () => {
           (c) => typeof c[0] === 'string' && c[0].endsWith('/bulk-remove-all'),
         ),
       ).toBe(true),
+    );
+  });
+
+  it('permission checkboxes render with current flag values from listMembers', async () => {
+    vi.stubGlobal('fetch', buildFetchMock());
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    // Alice: allowsOauthClient=true, allowsLlmProxy=true, allowsLeagueAccount=false
+    const aliceOauthCb = screen.getByRole('checkbox', { name: /OAuth Client for Alice/i });
+    const aliceLlmCb = screen.getByRole('checkbox', { name: /LLM Proxy for Alice/i });
+    const aliceLeagueCb = screen.getByRole('checkbox', { name: /League Account for Alice/i });
+    expect(aliceOauthCb).toBeChecked();
+    expect(aliceLlmCb).toBeChecked();
+    expect(aliceLeagueCb).not.toBeChecked();
+
+    // Bob: all false
+    const bobOauthCb = screen.getByRole('checkbox', { name: /OAuth Client for Bob/i });
+    expect(bobOauthCb).not.toBeChecked();
+  });
+
+  it('clicking OAuth checkbox sends PATCH with correct field and userId', async () => {
+    const fetchMock = buildFetchMock({
+      '/permissions': (_url: string, opts?: RequestInit) =>
+        opts?.method === 'PATCH'
+          ? { ok: true, json: () => Promise.resolve({ allowsOauthClient: false, allowsLlmProxy: true, allowsLeagueAccount: false }) }
+          : { ok: true, json: () => Promise.resolve({}) },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    // Alice has allowsOauthClient=true; uncheck it
+    const aliceOauthCb = screen.getByRole('checkbox', { name: /OAuth Client for Alice/i });
+    fireEvent.click(aliceOauthCb);
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some((c) => {
+          if (typeof c[0] !== 'string' || !c[0].includes('/permissions')) return false;
+          if (c[0] !== '/api/admin/users/11/permissions') return false;
+          if (c[1]?.method !== 'PATCH') return false;
+          const body = JSON.parse(c[1].body as string);
+          return body.allows_oauth_client === false;
+        }),
+      ).toBe(true),
+    );
+  });
+
+  it('clicking LLM Proxy checkbox sends PATCH with allows_llm_proxy', async () => {
+    const fetchMock = buildFetchMock({
+      '/permissions': (_url: string, opts?: RequestInit) =>
+        opts?.method === 'PATCH'
+          ? { ok: true, json: () => Promise.resolve({ allowsOauthClient: false, allowsLlmProxy: true, allowsLeagueAccount: false }) }
+          : { ok: true, json: () => Promise.resolve({}) },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    // Bob has allowsLlmProxy=false; check it
+    const bobLlmCb = screen.getByRole('checkbox', { name: /LLM Proxy for Bob/i });
+    fireEvent.click(bobLlmCb);
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some((c) => {
+          if (typeof c[0] !== 'string' || !c[0].includes('/permissions')) return false;
+          if (c[1]?.method !== 'PATCH') return false;
+          const body = JSON.parse(c[1].body as string);
+          return body.allows_llm_proxy === true;
+        }),
+      ).toBe(true),
+    );
+  });
+
+  it('permission PATCH error shows error banner', async () => {
+    const fetchMock = buildFetchMock({
+      '/permissions': (_url: string, opts?: RequestInit) =>
+        opts?.method === 'PATCH'
+          ? { ok: false, status: 400, json: () => Promise.resolve({ error: 'Permission denied' }) }
+          : { ok: true, json: () => Promise.resolve({}) },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    const bobOauthCb = screen.getByRole('checkbox', { name: /OAuth Client for Bob/i });
+    fireEvent.click(bobOauthCb);
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/Permission denied/),
+    );
+  });
+
+  it('League Account checkbox shows Provisioning indicator on toggle-on', async () => {
+    // Make the PATCH hang briefly so we can check the in-flight state
+    let resolvePatch!: () => void;
+    const patchPromise = new Promise<void>((res) => { resolvePatch = res; });
+
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.endsWith('/passphrase')) {
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({ error: 'Not found' }) });
+      }
+      if (url.endsWith('/members') && (!opts?.method || opts.method === 'GET')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(GROUP_WITH_TWO) });
+      }
+      if (url.includes('/permissions') && opts?.method === 'PATCH') {
+        return patchPromise.then(() => ({
+          ok: true,
+          json: () => Promise.resolve({ allowsOauthClient: false, allowsLlmProxy: false, allowsLeagueAccount: true }),
+        }));
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    // Toggle League Account on for Alice (currently false)
+    const aliceLeagueCb = screen.getByRole('checkbox', { name: /League Account for Alice/i });
+    fireEvent.click(aliceLeagueCb);
+
+    // "Provisioning…" should appear while PATCH is in-flight
+    await waitFor(() =>
+      expect(screen.getByText('Provisioning…')).toBeInTheDocument(),
+    );
+
+    // Resolve the PATCH
+    resolvePatch();
+    await waitFor(() =>
+      expect(screen.queryByText('Provisioning…')).not.toBeInTheDocument(),
     );
   });
 });

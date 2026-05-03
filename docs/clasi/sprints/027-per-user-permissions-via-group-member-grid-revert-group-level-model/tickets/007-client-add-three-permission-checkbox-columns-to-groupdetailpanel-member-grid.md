@@ -1,12 +1,12 @@
 ---
-id: "007"
-title: "Client: add three permission checkbox columns to GroupDetailPanel member grid"
-status: todo
+id: '007'
+title: 'Client: add three permission checkbox columns to GroupDetailPanel member grid'
+status: done
 use-cases:
-  - SUC-005
+- SUC-005
 depends-on:
-  - "004"
-  - "006"
+- '004'
+- '006'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
@@ -24,16 +24,16 @@ checkbox cell.
 
 ## Acceptance Criteria
 
-- [ ] `Member` interface in `GroupDetailPanel.tsx` includes `allowsOauthClient: boolean`, `allowsLlmProxy: boolean`, `allowsLeagueAccount: boolean`.
-- [ ] Member grid has three new column headers: "OAuth", "LLM Proxy", "Lg Acct" (or similar short labels).
-- [ ] Each member row has three checkbox cells, one per permission flag, reflecting the member's current flag value.
-- [ ] Clicking a checkbox fires `PATCH /api/admin/users/:id/permissions` with `{ [field]: newValue }`.
-- [ ] On success the checkbox reflects the updated state (optimistic update or re-fetch).
-- [ ] On failure an error banner shows the error message; checkbox reverts to previous state.
-- [ ] League Account checkbox: when toggling ON, shows a "Provisioning…" label next to the checkbox until the PATCH resolves.
-- [ ] Checking "League Account" for a user without a workspace account triggers provisioning (via the server-side side-effect in ticket 004) — no extra client logic needed.
-- [ ] The `colSpan` on the "No members yet" empty-state row is updated to cover the new columns.
-- [ ] No TypeScript errors; no console warnings.
+- [x] `Member` interface in `GroupDetailPanel.tsx` includes `allowsOauthClient: boolean`, `allowsLlmProxy: boolean`, `allowsLeagueAccount: boolean`.
+- [x] Member grid has three new column headers: "OAuth", "LLM Proxy", "Lg Acct" (or similar short labels).
+- [x] Each member row has three checkbox cells, one per permission flag, reflecting the member's current flag value.
+- [x] Clicking a checkbox fires `PATCH /api/admin/users/:id/permissions` with `{ [field]: newValue }`.
+- [x] On success the checkbox reflects the updated state (optimistic update or re-fetch).
+- [x] On failure an error banner shows the error message; checkbox reverts to previous state.
+- [x] League Account checkbox: when toggling ON, shows a "Provisioning…" label next to the checkbox until the PATCH resolves.
+- [x] Checking "League Account" for a user without a workspace account triggers provisioning (via the server-side side-effect in ticket 004) — no extra client logic needed.
+- [x] The `colSpan` on the "No members yet" empty-state row is updated to cover the new columns.
+- [x] No TypeScript errors; no console warnings.
 
 ## Implementation Plan
 
