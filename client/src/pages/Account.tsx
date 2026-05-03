@@ -888,6 +888,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '1.5rem',
   },
   profileNameButton: {
+    display: 'block',
     fontSize: '1.25rem',
     fontWeight: 600,
     color: '#1e293b',
@@ -918,6 +919,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4,
   },
   profileEmailButton: {
+    display: 'block',
     fontSize: '0.9rem',
     color: '#475569',
     marginBottom: 2,
