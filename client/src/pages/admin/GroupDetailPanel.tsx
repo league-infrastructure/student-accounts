@@ -33,6 +33,9 @@ interface Member {
   llmProxyToken: {
     status: 'active' | 'pending' | 'none';
   };
+  allowsOauthClient: boolean;
+  allowsLlmProxy: boolean;
+  allowsLeagueAccount: boolean;
 }
 
 interface GroupInfo {
@@ -127,6 +130,10 @@ export default function GroupDetailPanel() {
   const [matches, setMatches] = useState<UserMatch[]>([]);
 
   const [showGrantModal, setShowGrantModal] = useState(false);
+
+  // Per-row permission patch state
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [provisioningIds, setProvisioningIds] = useState<Set<number>>(new Set());
 
   // Live search effect
   useEffect(() => {
@@ -375,6 +382,40 @@ export default function GroupDetailPanel() {
   }
 
 
+  async function patchUserPermission(
+    userId: number,
+    field: 'allows_oauth_client' | 'allows_llm_proxy' | 'allows_league_account',
+    newValue: boolean,
+  ) {
+    setPermissionError(null);
+    const isLeagueToggleOn = field === 'allows_league_account' && newValue;
+    if (isLeagueToggleOn) {
+      setProvisioningIds((prev) => new Set(prev).add(userId));
+    }
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/permissions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: newValue }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      await load();
+    } catch (err: any) {
+      setPermissionError(err.message || 'Permission update failed');
+    } finally {
+      if (isLeagueToggleOn) {
+        setProvisioningIds((prev) => {
+          const next = new Set(prev);
+          next.delete(userId);
+          return next;
+        });
+      }
+    }
+  }
+
   async function deleteGroup() {
     if (!data) return;
     if (
@@ -592,6 +633,22 @@ export default function GroupDetailPanel() {
         </div>
       )}
 
+      {permissionError && (
+        <div
+          role="alert"
+          style={{
+            padding: 10,
+            marginBottom: 16,
+            borderRadius: 6,
+            background: '#fee2e2',
+            color: '#991b1b',
+            fontSize: 13,
+          }}
+        >
+          {permissionError}
+        </div>
+      )}
+
       {/* Passphrase card */}
       {Number.isFinite(numericId) && (
         <PassphraseCard
@@ -695,6 +752,9 @@ export default function GroupDetailPanel() {
             <th style={th}>League</th>
             <th style={th}>Claude</th>
             <th style={th}>LLM Proxy</th>
+            <th style={{ ...th, textAlign: 'center' }}>OAuth</th>
+            <th style={{ ...th, textAlign: 'center' }}>LLM Proxy</th>
+            <th style={{ ...th, textAlign: 'center' }}>Lg Acct</th>
             <th style={{ ...th, width: 80, textAlign: 'center' }}>Actions</th>
           </tr>
         </thead>
@@ -732,6 +792,44 @@ export default function GroupDetailPanel() {
                   <StatusPill status={m.llmProxyToken.status} />
                 </td>
                 <td style={{ ...td, textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={m.allowsOauthClient}
+                    aria-label={`OAuth Client for ${m.displayName || m.email}`}
+                    style={{ cursor: 'pointer' }}
+                    onChange={(e) =>
+                      patchUserPermission(m.id, 'allows_oauth_client', e.target.checked)
+                    }
+                  />
+                </td>
+                <td style={{ ...td, textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={m.allowsLlmProxy}
+                    aria-label={`LLM Proxy for ${m.displayName || m.email}`}
+                    style={{ cursor: 'pointer' }}
+                    onChange={(e) =>
+                      patchUserPermission(m.id, 'allows_llm_proxy', e.target.checked)
+                    }
+                  />
+                </td>
+                <td style={{ ...td, textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={m.allowsLeagueAccount}
+                    aria-label={`League Account for ${m.displayName || m.email}`}
+                    style={{ cursor: 'pointer' }}
+                    onChange={(e) =>
+                      patchUserPermission(m.id, 'allows_league_account', e.target.checked)
+                    }
+                  />
+                  {provisioningIds.has(m.id) && (
+                    <span style={{ fontSize: 11, color: '#64748b', marginLeft: 4 }}>
+                      Provisioning…
+                    </span>
+                  )}
+                </td>
+                <td style={{ ...td, textAlign: 'center' }}>
                   <button
                     onClick={() => removeMember(m.id)}
                     disabled={busy === `remove-${m.id}`}
@@ -754,7 +852,7 @@ export default function GroupDetailPanel() {
           })}
           {data.users.length === 0 && (
             <tr>
-              <td colSpan={7} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
+              <td colSpan={10} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
                 No members yet. Search above to add one.
               </td>
             </tr>
