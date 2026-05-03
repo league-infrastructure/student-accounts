@@ -162,6 +162,14 @@ function makeFetch(
       };
     }
 
+    // DELETE /api/account/logins/:id
+    if (
+      /^\/api\/account\/logins\/\d+$/.test(url) &&
+      (init?.method ?? '').toUpperCase() === 'DELETE'
+    ) {
+      return { ok: true, status: 204, json: async () => ({}) };
+    }
+
     if (url === '/api/account' && includeAccount) {
       const data = {
         ...baseAccount,
@@ -434,7 +442,7 @@ describe('Account page — student', () => {
 // ===========================================================================
 
 describe('Account page — LoginsSection Add buttons', () => {
-  it('renders all three Add buttons when integrations are configured and user has no logins', async () => {
+  it('renders Google + GitHub for a fresh student; Pike 13 is hidden for students', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
     (globalThis as any).fetch = makeFetch(true, {
       profile: { logins: [] },
@@ -447,7 +455,21 @@ describe('Account page — LoginsSection Add buttons', () => {
       expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
     });
 
-    // All three buttons should be present
+    expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Add Pike 13' })).not.toBeInTheDocument();
+  });
+
+  it('renders all three Add buttons (incl. Pike 13) for staff', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, { profile: { logins: [] }, logins: [] }, {}, STAFF_ACCOUNT_BASE);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
     expect(screen.getByRole('link', { name: 'Add Google' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Add GitHub' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Add Pike 13' })).toBeInTheDocument();
@@ -476,9 +498,9 @@ describe('Account page — LoginsSection Add buttons', () => {
     expect(screen.queryByRole('link', { name: /Add Pike 13/i })).not.toBeInTheDocument();
   });
 
-  it('Pike 13 button targets /api/auth/pike13?link=1', async () => {
-    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
-    (globalThis as any).fetch = makeFetch(true);
+  it('Pike 13 button targets /api/auth/pike13?link=1 (staff/admin context)', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('staff'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, undefined, undefined, STAFF_ACCOUNT_BASE);
 
     renderAccount();
 
@@ -776,7 +798,7 @@ describe('Account page — WorkspaceSection', () => {
     expect(screen.getByTestId('workspace-section').textContent).not.toContain('password:');
   });
 
-  it('renders pending-approval banner for a pending student', async () => {
+  it('renders pending-approval card and hides all other identity sections for a pending student', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
     (globalThis as any).fetch = makeFetch(true, {
       profile: { approvalStatus: 'pending' },
@@ -785,10 +807,14 @@ describe('Account page — WorkspaceSection', () => {
     renderAccount();
 
     await waitFor(() => {
-      expect(screen.getByTestId('workspace-section')).toBeInTheDocument();
+      expect(screen.getByTestId('pending-approval-card')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('status')).toHaveTextContent('pending approval');
+    expect(screen.getByText(/Waiting for approval/i)).toBeInTheDocument();
+    // No identity sections should render while pending.
+    expect(screen.queryByText('Sign-in Methods')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-section')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Add Google/i })).not.toBeInTheDocument();
   });
 
   it('renders WorkspaceSection for student whose primaryEmail is a League email (no ExternalAccount)', async () => {
@@ -807,5 +833,221 @@ describe('Account page — WorkspaceSection', () => {
     // The League email appears in both the profile meta and the workspace section
     const matches = screen.getAllByText('alice@jointheleague.org');
     expect(matches.length).toBeGreaterThan(0);
+  });
+});
+
+// ===========================================================================
+// LoginsSection — Remove button opens ConfirmDialog (Sprint 025 ticket 001)
+// ===========================================================================
+
+/** Account data with TWO logins so canRemove is true and the Remove button is enabled. */
+const TWO_LOGIN_ACCOUNT = {
+  ...STUDENT_ACCOUNT_BASE,
+  logins: [
+    {
+      id: 1,
+      provider: 'google',
+      providerEmail: 'student@example.com',
+      providerUsername: null,
+      createdAt: '2025-01-01T00:00:00Z',
+    },
+    {
+      id: 2,
+      provider: 'github',
+      providerEmail: null,
+      providerUsername: 'ghstudent',
+      createdAt: '2025-01-01T00:00:00Z',
+    },
+  ],
+};
+
+describe('Account page — login removal confirmation dialog', () => {
+  it('opens a confirm dialog (does NOT immediately delete) when Remove is clicked', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(true, {}, undefined, TWO_LOGIN_ACCOUNT);
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    // Wait for data to load
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    // There are two Remove buttons; click the first (Google)
+    const removeButtons = screen.getAllByRole('button', { name: /remove google login/i });
+    fireEvent.click(removeButtons[0]);
+
+    // Dialog should now be visible
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Remove login')).toBeInTheDocument();
+
+    // The DELETE mutation should NOT have been called yet
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit | undefined]) =>
+        /\/api\/account\/logins\//.test(url) &&
+        (init?.method ?? '').toUpperCase() === 'DELETE',
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it('calls the delete mutation when Confirm is clicked in the dialog', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(true, {}, undefined, TWO_LOGIN_ACCOUNT);
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    // Click Remove for Google login (id=1)
+    const removeButtons = screen.getAllByRole('button', { name: /remove google login/i });
+    fireEvent.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // Confirm the removal
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    // The dialog should close
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    // The DELETE should have been called with the correct login id
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit | undefined]) =>
+        /\/api\/account\/logins\/1$/.test(url) &&
+        (init?.method ?? '').toUpperCase() === 'DELETE',
+    );
+    expect(deleteCalls).toHaveLength(1);
+  });
+
+  it('does NOT call the delete mutation when Cancel is clicked in the dialog', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(true, {}, undefined, TWO_LOGIN_ACCOUNT);
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    // Click Remove for Google login
+    const removeButtons = screen.getAllByRole('button', { name: /remove google login/i });
+    fireEvent.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // Cancel the removal
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // The dialog should close
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    // No DELETE call should have occurred
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit | undefined]) =>
+        /\/api\/account\/logins\//.test(url) &&
+        (init?.method ?? '').toUpperCase() === 'DELETE',
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it('closes the dialog without deleting when Escape is pressed', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(true, {}, undefined, TWO_LOGIN_ACCOUNT);
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    const removeButtons = screen.getAllByRole('button', { name: /remove google login/i });
+    fireEvent.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit | undefined]) =>
+        /\/api\/account\/logins\//.test(url) &&
+        (init?.method ?? '').toUpperCase() === 'DELETE',
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it('closes the dialog without deleting when the overlay is clicked', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(true, {}, undefined, TWO_LOGIN_ACCOUNT);
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    const removeButtons = screen.getAllByRole('button', { name: /remove google login/i });
+    fireEvent.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // Click the dialog overlay (the role="dialog" element itself is the overlay)
+    fireEvent.click(screen.getByRole('dialog'));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit | undefined]) =>
+        /\/api\/account\/logins\//.test(url) &&
+        (init?.method ?? '').toUpperCase() === 'DELETE',
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it('shows the provider name in the confirm dialog message', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, TWO_LOGIN_ACCOUNT);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    const removeButtons = screen.getAllByRole('button', { name: /remove google login/i });
+    fireEvent.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // The message should name the provider
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).toContain('Google');
+    expect(dialog.textContent).toContain('Add Google');
   });
 });

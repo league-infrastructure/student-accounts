@@ -2,7 +2,7 @@
  * Admin sync routes (Sprint 006).
  *
  * POST /sync/pike13               — Trigger a Pike13 people sync.
- * POST /sync/workspace/cohorts    — Import Google Workspace student OUs as Cohorts.
+ * POST /sync/workspace/cohorts    — Import Google Workspace student OUs as Groups (sprint 025: was Cohorts).
  * POST /sync/workspace/staff      — Import Google Workspace staff OU users.
  * POST /sync/workspace/students   — Import Google Workspace student OU users.
  * POST /sync/workspace/all        — Run all three workspace sync operations.
@@ -51,8 +51,9 @@ adminSyncRouter.post(
 /**
  * POST /sync/workspace/cohorts
  *
- * Imports Google Workspace student OUs as Cohort rows.
- * Returns WorkspaceSyncReport with cohortsUpserted count.
+ * Imports Google Workspace student OUs as Group rows.
+ * Returns WorkspaceSyncReport with groupsUpserted count.
+ * (Sprint 025: previously wrote Cohort rows; now writes Group rows.)
  */
 adminSyncRouter.post(
   '/sync/workspace/cohorts',

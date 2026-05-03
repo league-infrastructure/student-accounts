@@ -1,16 +1,17 @@
 ---
-id: "025"
-title: "User Management v2 - lozenge filters consolidate Users panel drop Cohorts and login removal confirm"
-status: planning
+id: '025'
+title: User Management v2 - lozenge filters consolidate Users panel drop Cohorts and
+  login removal confirm
+status: done
 branch: sprint/025-user-management-v2-lozenge-filters-consolidate-users-panel-drop-cohorts-and-login-removal-confirm
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
 todo: docs/clasi/todo/backlog-user-management-v2-account-login-ux-cohort-drop.md
 ---
 

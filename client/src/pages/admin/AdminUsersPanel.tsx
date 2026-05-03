@@ -1,10 +1,17 @@
 /**
  * AdminUsersPanel — /admin/users.
  *
- * Shows ALL active users with search, filter, and sortable column headers
- * (including a "Joined" / created_at column). Admins can use the per-row
- * action menu to Edit, Delete, Impersonate, and — for rows whose role is
- * STAFF or ADMIN — toggle admin access ("Make admin" / "Remove admin").
+ * Shows ALL active users with search, lozenge filters, and sortable column
+ * headers. Admins can use the per-row action menu to Edit, Delete,
+ * Impersonate, and — for rows whose role is STAFF or ADMIN — toggle admin
+ * access ("Make admin" / "Remove admin").
+ *
+ * Filter UI:
+ *   - Role lozenge bar (radio): All | Staff | Admin | Student.
+ *   - Feature lozenge bar (multi-select toggle): Google | Pike 13 | GitHub |
+ *     LLM Proxy | OAuth Client. Multiple active = intersection.
+ *
+ * Bulk actions: Delete (existing), Suspend accounts, Revoke LLM Proxy.
  *
  * Make-admin guards (also enforced server-side):
  *   - self-demotion is blocked (server 403, button disabled client-side)
@@ -12,13 +19,13 @@
  *     client-side)
  */
 
-import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { prettifyName } from './utils/prettifyName';
 import { isRecent, NEW_USER_BG } from '../../lib/recent-user';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,37 +50,38 @@ interface AdminUser {
   role: string;
   provider: string | null;
   providers: UserProvider[];
-  cohort: { id: number; name: string } | null;
   externalAccountTypes: string[];
   externalAccounts?: UserExternalAccount[];
   createdAt: string;
+  llmProxyEnabled: boolean;
+  oauthClientCount: number;
 }
 
-interface CohortOption {
-  id: number;
-  name: string;
-  google_ou_path: string | null;
+interface BulkSuspendResult {
+  succeeded: number[];
+  failed: Array<{ accountId: number; userId: number; type: string; error: string }>;
+  totalEligible: number;
+}
+
+interface BulkRevokeResult {
+  succeeded: number[];
+  failed: Array<{ userId: number; error: string }>;
+  skipped: number[];
 }
 
 // ---------------------------------------------------------------------------
-// Filter types
+// Role / Feature filter types
 // ---------------------------------------------------------------------------
 
-type FilterOption =
-  | { type: 'all' }
-  | { type: 'admin-staff' }
-  | { type: 'students' }
-  | { type: 'account-google' }
-  | { type: 'account-league' }
-  | { type: 'account-pike13' }
-  | { type: 'account-claude' }
-  | { type: 'cohort'; cohortId: number; cohortName: string };
+type RoleFilter = 'all' | 'staff' | 'admin' | 'student';
+
+type FeatureFilter = 'all' | 'google' | 'pike13' | 'github' | 'llm-proxy' | 'oauth-client';
 
 // ---------------------------------------------------------------------------
 // Sort types
 // ---------------------------------------------------------------------------
 
-type SortCol = 'name' | 'email' | 'cohort' | 'accounts' | 'joined';
+type SortCol = 'name' | 'email' | 'accounts' | 'joined';
 
 // Account chip identifiers rendered in the Accounts column, ordered so
 // they sort in a stable, meaningful way. League accounts are split into
@@ -159,50 +167,29 @@ function normalizeRole(role: string): 'admin' | 'staff' | 'student' {
   return 'student';
 }
 
-function cohortLabel(user: AdminUser): string {
-  const role = normalizeRole(user.role);
-  if (role === 'admin') return 'admin';
-  if (role === 'staff') return 'staff';
-  return user.cohort?.name ?? '—';
+function applyRoleFilter(users: AdminUser[], roleFilter: RoleFilter): AdminUser[] {
+  if (roleFilter === 'all') return users;
+  return users.filter((u) => normalizeRole(u.role) === roleFilter);
 }
 
-function filterUsers(users: AdminUser[], filter: FilterOption): AdminUser[] {
-  switch (filter.type) {
-    case 'all':
-      return users;
-    case 'admin-staff':
-      return users.filter((u) => {
-        const r = normalizeRole(u.role);
-        return r === 'admin' || r === 'staff';
-      });
-    case 'students':
-      return users.filter((u) => normalizeRole(u.role) === 'student');
-    case 'account-google':
-      return users.filter((u) => u.providers.some((p) => p.provider === 'google'));
-    case 'account-league':
-      // Anyone whose primary_email, a login email, or their workspace
-      // ExternalAccount external_id ends in @jointheleague.org — covers
-      // students/staff/admins whether or not we've minted an app-local
-      // workspace ExternalAccount row for them.
-      return users.filter((u) => {
-        if (u.email?.toLowerCase().endsWith('@jointheleague.org')) return true;
-        if ((u.providers ?? []).some((p) => p.email?.toLowerCase().endsWith('@jointheleague.org'))) return true;
-        if (
-          (u.externalAccounts ?? []).some(
-            (a) => a.type === 'workspace' && a.externalId?.toLowerCase().endsWith('@jointheleague.org'),
-          )
-        ) return true;
-        return false;
-      });
-    case 'account-pike13':
-      return users.filter((u) => u.externalAccountTypes.includes('pike13'));
-    case 'account-claude':
-      return users.filter((u) => u.externalAccountTypes.includes('claude'));
-    case 'cohort':
-      return users.filter((u) => u.cohort?.id === filter.cohortId);
-    default:
-      return users;
+function featurePredicate(u: AdminUser, feature: Exclude<FeatureFilter, 'all'>): boolean {
+  switch (feature) {
+    case 'google':
+      return u.providers.some((p) => p.provider === 'google');
+    case 'pike13':
+      return u.externalAccountTypes.includes('pike13');
+    case 'github':
+      return u.providers.some((p) => p.provider === 'github');
+    case 'llm-proxy':
+      return u.llmProxyEnabled === true;
+    case 'oauth-client':
+      return (u.oauthClientCount ?? 0) > 0;
   }
+}
+
+function applyFeatureFilter(users: AdminUser[], feature: FeatureFilter): AdminUser[] {
+  if (feature === 'all') return users;
+  return users.filter((u) => featurePredicate(u, feature));
 }
 
 function applySearch(users: AdminUser[], search: string): AdminUser[] {
@@ -226,9 +213,6 @@ function sortUsers(users: AdminUser[], col: SortCol, dir: 'asc' | 'desc'): Admin
       case 'email':
         cmp = a.email.localeCompare(b.email);
         break;
-      case 'cohort':
-        cmp = cohortLabel(a).localeCompare(cohortLabel(b));
-        break;
       case 'accounts':
         cmp = accountsSortKey(a).localeCompare(accountsSortKey(b));
         break;
@@ -239,29 +223,6 @@ function sortUsers(users: AdminUser[], col: SortCol, dir: 'asc' | 'desc'): Admin
     return dir === 'asc' ? cmp : -cmp;
   });
   return sorted;
-}
-
-function filterLabel(filter: FilterOption): string {
-  switch (filter.type) {
-    case 'all':
-      return 'Filter: All';
-    case 'admin-staff':
-      return 'Filter: Admin & Staff';
-    case 'students':
-      return 'Filter: Students';
-    case 'account-google':
-      return 'Filter: Google';
-    case 'account-league':
-      return 'Filter: League';
-    case 'account-pike13':
-      return 'Filter: Pike13';
-    case 'account-claude':
-      return 'Filter: Claude';
-    case 'cohort':
-      return `Filter: ${filter.cohortName}`;
-    default:
-      return 'Filter';
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -344,181 +305,68 @@ function AccountIcon({ kind }: { kind: AccountKind }) {
   );
 }
 
-function ProviderBadge({ provider }: { provider: string }) {
-  const logo = PROVIDER_LOGOS[provider];
-  if (logo) {
-    return (
-      <img
-        src={logo.src}
-        alt={logo.alt}
-        title={logo.alt}
-        style={{ width: 18, height: 18, verticalAlign: 'middle' }}
-      />
-    );
-  }
+// ---------------------------------------------------------------------------
+// Lozenge bar components
+// ---------------------------------------------------------------------------
+
+interface RoleLozengeBarProps {
+  value: RoleFilter;
+  onChange: (v: RoleFilter) => void;
+}
+
+const ROLE_OPTIONS: { label: string; value: RoleFilter }[] = [
+  { label: 'All', value: 'all' },
+  { label: 'Staff', value: 'staff' },
+  { label: 'Admin', value: 'admin' },
+  { label: 'Student', value: 'student' },
+];
+
+function RoleLozengeBar({ value, onChange }: RoleLozengeBarProps) {
   return (
-    <span
-      title={provider}
-      style={{
-        fontSize: 11,
-        padding: '2px 6px',
-        background: '#e2e8f0',
-        borderRadius: 4,
-        color: '#475569',
-      }}
-    >
-      {provider}
-    </span>
+    <div style={lozengeBarStyle} role="group" aria-label="Role filter">
+      {ROLE_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          aria-pressed={value === opt.value}
+          onClick={() => onChange(opt.value)}
+          style={lozengePillStyle(value === opt.value, 'role')}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Filter dropdown
-// ---------------------------------------------------------------------------
-
-interface FilterDropdownProps {
-  filter: FilterOption;
-  onSelect: (f: FilterOption) => void;
-  cohorts: CohortOption[];
+interface FeatureLozengeBarProps {
+  value: FeatureFilter;
+  onChange: (v: FeatureFilter) => void;
 }
 
-function FilterDropdown({ filter, onSelect, cohorts }: FilterDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+const FEATURE_OPTIONS: { label: string; value: FeatureFilter }[] = [
+  { label: 'All', value: 'all' },
+  { label: 'Google', value: 'google' },
+  { label: 'Pike 13', value: 'pike13' },
+  { label: 'GitHub', value: 'github' },
+  { label: 'LLM Proxy', value: 'llm-proxy' },
+  { label: 'OAuth Client', value: 'oauth-client' },
+];
 
-  // Close on outside click (the menu is a portal so we check both refs).
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      const t = e.target as Node;
-      if (buttonRef.current?.contains(t)) return;
-      if (menuRef.current?.contains(t)) return;
-      setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
-
-  // Compute viewport-relative coords whenever the menu opens or the
-  // window resizes. Using viewport coords + position:fixed means the
-  // menu escapes any ancestor with overflow:auto.
-  useLayoutEffect(() => {
-    if (!open) return;
-    function update() {
-      const el = buttonRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      setCoords({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 220) });
-    }
-    update();
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    return () => {
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
-    };
-  }, [open]);
-
-  function choose(f: FilterOption) {
-    onSelect(f);
-    setOpen(false);
-  }
-
-  const isActive = (f: FilterOption) => JSON.stringify(f) === JSON.stringify(filter);
-
-  const menu = open && coords
-    ? createPortal(
-        <div
-          ref={menuRef}
-          role="listbox"
-          style={{
-            ...dropdownMenuStyle,
-            position: 'fixed',
-            top: coords.top,
-            left: coords.left,
-            minWidth: coords.width,
-            maxHeight: `calc(100vh - ${coords.top + 16}px)`,
-          }}
-        >
-          {/* Role section */}
-          <div style={sectionHeaderStyle}>Role</div>
-          {[
-            { label: 'All', value: { type: 'all' } as FilterOption },
-            { label: 'Admin & Staff', value: { type: 'admin-staff' } as FilterOption },
-            { label: 'Students', value: { type: 'students' } as FilterOption },
-          ].map((item) => (
-            <button
-              key={item.label}
-              role="option"
-              aria-selected={isActive(item.value)}
-              onClick={() => choose(item.value)}
-              style={dropdownItemStyle(isActive(item.value))}
-            >
-              {item.label}
-            </button>
-          ))}
-
-          <div style={separatorStyle} />
-
-          {/* Accounts section */}
-          <div style={sectionHeaderStyle}>Accounts</div>
-          {[
-            { label: 'Google', value: { type: 'account-google' } as FilterOption },
-            { label: 'League', value: { type: 'account-league' } as FilterOption },
-            { label: 'Claude', value: { type: 'account-claude' } as FilterOption },
-            { label: 'Pike13', value: { type: 'account-pike13' } as FilterOption },
-          ].map((item) => (
-            <button
-              key={item.label}
-              role="option"
-              aria-selected={isActive(item.value)}
-              onClick={() => choose(item.value)}
-              style={dropdownItemStyle(isActive(item.value))}
-            >
-              {item.label}
-            </button>
-          ))}
-
-          {/* Cohort section — only shown if there are cohorts with google_ou_path */}
-          {cohorts.length > 0 && (
-            <>
-              <div style={separatorStyle} />
-              <div style={sectionHeaderStyle}>Cohort</div>
-              {cohorts.map((c) => {
-                const f: FilterOption = { type: 'cohort', cohortId: c.id, cohortName: c.name };
-                return (
-                  <button
-                    key={c.id}
-                    role="option"
-                    aria-selected={isActive(f)}
-                    onClick={() => choose(f)}
-                    style={dropdownItemStyle(isActive(f))}
-                  >
-                    {c.name}
-                  </button>
-                );
-              })}
-            </>
-          )}
-        </div>,
-        document.body,
-      )
-    : null;
-
+function FeatureLozengeBar({ value, onChange }: FeatureLozengeBarProps) {
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        ref={buttonRef}
-        onClick={() => setOpen((v) => !v)}
-        style={dropdownButtonStyle}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {filterLabel(filter)}
-        <span style={{ marginLeft: 6, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
-      </button>
-      {menu}
+    <div style={lozengeBarStyle} role="group" aria-label="Feature filter">
+      {FEATURE_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          aria-pressed={value === opt.value}
+          onClick={() => onChange(opt.value)}
+          style={lozengePillStyle(value === opt.value, 'feature')}
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -671,6 +519,50 @@ async function setRole(id: number, role: 'admin' | 'staff'): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Bulk-action API helpers
+// ---------------------------------------------------------------------------
+
+async function bulkSuspendAccounts(userIds: number[]): Promise<BulkSuspendResult> {
+  const res = await fetch('/api/admin/users/bulk-suspend-accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds }),
+  });
+  if (!res.ok && res.status !== 207) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function bulkRevokeLlmProxy(userIds: number[]): Promise<BulkRevokeResult> {
+  const res = await fetch('/api/admin/users/bulk-revoke-llm-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds }),
+  });
+  if (!res.ok && res.status !== 207) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Confirm-dialog state shape
+// ---------------------------------------------------------------------------
+
+type ConfirmState =
+  | { open: false }
+  | {
+      open: true;
+      title: string;
+      message: string;
+      confirmLabel: string;
+      onConfirm: () => void;
+    };
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -692,16 +584,10 @@ export default function AdminUsersPanel() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     },
-  });
-
-  const { data: cohorts = [] } = useQuery<CohortOption[]>({
-    queryKey: ['admin', 'cohorts'],
-    queryFn: async () => {
-      const res = await fetch('/api/admin/cohorts');
-      if (!res.ok) return [];
-      const data: CohortOption[] = await res.json();
-      return data.filter((c) => !!c.google_ou_path);
-    },
+    // Always refetch on mount so a freshly-linked provider on a user (or
+    // any other server-side mutation while we were away) shows up
+    // immediately when an admin navigates back to this page.
+    refetchOnMount: 'always',
   });
 
   const [mutationError, setMutationError] = useState('');
@@ -719,13 +605,52 @@ export default function AdminUsersPanel() {
     onError: (err) => setRoleError(err.message),
   });
 
+  // Bulk-suspend mutation
+  const suspendMutation = useMutation<BulkSuspendResult, Error, number[]>({
+    mutationFn: bulkSuspendAccounts,
+    onSuccess: (result) => {
+      const s = result.succeeded.length;
+      const f = result.failed.length;
+      if (f > 0) {
+        setBulkError(
+          `Suspend: ${s} succeeded, ${f} failed — ${result.failed
+            .map((x) => `user ${x.userId} (${x.type}): ${x.error}`)
+            .join('; ')}`,
+        );
+      }
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+    onError: (err) => setBulkError(err.message),
+  });
+
+  // Bulk-revoke LLM proxy mutation
+  const revokeMutation = useMutation<BulkRevokeResult, Error, number[]>({
+    mutationFn: bulkRevokeLlmProxy,
+    onSuccess: (result) => {
+      const s = result.succeeded.length;
+      const f = result.failed.length;
+      if (f > 0) {
+        setBulkError(
+          `Revoke LLM Proxy: ${s} succeeded, ${f} failed — ${result.failed
+            .map((x) => `user ${x.userId}: ${x.error}`)
+            .join('; ')}`,
+        );
+      }
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+    onError: (err) => setBulkError(err.message),
+  });
+
   // adminCount: number of ADMIN-role users in the full (unfiltered) list.
   // Used to guard last-admin demotion client-side.
   const adminCount = users.filter((u) => u.role.toLowerCase() === 'admin').length;
 
   // Filter / search / sort state
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterOption>({ type: 'all' });
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [featureFilter, setFeatureFilter] = useState<FeatureFilter>('all');
   // Default sort puts the most recently joined users first so newcomers
   // are immediately visible; rows created in the last 24h are also
   // highlighted in the table below.
@@ -737,6 +662,9 @@ export default function AdminUsersPanel() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState('');
+
+  // Confirm dialog state
+  const [confirmState, setConfirmState] = useState<ConfirmState>({ open: false });
 
   const refetchUsers = () =>
     queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
@@ -803,11 +731,23 @@ export default function AdminUsersPanel() {
     }
   }
 
+  // Apply filters in sequence: role → feature → search → sort.
+  // useMemo must be called unconditionally (before any early returns).
+  const filtered = useMemo(
+    () =>
+      applySearch(
+        applyFeatureFilter(applyRoleFilter(users, roleFilter), featureFilter),
+        search,
+      ),
+    [users, roleFilter, featureFilter, search],
+  );
+  const visible = useMemo(
+    () => sortUsers(filtered, sortCol, sortDir),
+    [filtered, sortCol, sortDir],
+  );
+
   if (loading) return <p>Loading users...</p>;
   if (error) return <p style={{ color: '#dc2626' }}>{error}</p>;
-
-  const filtered = applySearch(filterUsers(users, activeFilter), search);
-  const visible = sortUsers(filtered, sortCol, sortDir);
 
   // Selectable rows: non-own rows
   const selectableIds = visible
@@ -850,6 +790,48 @@ export default function AdminUsersPanel() {
 
   // Count only selected rows that are still visible
   const visibleSelectedCount = visible.filter((u) => selected.has(u.id)).length;
+
+  // Determine which selected users are eligible for each bulk action.
+  // Use the full users list (not just visible) so selections survive filter changes.
+  const selectedUsers = users.filter((u) => selected.has(u.id));
+  const hasEligibleForSuspend = selectedUsers.some(
+    (u) => normalizeRole(u.role) === 'student',
+  );
+  const hasEligibleForRevoke = selectedUsers.some((u) => u.llmProxyEnabled === true);
+
+  function openSuspendConfirm() {
+    const eligibleCount = selectedUsers.filter(
+      (u) => normalizeRole(u.role) === 'student',
+    ).length;
+    setConfirmState({
+      open: true,
+      title: 'Suspend accounts',
+      message: `Suspend every active workspace + Claude account for ${eligibleCount} student${eligibleCount === 1 ? '' : 's'} in the selection? Non-student users are skipped.`,
+      confirmLabel: 'Suspend',
+      onConfirm: () => {
+        setConfirmState({ open: false });
+        const ids = selectedUsers
+          .filter((u) => normalizeRole(u.role) === 'student')
+          .map((u) => u.id);
+        suspendMutation.mutate(ids);
+      },
+    });
+  }
+
+  function openRevokeConfirm() {
+    const eligibleCount = selectedUsers.filter((u) => u.llmProxyEnabled).length;
+    setConfirmState({
+      open: true,
+      title: 'Revoke LLM Proxy',
+      message: `Revoke LLM proxy tokens for ${eligibleCount} user${eligibleCount === 1 ? '' : 's'} in the selection? Their tokens will stop working immediately.`,
+      confirmLabel: 'Revoke',
+      onConfirm: () => {
+        setConfirmState({ open: false });
+        const ids = selectedUsers.filter((u) => u.llmProxyEnabled).map((u) => u.id);
+        revokeMutation.mutate(ids);
+      },
+    });
+  }
 
   return (
     <div>
@@ -905,10 +887,26 @@ export default function AdminUsersPanel() {
           >
             {bulkDeleting ? 'Deleting...' : 'Delete'}
           </button>
+          <button
+            style={bulkButtonStyle('warning')}
+            disabled={!hasEligibleForSuspend || suspendMutation.isPending}
+            onClick={openSuspendConfirm}
+            aria-label="Suspend accounts"
+          >
+            {suspendMutation.isPending ? 'Suspending...' : 'Suspend accounts'}
+          </button>
+          <button
+            style={bulkButtonStyle('danger')}
+            disabled={!hasEligibleForRevoke || revokeMutation.isPending}
+            onClick={openRevokeConfirm}
+            aria-label="Revoke LLM Proxy"
+          >
+            {revokeMutation.isPending ? 'Revoking...' : 'Revoke LLM Proxy'}
+          </button>
         </div>
       )}
 
-      {/* Toolbar: search + filter */}
+      {/* Toolbar: search + role + feature lozenges, one line, wraps as needed */}
       <div style={toolbarStyle}>
         <input
           type="search"
@@ -918,11 +916,9 @@ export default function AdminUsersPanel() {
           style={searchInputStyle}
           aria-label="Search users"
         />
-        <FilterDropdown
-          filter={activeFilter}
-          onSelect={setActiveFilter}
-          cohorts={cohorts}
-        />
+        <RoleLozengeBar value={roleFilter} onChange={setRoleFilter} />
+        <div style={lozengeDividerStyle} aria-hidden="true" />
+        <FeatureLozengeBar value={featureFilter} onChange={setFeatureFilter} />
       </div>
 
       <table style={tableStyle}>
@@ -947,9 +943,6 @@ export default function AdminUsersPanel() {
             </SortableTh>
             <SortableTh col="email" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Email
-            </SortableTh>
-            <SortableTh col="cohort" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
-              Cohort
             </SortableTh>
             <SortableTh col="accounts" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Accounts
@@ -1020,11 +1013,6 @@ export default function AdminUsersPanel() {
                   </div>
                 </td>
                 <td style={tdStyle}>
-                  <span style={cohortChipStyle(normalizeRole(user.role))}>
-                    {cohortLabel(user)}
-                  </span>
-                </td>
-                <td style={tdStyle}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     {userAccounts(user).length === 0 && (
                       <span style={{ color: '#94a3b8', fontSize: 13 }}>none</span>
@@ -1074,6 +1062,19 @@ export default function AdminUsersPanel() {
           {users.length === 0 ? 'No users yet.' : 'No users match this filter.'}
         </p>
       )}
+
+      {/* Confirm dialog for bulk suspend / revoke */}
+      {confirmState.open && (
+        <ConfirmDialog
+          open={confirmState.open}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmLabel={confirmState.confirmLabel}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState({ open: false })}
+          danger
+        />
+      )}
     </div>
   );
 }
@@ -1085,8 +1086,44 @@ export default function AdminUsersPanel() {
 const toolbarStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  marginBottom: 16,
+  flexWrap: 'wrap',
+  gap: 12,
+  marginBottom: 8,
+};
+
+const lozengeBarStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+};
+
+type LozengeColor = 'role' | 'feature';
+
+const LOZENGE_COLORS: Record<LozengeColor, { active: string; bg: string }> = {
+  role: { active: '#1d4ed8', bg: '#eff6ff' },     // blue
+  feature: { active: '#7c3aed', bg: '#f5f3ff' },  // purple
+};
+
+function lozengePillStyle(active: boolean, color: LozengeColor): React.CSSProperties {
+  const palette = LOZENGE_COLORS[color];
+  return {
+    padding: '4px 12px',
+    fontSize: 12,
+    fontWeight: active ? 700 : 500,
+    border: active ? `2px solid ${palette.active}` : '2px solid #e2e8f0',
+    borderRadius: 999,
+    cursor: 'pointer',
+    background: active ? palette.bg : '#f8fafc',
+    color: active ? palette.active : '#475569',
+    transition: 'all 0.1s',
+  };
+}
+
+const lozengeDividerStyle: React.CSSProperties = {
+  width: 1,
+  alignSelf: 'stretch',
+  background: '#cbd5e1',
+  margin: '0 4px',
 };
 
 const bulkToolbarStyle: React.CSSProperties = {
@@ -1112,7 +1149,9 @@ const errorBannerStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
-function bulkButtonStyle(variant: 'secondary' | 'danger'): React.CSSProperties {
+function bulkButtonStyle(variant: 'secondary' | 'danger' | 'warning'): React.CSSProperties {
+  const bg = variant === 'danger' ? '#dc2626' : variant === 'warning' ? '#d97706' : '#e2e8f0';
+  const fg = variant === 'secondary' ? '#1e293b' : '#fff';
   return {
     padding: '4px 12px',
     fontSize: 12,
@@ -1120,8 +1159,8 @@ function bulkButtonStyle(variant: 'secondary' | 'danger'): React.CSSProperties {
     border: 'none',
     borderRadius: 4,
     cursor: 'pointer',
-    background: variant === 'danger' ? '#dc2626' : '#e2e8f0',
-    color: variant === 'danger' ? '#fff' : '#1e293b',
+    background: bg,
+    color: fg,
   };
 }
 
@@ -1134,67 +1173,6 @@ const searchInputStyle: React.CSSProperties = {
   borderRadius: 6,
   outline: 'none',
 };
-
-const dropdownButtonStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  fontSize: 13,
-  fontWeight: 600,
-  background: '#f8fafc',
-  border: '1px solid #cbd5e1',
-  borderRadius: 6,
-  cursor: 'pointer',
-  color: '#0f172a',
-  display: 'inline-flex',
-  alignItems: 'center',
-  whiteSpace: 'nowrap',
-};
-
-const dropdownMenuStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: '100%',
-  left: 0,
-  marginTop: 4,
-  background: '#fff',
-  border: '1px solid #e2e8f0',
-  borderRadius: 8,
-  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-  zIndex: 50,
-  minWidth: 220,
-  maxHeight: '70vh',
-  overflowY: 'auto',
-  padding: '4px 0',
-};
-
-const sectionHeaderStyle: React.CSSProperties = {
-  padding: '4px 12px',
-  fontSize: 11,
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: '#94a3b8',
-  pointerEvents: 'none',
-};
-
-const separatorStyle: React.CSSProperties = {
-  height: 1,
-  background: '#f1f5f9',
-  margin: '4px 0',
-};
-
-function dropdownItemStyle(active: boolean): React.CSSProperties {
-  return {
-    display: 'block',
-    width: '100%',
-    textAlign: 'left',
-    padding: '6px 16px',
-    fontSize: 13,
-    background: active ? '#eff6ff' : 'transparent',
-    color: active ? '#1d4ed8' : '#1e293b',
-    fontWeight: active ? 600 : 400,
-    border: 'none',
-    cursor: 'pointer',
-  };
-}
 
 const tableStyle: React.CSSProperties = {
   width: '100%',
@@ -1265,24 +1243,5 @@ function rowMenuItemStyle(disabled: boolean): React.CSSProperties {
     border: 'none',
     cursor: disabled ? 'default' : 'pointer',
     fontWeight: 400,
-  };
-}
-
-type NormalizedRole = 'admin' | 'staff' | 'student';
-
-function cohortChipStyle(role: NormalizedRole): React.CSSProperties {
-  const palette: Record<NormalizedRole, { bg: string; fg: string }> = {
-    admin: { bg: '#fef3c7', fg: '#92400e' },
-    staff: { bg: '#dbeafe', fg: '#1e40af' },
-    student: { bg: '#ecfccb', fg: '#3f6212' },
-  };
-  const { bg, fg } = palette[role] ?? { bg: '#f1f5f9', fg: '#475569' };
-  return {
-    fontSize: 12,
-    padding: '2px 8px',
-    background: bg,
-    color: fg,
-    borderRadius: 999,
-    fontWeight: 600,
   };
 }

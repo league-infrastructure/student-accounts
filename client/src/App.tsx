@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -23,11 +23,7 @@ import SessionViewer from './pages/admin/SessionViewer';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
 import UserDetailPanel from './pages/admin/UserDetailPanel';
-import StudentAccountsPanel from './pages/admin/StudentAccountsPanel';
-import LlmProxyUsersPanel from './pages/admin/LlmProxyUsersPanel';
 import AdminUsersPanel from './pages/admin/AdminUsersPanel';
-import Cohorts from './pages/admin/Cohorts';
-import CohortDetailPanel from './pages/admin/CohortDetailPanel';
 import Groups from './pages/admin/Groups';
 import GroupDetailPanel from './pages/admin/GroupDetailPanel';
 import SyncPanel from './pages/admin/SyncPanel';
@@ -38,9 +34,6 @@ import ClaudeCode from './pages/ClaudeCode';
 import LlmProxy from './pages/LlmProxy';
 
 import OAuthConsent from './pages/OAuthConsent';
-
-import StaffLayout from './pages/staff/StaffLayout';
-import StaffDirectory from './pages/staff/StaffDirectory';
 
 const queryClient = new QueryClient();
 
@@ -81,25 +74,12 @@ function App() {
               <Route path="/oauth-clients" element={<OAuthClients />} />
               <Route path="/claude-code" element={<ClaudeCode />} />
               <Route path="/llm-proxy" element={<LlmProxy />} />
-              {/* Staff pages — role-gated by StaffLayout */}
-              <Route element={<StaffLayout />}>
-                <Route path="/staff/directory" element={<StaffDirectory />} />
-              </Route>
-
               {/* Admin workflow pages — role-gated by AdminOnlyRoute.
                   Non-admin users at any of these paths are redirected to /account. */}
               <Route element={<AdminOnlyRoute />}>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/cohorts" element={<Cohorts />} />
-                <Route path="/cohorts/:id" element={<CohortDetailPanel />} />
                 <Route path="/groups" element={<Groups />} />
                 <Route path="/groups/:id" element={<GroupDetailPanel />} />
-                {/* /users redirects to the canonical /admin/users route (AdminUsersPanel) */}
-                <Route path="/users" element={<Navigate to="/admin/users" replace />} />
-                {/* Literal sub-paths come BEFORE /users/:id so they win
-                   the match against the dynamic segment. */}
-                <Route path="/users/students" element={<StudentAccountsPanel />} />
-                <Route path="/users/llm-proxy" element={<LlmProxyUsersPanel />} />
                 <Route path="/users/:id" element={<UserDetailPanel />} />
                 <Route path="/sync" element={<SyncPanel />} />
                 <Route path="/merge-queue" element={<MergeQueuePanel />} />

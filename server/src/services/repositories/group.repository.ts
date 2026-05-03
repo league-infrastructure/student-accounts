@@ -102,6 +102,28 @@ export class GroupRepository {
   }
 
   /**
+   * Find a Group by name, or create it if none exists. Idempotent — safe
+   * to call on every sync cycle for the same OU name.
+   *
+   * Returns `{ group, created }` where `created` is true when the row was
+   * inserted.
+   */
+  static async upsertByName(
+    db: DbClient,
+    name: string,
+    description?: string | null,
+  ): Promise<{ group: Group; created: boolean }> {
+    const existing = await (db as any).group.findUnique({ where: { name } });
+    if (existing) {
+      return { group: existing, created: false };
+    }
+    const group = await (db as any).group.create({
+      data: { name, description: description ?? null },
+    });
+    return { group, created: true };
+  }
+
+  /**
    * Delete a Group row. Caller is expected to wipe `UserGroup` rows first
    * inside the same transaction — FK has `onDelete: Cascade` so this
    * still works if skipped, but GroupService deliberately deletes

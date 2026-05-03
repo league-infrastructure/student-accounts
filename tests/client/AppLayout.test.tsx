@@ -91,6 +91,7 @@ function makeAdminUser(overrides = {}) {
 function makeAccountData(overrides: {
   externalAccounts?: { type: string }[];
   llmProxyEnabled?: boolean;
+  approvalStatus?: 'approved' | 'pending';
 } = {}) {
   return {
     profile: {
@@ -99,6 +100,7 @@ function makeAccountData(overrides: {
       displayName: 'Jane Student',
       role: 'USER',
       llmProxyEnabled: overrides.llmProxyEnabled ?? false,
+      approvalStatus: overrides.approvalStatus ?? 'approved',
       createdAt: '2025-01-01T00:00:00Z',
       updatedAt: '2025-01-01T00:00:00Z',
     },
@@ -252,6 +254,39 @@ describe('AppLayout', () => {
   });
 
   /* ---------------------------------------------------------------- */
+  /*  Pending approval (student)                                        */
+  /* ---------------------------------------------------------------- */
+
+  describe('pending-approval student', () => {
+    beforeEach(() => {
+      mockUseAuth.mockReturnValue({
+        user: makeStudentUser(),
+        loading: false,
+        logout: mockLogout,
+      });
+    });
+
+    it('shows only the Account link in the sidebar (no other items, no About)', async () => {
+      mockFetchWithAccount(makeAccountData({ approvalStatus: 'pending' }));
+      renderLayout();
+
+      const nav = await waitFor(() => document.querySelector('nav')!);
+      const links = await waitFor(() => {
+        const found = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent);
+        // Account link should be present once data loads
+        expect(found).toContain('Account');
+        return found;
+      });
+
+      // Account is the only sidebar nav link.
+      expect(links).toEqual(['Account']);
+      // OAuth Clients, About, etc. are gone.
+      expect(links).not.toContain('OAuth Clients');
+      expect(links).not.toContain('About');
+    });
+  });
+
+  /* ---------------------------------------------------------------- */
   /*  Staff role                                                        */
   /* ---------------------------------------------------------------- */
 
@@ -269,9 +304,9 @@ describe('AppLayout', () => {
       expect(screen.getByText('OAuth Clients')).toBeInTheDocument();
     });
 
-    it('sees User Management group header', () => {
+    it('does not see User Management group (admin-only group)', () => {
       renderLayout();
-      expect(screen.getByText('User Management')).toBeInTheDocument();
+      expect(screen.queryByText('User Management')).not.toBeInTheDocument();
     });
 
     it('does not see Admin group', () => {
@@ -287,38 +322,6 @@ describe('AppLayout', () => {
     it('does not see Sync (admin-only flat item)', () => {
       renderLayout();
       expect(screen.queryByText('Sync')).not.toBeInTheDocument();
-    });
-
-    it('does not show Users (admin-only child) when group is collapsed', () => {
-      renderLayout();
-      // Group is collapsed at /; Users is an admin-only child anyway
-      expect(screen.queryByText('Users')).not.toBeInTheDocument();
-    });
-
-    it('does not show Cohorts within User Management (admin-only child)', async () => {
-      renderLayout();
-      // Click the User Management header to expand it
-      fireEvent.click(screen.getByText('User Management'));
-      await waitFor(() => {
-        // Staff Directory should now be visible; Cohorts should not
-        expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
-      });
-    });
-
-    it('does not show Groups within User Management (admin-only child)', async () => {
-      renderLayout();
-      fireEvent.click(screen.getByText('User Management'));
-      await waitFor(() => {
-        expect(screen.queryByText('Groups')).not.toBeInTheDocument();
-      });
-    });
-
-    it('shows Staff after expanding User Management group', async () => {
-      renderLayout();
-      fireEvent.click(screen.getByText('User Management'));
-      await waitFor(() => {
-        expect(screen.getByText('Staff')).toBeInTheDocument();
-      });
     });
   });
 
@@ -360,16 +363,18 @@ describe('AppLayout', () => {
       expect(screen.getByText('Admin')).toBeInTheDocument();
     });
 
-    it('shows all User Management children after expanding the group', async () => {
+    it('shows exactly two User Management children after expanding the group', async () => {
       renderLayout();
-      fireEvent.click(screen.getByText('User Management'));
+      // There are two "User Management" text nodes: the group header and the
+      // "User Management" child link. Clicking the header (first occurrence) expands the group.
+      fireEvent.click(screen.getAllByText('User Management')[0]);
       await waitFor(() => {
-        expect(screen.getByText('Users')).toBeInTheDocument();
-        expect(screen.getByText('Students')).toBeInTheDocument();
-        expect(screen.getByText('Staff')).toBeInTheDocument();
-        expect(screen.getByText('LLM Proxy Users')).toBeInTheDocument();
         expect(screen.getByText('Groups')).toBeInTheDocument();
-        expect(screen.getByText('Cohorts')).toBeInTheDocument();
+        // Orphan entries removed in sprint 025 ticket 006
+        expect(screen.queryByText('Students')).not.toBeInTheDocument();
+        expect(screen.queryByText('Staff')).not.toBeInTheDocument();
+        expect(screen.queryByText('LLM Proxy Users')).not.toBeInTheDocument();
+        expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
       });
     });
 
@@ -454,26 +459,7 @@ describe('AppLayout', () => {
   /* ---------------------------------------------------------------- */
 
   describe('User Management group expand / navigate', () => {
-    it('clicking User Management header as staff expands the group and shows Staff', async () => {
-      mockUseAuth.mockReturnValue({
-        user: makeStaffUser(),
-        loading: false,
-        logout: mockLogout,
-      });
-
-      renderLayout();
-
-      // Initially collapsed at /
-      expect(screen.queryByText('Staff')).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByText('User Management'));
-
-      await waitFor(() => {
-        expect(screen.getByText('Staff')).toBeInTheDocument();
-      });
-    });
-
-    it('clicking User Management header as admin expands the group and shows all children', async () => {
+    it('clicking User Management header as admin expands the group and shows both children', async () => {
       mockUseAuth.mockReturnValue({
         user: makeAdminUser(),
         loading: false,
@@ -482,13 +468,16 @@ describe('AppLayout', () => {
 
       renderLayout();
 
-      fireEvent.click(screen.getByText('User Management'));
+      // Click the group header (first occurrence of "User Management" text)
+      fireEvent.click(screen.getAllByText('User Management')[0]);
 
       await waitFor(() => {
-        expect(screen.getByText('Staff')).toBeInTheDocument();
-        expect(screen.getByText('Users')).toBeInTheDocument();
-        expect(screen.getByText('Cohorts')).toBeInTheDocument();
+        // Both children visible
+        expect(screen.getAllByText('User Management').length).toBeGreaterThanOrEqual(2);
         expect(screen.getByText('Groups')).toBeInTheDocument();
+        // Orphan entries gone
+        expect(screen.queryByText('Students')).not.toBeInTheDocument();
+        expect(screen.queryByText('Cohorts')).not.toBeInTheDocument();
       });
     });
   });

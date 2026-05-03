@@ -1,13 +1,13 @@
 ---
-id: "006"
-title: "Sidebar shrink and delete orphaned pages and routes"
-status: todo
+id: '006'
+title: Sidebar shrink and delete orphaned pages and routes
+status: done
 use-cases:
-  - SUC-005
+- SUC-005
 depends-on:
-  - "005"
-github-issue: ""
-todo: ""
+- '005'
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 
@@ -27,24 +27,24 @@ This is the final cleanup step before the smoke test.
 ## Acceptance Criteria
 
 **Sidebar:**
-- [ ] `SIDEBAR_NAV` User Management group children contain exactly two entries: `{ to: '/admin/users', label: 'User Management' }` and `{ to: '/groups', label: 'Groups' }`.
-- [ ] Students, Staff, LLM Proxy Users, and Cohorts entries are removed from the children array.
-- [ ] `defaultTo` remains `/admin/users`.
+- [x] `SIDEBAR_NAV` User Management group children contain exactly two entries: `{ to: '/admin/users', label: 'User Management' }` and `{ to: '/groups', label: 'Groups' }`.
+- [x] Students, Staff, LLM Proxy Users, and Cohorts entries are removed from the children array.
+- [x] `defaultTo` remains `/admin/users`.
 
 **Deleted page files:**
-- [ ] `client/src/pages/admin/StudentAccountsPanel.tsx` is deleted.
-- [ ] `client/src/pages/admin/LlmProxyUsersPanel.tsx` is deleted.
-- [ ] `client/src/pages/staff/StaffDirectory.tsx` is deleted.
-- [ ] `client/src/pages/admin/Cohorts.tsx` is deleted.
-- [ ] `client/src/pages/admin/CohortDetailPanel.tsx` is deleted (if it exists as a separate file; it may be defined inline in Cohorts.tsx).
+- [x] `client/src/pages/admin/StudentAccountsPanel.tsx` is deleted.
+- [x] `client/src/pages/admin/LlmProxyUsersPanel.tsx` is deleted.
+- [x] `client/src/pages/staff/StaffDirectory.tsx` is deleted.
+- [x] `client/src/pages/admin/Cohorts.tsx` is deleted.
+- [x] `client/src/pages/admin/CohortDetailPanel.tsx` is deleted (if it exists as a separate file; it may be defined inline in Cohorts.tsx).
 
 **Deleted test files:**
-- [ ] Test files for the above pages are deleted (search `tests/client/` for matching file names).
+- [x] Test files for the above pages are deleted (search `tests/client/` for matching file names).
 
 **Deleted routes (App.tsx):**
-- [ ] Routes for `/users/students`, `/users/llm-proxy`, `/staff/directory`, `/cohorts`, and `/cohorts/:id` are removed from `App.tsx`.
-- [ ] TypeScript compilation passes after deletions (`npm run build` or `tsc --noEmit`).
-- [ ] No remaining imports of the deleted page components anywhere in the codebase.
+- [x] Routes for `/users/students`, `/users/llm-proxy`, `/staff/directory`, `/cohorts`, and `/cohorts/:id` are removed from `App.tsx`.
+- [x] TypeScript compilation passes after deletions (`npm run build` or `tsc --noEmit`).
+- [x] No remaining imports of the deleted page components anywhere in the codebase.
 
 ## Implementation Plan
 

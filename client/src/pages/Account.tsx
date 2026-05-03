@@ -17,6 +17,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import UsernamePasswordSection from './account/UsernamePasswordSection';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -238,14 +239,18 @@ function Pike13Logo() {
 
 interface LoginsSectionProps {
   logins: AccountLogin[];
+  role: string | undefined;
   onRemoveError: string | null;
-  onRemove: (id: number) => void;
+  onRemove: (login: AccountLogin) => void;
   removingId: number | null;
 }
 
-function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSectionProps) {
+function LoginsSection({ logins, role, onRemoveError, onRemove, removingId }: LoginsSectionProps) {
   const canRemove = logins.length > 1;
   const hasPike13 = logins.some((l) => l.provider === 'pike13');
+  const isStudent = role?.toLowerCase() === 'student';
+  // Pike 13 is for staff/admin onboarding; students never see the link button.
+  const showPike13 = !hasPike13 && !isStudent;
 
   return (
     <div style={styles.card}>
@@ -275,7 +280,7 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
                 </td>
                 <td style={styles.td}>
                   <button
-                    onClick={() => onRemove(login.id)}
+                    onClick={() => onRemove(login)}
                     disabled={!canRemove || removingId === login.id}
                     title={!canRemove ? 'At least one login must remain' : undefined}
                     aria-label={`Remove ${providerLabel(login.provider)} login`}
@@ -314,7 +319,7 @@ function LoginsSection({ logins, onRemoveError, onRemove, removingId }: LoginsSe
         >
           <GitHubLogo />
         </a>
-        {!hasPike13 && (
+        {showPike13 && (
           <a
             href="/api/auth/pike13?link=1"
             aria-label="Add Pike 13"
@@ -420,6 +425,10 @@ export default function Account() {
   const { user, loading } = useAuth();
   const queryClient = useQueryClient();
 
+  // Confirmation dialog state for login removal
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingLogin, setPendingLogin] = useState<AccountLogin | null>(null);
+
   // Open SSE connection to receive real-time account updates from the server.
   useAccountEventStream();
 
@@ -490,9 +499,49 @@ export default function Account() {
     data != null &&
     ((data.profile.username ?? null) !== null || data.profile.has_password === true);
 
+  const isPending = data?.profile.approvalStatus === 'pending';
+
+  // Pending-approval state: show only the waiting-for-approval card. The
+  // useQuery polls every 5s while pending, so the page auto-refreshes the
+  // moment an admin approves.
+  if (isPending) {
+    return (
+      <div style={styles.container}>
+        <h1 style={styles.pageTitle}>My Account</h1>
+        <div style={styles.card} data-testid="pending-approval-card">
+          <h2 style={styles.sectionTitle}>Waiting for approval</h2>
+          <p style={styles.helpText}>
+            Your account is pending review. An admin or staff member will
+            approve it shortly. This page will refresh automatically once
+            your account is approved.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Surface OAuth-link callback errors via ?error=… on the URL.
+  const linkError = (() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('error');
+    if (code === 'already_linked') {
+      return 'That provider account is already linked to a different user. Sign in as that user to manage it, or use a different provider account.';
+    }
+    if (code === 'oauth_denied') {
+      return 'Sign-in was cancelled or failed. Try again.';
+    }
+    return null;
+  })();
+
   return (
     <div style={styles.container}>
       <h1 style={styles.pageTitle}>My Account</h1>
+
+      {linkError && (
+        <div role="alert" style={styles.linkErrorBanner} data-testid="link-error-banner">
+          {linkError}
+        </div>
+      )}
 
       {/* Identity sections: Profile, Logins, UsernamePassword — all roles */}
       <>
@@ -508,6 +557,7 @@ export default function Account() {
 
         <LoginsSection
           logins={data.logins}
+          role={user?.role}
           onRemoveError={
             removeLoginMutation.isError
               ? removeLoginMutation.error instanceof Error
@@ -515,8 +565,35 @@ export default function Account() {
                 : 'Failed to remove login'
               : null
           }
-          onRemove={(id) => removeLoginMutation.mutate(id)}
+          onRemove={(login) => {
+            setPendingLogin(login);
+            setConfirmOpen(true);
+          }}
           removingId={removeLoginMutation.isPending ? (removeLoginMutation.variables ?? null) : null}
+        />
+
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Remove login"
+          message={
+            pendingLogin
+              ? `Remove the ${providerLabel(pendingLogin.provider)} login from your account? You can re-link it later by clicking Add ${providerLabel(pendingLogin.provider)}.`
+              : ''
+          }
+          confirmLabel="Remove"
+          cancelLabel="Cancel"
+          danger
+          onConfirm={() => {
+            if (pendingLogin !== null) {
+              removeLoginMutation.mutate(pendingLogin.id);
+            }
+            setConfirmOpen(false);
+            setPendingLogin(null);
+          }}
+          onCancel={() => {
+            setConfirmOpen(false);
+            setPendingLogin(null);
+          }}
         />
 
         {hasCredentials && (
@@ -591,6 +668,15 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: 12,
     alignItems: 'flex-start',
+  },
+  linkErrorBanner: {
+    border: '1px solid #fca5a5',
+    background: '#fef2f2',
+    color: '#7f1d1d',
+    borderRadius: 8,
+    padding: '12px 16px',
+    fontSize: '0.9rem',
+    marginBottom: '1rem',
   },
   errorText: {
     color: '#dc2626',

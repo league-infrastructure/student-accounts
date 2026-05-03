@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { NavLink, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
-import { hasAdminAccess, hasStaffAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
+import { hasAdminAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
 import { useAdminEventStream } from '../hooks/useAdminEventStream';
 import type { AccountData } from '../pages/Account';
 
@@ -97,19 +97,15 @@ const SIDEBAR_NAV: SidebarItem[] = [
     gate: (_role, account) => account?.profile.llmProxyEnabled === true,
   },
 
-  // --- User Management group (staff + admin) ---
+  // --- User Management group (admin only) ---
   {
     kind: 'group',
     label: 'User Management',
     defaultTo: '/admin/users',
-    gate: hasStaffAccess,
+    gate: hasAdminAccess,
     children: [
-      { to: '/admin/users', label: 'Users', gate: hasAdminAccess },
-      { to: '/users/students', label: 'Students', gate: hasAdminAccess },
-      { to: '/staff/directory', label: 'Staff', gate: hasStaffAccess },
-      { to: '/users/llm-proxy', label: 'LLM Proxy Users', gate: hasAdminAccess },
-      { to: '/groups', label: 'Groups', gate: hasAdminAccess },
-      { to: '/cohorts', label: 'Cohorts', gate: hasAdminAccess },
+      { to: '/admin/users', label: 'User Management' },
+      { to: '/groups', label: 'Groups' },
     ],
   },
 
@@ -519,6 +515,15 @@ export default function AppLayout() {
       {/* Main nav */}
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: 8 }}>
         {SIDEBAR_NAV.map((item) => {
+          // Pending-approval users see only the Account link in the sidebar.
+          // Everything else (services, admin pages, etc.) is hidden until an
+          // admin approves their account. The user-menu dropdown still
+          // provides Account + Log out access.
+          const pending = accountData?.profile.approvalStatus === 'pending';
+          if (pending && (item.kind !== 'link' || item.to !== '/account')) {
+            return null;
+          }
+
           if (item.kind === 'link') {
             // Apply gate if present
             if (item.gate && !item.gate(role, accountData)) return null;
@@ -634,19 +639,21 @@ export default function AppLayout() {
         )}
       </div>
 
-      {/* Bottom nav */}
-      <div style={{ borderTop: '1px solid #2a2a4e', paddingTop: 4, paddingBottom: 8 }}>
-        {BOTTOM_NAV.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={closeSidebarIfMobile}
-            style={({ isActive }) => styles.navLink(isActive)}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </div>
+      {/* Bottom nav — hidden for pending-approval users */}
+      {accountData?.profile.approvalStatus !== 'pending' && (
+        <div style={{ borderTop: '1px solid #2a2a4e', paddingTop: 4, paddingBottom: 8 }}>
+          {BOTTOM_NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={closeSidebarIfMobile}
+              style={({ isActive }) => styles.navLink(isActive)}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
     </nav>
   );
 

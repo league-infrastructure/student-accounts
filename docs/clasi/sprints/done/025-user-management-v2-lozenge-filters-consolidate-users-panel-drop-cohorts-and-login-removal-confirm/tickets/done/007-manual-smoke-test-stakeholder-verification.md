@@ -1,23 +1,23 @@
 ---
-id: "007"
-title: "Manual smoke test: stakeholder verification"
-status: todo
+id: '007'
+title: 'Manual smoke test: stakeholder verification'
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
 depends-on:
-  - "001"
-  - "002"
-  - "004"
-  - "005"
-  - "006"
-github-issue: ""
-todo: ""
+- '001'
+- '002'
+- '004'
+- '005'
+- '006'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 
