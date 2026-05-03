@@ -13,6 +13,7 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { hasStaffAccess } from '../lib/roles';
@@ -28,6 +29,12 @@ export interface AccountProfile {
   id: number;
   displayName: string | null;
   primaryEmail: string;
+  /** User-chosen address for outbound mail; null = use primaryEmail. */
+  notificationEmail?: string | null;
+  /** All addresses owned by this user (primary + each linked provider's
+   *  email + workspace external_id). The Account page renders this as a
+   *  picker so the student can choose which one is the notification email. */
+  availableEmails?: string[];
   cohort: { id: number; name: string } | null;
   role: string;
   approvalStatus?: 'approved' | 'pending';
@@ -37,6 +44,10 @@ export interface AccountProfile {
   workspaceTempPassword?: string | null;
   /** True when the student has an active LLM proxy token. */
   llmProxyEnabled?: boolean;
+  /** Number of non-disabled OAuth clients owned by this user. */
+  oauthClientCount?: number;
+  /** When the user has an active LLM proxy token, plaintext + endpoint URL. */
+  llmProxy?: { token: string | null; endpoint: string } | null;
   /** Username for passphrase / local login, or null if not set. */
   username?: string | null;
   /** True when a password_hash is stored for this account. */
@@ -103,6 +114,18 @@ async function patchDisplayName(displayName: string): Promise<void> {
   }
 }
 
+async function patchNotificationEmail(notificationEmail: string | null): Promise<void> {
+  const res = await fetch('/api/account/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notificationEmail }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -130,9 +153,11 @@ function providerLabel(p: string): string {
 function ProfileSection({
   profile,
   onRename,
+  onChangeNotificationEmail,
 }: {
   profile: AccountProfile;
   onRename: (newName: string) => Promise<void>;
+  onChangeNotificationEmail: (email: string | null) => Promise<void>;
 }) {
   const roleLabel =
     profile.role === 'admin' ? 'Admin' : profile.role === 'staff' ? 'Staff' : 'Student';
@@ -203,9 +228,94 @@ function ProfileSection({
         </button>
       )}
       {error && <div style={styles.profileNameError} role="alert">{error}</div>}
-      <div style={styles.profileMeta}>{profile.primaryEmail}</div>
+      <NotificationEmailPicker
+        profile={profile}
+        onChange={onChangeNotificationEmail}
+      />
       <div style={styles.profileMeta}>{subtitle}</div>
     </header>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NotificationEmailPicker — click the current email, get a dropdown of all
+// addresses on the account; selection PATCHes notification_email server-side.
+// ---------------------------------------------------------------------------
+
+function NotificationEmailPicker({
+  profile,
+  onChange,
+}: {
+  profile: AccountProfile;
+  onChange: (email: string | null) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const choices = profile.availableEmails ?? [profile.primaryEmail];
+  const current = profile.notificationEmail ?? profile.primaryEmail;
+
+  // If only one possible email, no point in a picker — render flat.
+  if (choices.length <= 1) {
+    return <div style={styles.profileMeta}>{current}</div>;
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setError(null);
+          setEditing(true);
+        }}
+        style={styles.profileEmailButton}
+        title="Click to choose which email gets notifications"
+        aria-label={`Notification email (currently ${current}). Click to change.`}
+      >
+        {current}
+        <span style={{ marginLeft: 6, fontSize: 11, color: '#94a3b8' }}>▾</span>
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <select
+        autoFocus
+        defaultValue={current}
+        disabled={saving}
+        onBlur={() => setEditing(false)}
+        onChange={async (e) => {
+          const next = e.target.value;
+          if (next === current) {
+            setEditing(false);
+            return;
+          }
+          setSaving(true);
+          setError(null);
+          try {
+            // Sending primaryEmail as notification clears it (null on server).
+            const value = next === profile.primaryEmail ? null : next;
+            await onChange(value);
+            setEditing(false);
+          } catch (err: any) {
+            setError(err.message ?? 'Could not save');
+          } finally {
+            setSaving(false);
+          }
+        }}
+        style={styles.profileEmailSelect}
+        aria-label="Choose notification email"
+      >
+        {choices.map((e) => (
+          <option key={e} value={e}>
+            {e}
+          </option>
+        ))}
+      </select>
+      {error && <div style={styles.profileNameError} role="alert">{error}</div>}
+    </>
   );
 }
 
@@ -402,6 +512,64 @@ function WorkspaceSection({ data }: { data: AccountData }) {
 }
 
 // ---------------------------------------------------------------------------
+// FeaturesSection — quick-glance at the user's enabled features (OAuth
+// Clients count + LLM Proxy access). Each row links to the full page.
+// Hidden rows mean the feature isn't enabled for this user.
+// ---------------------------------------------------------------------------
+
+function FeaturesSection({ profile }: { profile: AccountProfile }) {
+  const oauthCount = profile.oauthClientCount ?? 0;
+  const showOauth = profile.allowsOauthClient || oauthCount > 0;
+  const showLlm = !!profile.llmProxy;
+
+  if (!showOauth && !showLlm) return null;
+
+  return (
+    <div style={styles.card} data-testid="features-section">
+      <h2 style={styles.sectionTitle}>Features</h2>
+
+      {showOauth && (
+        <div style={styles.featureRow} data-testid="feature-oauth">
+          <div style={styles.featureLabel}>OAuth Clients</div>
+          <div style={styles.featureBody}>
+            {oauthCount > 0 ? (
+              <Link to="/oauth-clients" style={styles.featureLink}>
+                You have {oauthCount} OAuth client{oauthCount === 1 ? '' : 's'}
+              </Link>
+            ) : (
+              <Link to="/oauth-clients" style={styles.featureLink}>
+                Create an OAuth client
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showLlm && profile.llmProxy && (
+        <div style={styles.featureRow} data-testid="feature-llm-proxy">
+          <div style={styles.featureLabel}>LLM Proxy</div>
+          <div style={styles.featureBody}>
+            <Link to="/llm-proxy" style={styles.featureLink}>
+              You have access
+            </Link>
+            <div style={styles.featureMeta}>
+              <span style={styles.featureMetaKey}>endpoint:</span>{' '}
+              <code>{profile.llmProxy.endpoint}</code>
+            </div>
+            {profile.llmProxy.token && (
+              <div style={styles.featureMeta}>
+                <span style={styles.featureMetaKey}>key:</span>{' '}
+                <code style={styles.featureToken}>{profile.llmProxy.token}</code>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // HelpSection
 // ---------------------------------------------------------------------------
 
@@ -559,7 +727,15 @@ export default function Account() {
             await patchDisplayName(newName);
             await queryClient.invalidateQueries({ queryKey: ['account'] });
           }}
+          onChangeNotificationEmail={async (email) => {
+            await patchNotificationEmail(email);
+            await queryClient.invalidateQueries({ queryKey: ['account'] });
+          }}
         />
+
+        <div style={styles.spacer} />
+
+        <FeaturesSection profile={data.profile} />
 
         <div style={styles.spacer} />
 
@@ -740,6 +916,65 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#dc2626',
     fontSize: '0.8rem',
     marginBottom: 4,
+  },
+  profileEmailButton: {
+    fontSize: '0.9rem',
+    color: '#475569',
+    marginBottom: 2,
+    background: 'transparent',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+    font: 'inherit',
+  },
+  profileEmailSelect: {
+    fontSize: '0.9rem',
+    color: '#1e293b',
+    marginBottom: 2,
+    padding: '2px 6px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 4,
+    background: '#fff',
+    maxWidth: 420,
+  },
+  featureRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '1rem',
+    padding: '0.5rem 0',
+    borderTop: '1px solid #f1f5f9',
+  },
+  featureLabel: {
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: '#475569',
+    minWidth: 120,
+    flexShrink: 0,
+  },
+  featureBody: {
+    flex: 1,
+    fontSize: '0.9rem',
+  },
+  featureLink: {
+    color: '#2563eb',
+    textDecoration: 'none',
+    fontWeight: 500,
+  },
+  featureMeta: {
+    fontSize: '0.78rem',
+    color: '#64748b',
+    marginTop: 4,
+    wordBreak: 'break-all' as const,
+  },
+  featureMetaKey: {
+    color: '#94a3b8',
+  },
+  featureToken: {
+    background: '#f1f5f9',
+    padding: '1px 6px',
+    borderRadius: 3,
+    fontSize: '0.78rem',
   },
   profileMeta: {
     fontSize: '0.9rem',
