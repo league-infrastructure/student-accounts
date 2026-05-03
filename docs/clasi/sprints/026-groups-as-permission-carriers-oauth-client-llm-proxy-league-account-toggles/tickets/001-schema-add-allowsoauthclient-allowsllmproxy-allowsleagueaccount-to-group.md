@@ -1,9 +1,9 @@
 ---
 id: '001'
 title: 'Schema: add allowsOauthClient, allowsLlmProxy, allowsLeagueAccount to Group'
-status: todo
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on: []
 github-issue: ''
 todo: groups-as-permission-carriers.md
@@ -23,13 +23,13 @@ All three default to `false` so existing Group rows are not affected.
 
 ## Acceptance Criteria
 
-- [ ] `server/prisma/schema.prisma` Group model has `allowsOauthClient Boolean @default(false)`.
-- [ ] `server/prisma/schema.prisma` Group model has `allowsLlmProxy Boolean @default(false)`.
-- [ ] `server/prisma/schema.prisma` Group model has `allowsLeagueAccount Boolean @default(false)`.
-- [ ] `prisma db push` (or migration generate) completes without errors on the dev database.
-- [ ] Prisma-generated client exposes the three fields on the `Group` type.
-- [ ] Existing Group rows in the dev database retain their data; all three new fields are `false`.
-- [ ] All existing server tests pass after the schema change.
+- [x] `server/prisma/schema.prisma` Group model has `allowsOauthClient Boolean @default(false)`.
+- [x] `server/prisma/schema.prisma` Group model has `allowsLlmProxy Boolean @default(false)`.
+- [x] `server/prisma/schema.prisma` Group model has `allowsLeagueAccount Boolean @default(false)`.
+- [x] `prisma db push` (or migration generate) completes without errors on the dev database.
+- [x] Prisma-generated client exposes the three fields on the `Group` type.
+- [x] Existing Group rows in the dev database retain their data; all three new fields are `false`.
+- [x] All existing server tests pass after the schema change.
 
 ## Implementation Plan
 
