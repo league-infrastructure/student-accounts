@@ -6,7 +6,7 @@
  *  - Name and email cells are links to /users/:id
  *  - Search bar filters by name or email (client-side, real-time)
  *  - Role lozenge bar: All / Staff / Admin / Student (radio)
- *  - Feature lozenge bar: Google / Pike 13 / GitHub / LLM Proxy / OAuth Client (multi-select)
+ *  - Feature lozenge bar: Google / Pike 13 / GitHub (multi-select; LLM Proxy + OAuth Client removed in Sprint 026)
  *  - Feature filter intersection semantics
  *  - Cohort column is removed
  *  - Column headers Name, Email, Accounts, Joined are sortable; Cohort is absent
@@ -316,7 +316,7 @@ describe('AdminUsersPanel', () => {
 
   // ---- Feature lozenge bar (radio) ----
 
-  it('renders feature lozenge bar with All, Google, Pike 13, GitHub, LLM Proxy, OAuth Client', async () => {
+  it('renders feature lozenge bar with exactly All, Google, Pike 13, GitHub (no LLM Proxy, no OAuth Client)', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
@@ -327,8 +327,9 @@ describe('AdminUsersPanel', () => {
     expect(within(featureGroup).getByRole('button', { name: 'Google' })).toBeInTheDocument();
     expect(within(featureGroup).getByRole('button', { name: 'Pike 13' })).toBeInTheDocument();
     expect(within(featureGroup).getByRole('button', { name: 'GitHub' })).toBeInTheDocument();
-    expect(within(featureGroup).getByRole('button', { name: 'LLM Proxy' })).toBeInTheDocument();
-    expect(within(featureGroup).getByRole('button', { name: 'OAuth Client' })).toBeInTheDocument();
+    // LLM Proxy and OAuth Client lozenges removed in Sprint 026 (now group-level)
+    expect(within(featureGroup).queryByRole('button', { name: 'LLM Proxy' })).not.toBeInTheDocument();
+    expect(within(featureGroup).queryByRole('button', { name: 'OAuth Client' })).not.toBeInTheDocument();
   });
 
   it('feature "All" is selected by default; no feature filter applied', async () => {
@@ -385,43 +386,15 @@ describe('AdminUsersPanel', () => {
     });
   });
 
-  it('feature "LLM Proxy" shows only users with llmProxyEnabled=true', async () => {
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
-
-    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
-    fireEvent.click(within(featureGroup).getByRole('button', { name: 'LLM Proxy' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Staff User')).toBeInTheDocument();
-      expect(screen.queryByText('Admin User')).not.toBeInTheDocument();
-      expect(screen.queryByText('Student User')).not.toBeInTheDocument();
-    });
-  });
-
-  it('feature "OAuth Client" shows only users with oauthClientCount > 0', async () => {
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
-
-    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
-    fireEvent.click(within(featureGroup).getByRole('button', { name: 'OAuth Client' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Student User')).toBeInTheDocument();
-      expect(screen.queryByText('Admin User')).not.toBeInTheDocument();
-      expect(screen.queryByText('Staff User')).not.toBeInTheDocument();
-    });
-  });
-
   it('selecting a feature deselects All; selecting All clears the feature', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
     const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
 
-    fireEvent.click(within(featureGroup).getByRole('button', { name: 'LLM Proxy' }));
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'Google' }));
     await waitFor(() => expect(screen.queryByText('Admin User')).not.toBeInTheDocument());
-    expect(within(featureGroup).getByRole('button', { name: 'LLM Proxy' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(featureGroup).getByRole('button', { name: 'Google' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(featureGroup).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(within(featureGroup).getByRole('button', { name: 'All' }));
@@ -431,7 +404,7 @@ describe('AdminUsersPanel', () => {
       expect(screen.getByText('Student User')).toBeInTheDocument();
     });
     expect(within(featureGroup).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(featureGroup).getByRole('button', { name: 'LLM Proxy' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(featureGroup).getByRole('button', { name: 'Google' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('switching from one feature to another replaces the filter (radio behavior)', async () => {

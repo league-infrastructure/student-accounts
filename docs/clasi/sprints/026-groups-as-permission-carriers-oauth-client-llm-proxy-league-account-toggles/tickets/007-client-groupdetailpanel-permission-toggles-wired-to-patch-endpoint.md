@@ -1,13 +1,13 @@
 ---
-id: "007"
-title: "Client: GroupDetailPanel permission toggles wired to PATCH endpoint"
-status: todo
+id: '007'
+title: 'Client: GroupDetailPanel permission toggles wired to PATCH endpoint'
+status: done
 use-cases:
-  - SUC-008
+- SUC-008
 depends-on:
-  - "005"
-github-issue: ""
-todo: ""
+- '005'
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -39,15 +39,15 @@ existing members.
 
 ## Acceptance Criteria
 
-- [ ] Three toggle controls render in `GroupDetailPanel.tsx` in the group header area.
-- [ ] Toggle initial state is loaded from `GET /admin/groups/:id` response fields `allowsOauthClient`, `allowsLlmProxy`, `allowsLeagueAccount`.
-- [ ] Toggling any control fires `PATCH /admin/groups/:id` with the changed flag only.
-- [ ] On a successful PATCH, the toggle reflects the value returned by the server.
-- [ ] Caption "Toggling this on grants the capability to every member." appears for each toggle.
-- [ ] `allowsLeagueAccount` toggle has a visible loading or pending indicator while the PATCH is in-flight (provisioning may take a moment).
-- [ ] No other toggle or panel section re-renders unnecessarily on a permission toggle.
-- [ ] Client unit tests cover: three toggles render with correct initial state; toggling fires PATCH with correct field; toggle reflects server response; loading state on leagueAccount toggle.
-- [ ] All existing `GroupDetailPanel` tests continue to pass.
+- [x] Three toggle controls render in `GroupDetailPanel.tsx` in the group header area.
+- [x] Toggle initial state is loaded from `GET /admin/groups/:id` response fields `allowsOauthClient`, `allowsLlmProxy`, `allowsLeagueAccount`.
+- [x] Toggling any control fires `PATCH /admin/groups/:id` with the changed flag only.
+- [x] On a successful PATCH, the toggle reflects the value returned by the server.
+- [x] Caption "Toggling this on grants the capability to every member." appears for each toggle.
+- [x] `allowsLeagueAccount` toggle has a visible loading or pending indicator while the PATCH is in-flight (provisioning may take a moment).
+- [x] No other toggle or panel section re-renders unnecessarily on a permission toggle.
+- [x] Client unit tests cover: three toggles render with correct initial state; toggling fires PATCH with correct field; toggle reflects server response; loading state on leagueAccount toggle.
+- [x] All existing `GroupDetailPanel` tests continue to pass.
 
 ## Implementation Plan
 
