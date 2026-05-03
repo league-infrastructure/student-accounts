@@ -8,8 +8,8 @@
  *
  * Filter UI:
  *   - Role lozenge bar (radio): All | Staff | Admin | Student.
- *   - Feature lozenge bar (multi-select toggle): Google | Pike 13 | GitHub |
- *     LLM Proxy | OAuth Client. Multiple active = intersection.
+ *   - Feature lozenge bar (radio): Google | Pike 13 | GitHub.
+ *     Multiple active = intersection.
  *
  * Bulk actions: Delete (existing), Suspend accounts, Revoke LLM Proxy.
  *
@@ -75,7 +75,7 @@ interface BulkRevokeResult {
 
 type RoleFilter = 'all' | 'staff' | 'admin' | 'student';
 
-type FeatureFilter = 'all' | 'google' | 'pike13' | 'github' | 'llm-proxy' | 'oauth-client';
+type FeatureFilter = 'all' | 'google' | 'pike13' | 'github';
 
 // ---------------------------------------------------------------------------
 // Sort types
@@ -180,10 +180,6 @@ function featurePredicate(u: AdminUser, feature: Exclude<FeatureFilter, 'all'>):
       return u.externalAccountTypes.includes('pike13');
     case 'github':
       return u.providers.some((p) => p.provider === 'github');
-    case 'llm-proxy':
-      return u.llmProxyEnabled === true;
-    case 'oauth-client':
-      return (u.oauthClientCount ?? 0) > 0;
   }
 }
 
@@ -349,8 +345,6 @@ const FEATURE_OPTIONS: { label: string; value: FeatureFilter }[] = [
   { label: 'Google', value: 'google' },
   { label: 'Pike 13', value: 'pike13' },
   { label: 'GitHub', value: 'github' },
-  { label: 'LLM Proxy', value: 'llm-proxy' },
-  { label: 'OAuth Client', value: 'oauth-client' },
 ];
 
 function FeatureLozengeBar({ value, onChange }: FeatureLozengeBarProps) {
