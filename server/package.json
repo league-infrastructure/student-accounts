@@ -1,6 +1,6 @@
 {
   "name": "docker-nodeapp-server",
-  "version": "0.20260501.28",
+  "version": "0.20260503.1",
   "type": "module",
   "private": true,
   "scripts": {
