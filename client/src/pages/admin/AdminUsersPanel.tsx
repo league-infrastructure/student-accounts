@@ -8,8 +8,8 @@
  *
  * Filter UI:
  *   - Role lozenge bar (radio): All | Staff | Admin | Student.
- *   - Feature lozenge bar (multi-select toggle): Google | Pike 13 | GitHub |
- *     LLM Proxy | OAuth Client. Multiple active = intersection.
+ *   - Feature lozenge bar (radio): Google | Pike 13 | GitHub.
+ *     Multiple active = intersection.
  *
  * Bulk actions: Delete (existing), Suspend accounts, Revoke LLM Proxy.
  *
@@ -75,7 +75,7 @@ interface BulkRevokeResult {
 
 type RoleFilter = 'all' | 'staff' | 'admin' | 'student';
 
-type FeatureFilter = 'all' | 'google' | 'pike13' | 'github' | 'llm-proxy' | 'oauth-client';
+type FeatureFilter = 'all' | 'google' | 'pike13' | 'github';
 
 // ---------------------------------------------------------------------------
 // Sort types
@@ -87,8 +87,8 @@ type SortCol = 'name' | 'email' | 'accounts' | 'joined';
 // they sort in a stable, meaningful way. League accounts are split into
 // staff (flag) vs student (bolt) by whether "student" appears in any
 // jointheleague.org address on the user.
-type AccountKind = 'google' | 'github' | 'league-staff' | 'league-student' | 'pike13' | 'claude';
-const ACCOUNT_ORDER: AccountKind[] = ['league-staff', 'league-student', 'google', 'github', 'claude', 'pike13'];
+type AccountKind = 'github' | 'league-staff' | 'league-student' | 'pike13';
+const ACCOUNT_ORDER: AccountKind[] = ['league-staff', 'league-student', 'github', 'pike13'];
 
 /** Any @jointheleague.org address attached to the user (primary, a login
  *  email, or a workspace external_id). */
@@ -116,12 +116,9 @@ function userAccounts(u: AdminUser): AccountKind[] {
     const hasStudent = leagues.some((e) => /student/i.test(e));
     out.add(hasStudent ? 'league-student' : 'league-staff');
   }
-  // Google Login (external Google sign-in, e.g. gmail.com)
-  if (u.providers?.some((p) => p.provider === 'google')) out.add('google');
   // GitHub login linked to this user
   if (u.providers?.some((p) => p.provider === 'github')) out.add('github');
   const eats = u.externalAccountTypes ?? [];
-  if (eats.includes('claude')) out.add('claude');
   if (eats.includes('pike13')) out.add('pike13');
   return ACCOUNT_ORDER.filter((k) => out.has(k));
 }
@@ -180,10 +177,6 @@ function featurePredicate(u: AdminUser, feature: Exclude<FeatureFilter, 'all'>):
       return u.externalAccountTypes.includes('pike13');
     case 'github':
       return u.providers.some((p) => p.provider === 'github');
-    case 'llm-proxy':
-      return u.llmProxyEnabled === true;
-    case 'oauth-client':
-      return (u.oauthClientCount ?? 0) > 0;
   }
 }
 
@@ -235,18 +228,30 @@ const PROVIDER_LOGOS: Record<string, { src: string; alt: string }> = {
   pike13: { src: 'https://www.pike13.com/favicon.ico', alt: 'Pike 13' },
 };
 
-function AccountIcon({ kind }: { kind: AccountKind }) {
-  const common = { width: 20, height: 20, verticalAlign: 'middle' as const };
-  if (kind === 'google') {
+/** Tiny per-provider icon used inline in the email column next to each
+ *  provider's email/username. Falls back to a small text label for
+ *  unknown providers. */
+function ProviderEmailIcon({ provider }: { provider: string }) {
+  const logo = PROVIDER_LOGOS[provider];
+  if (logo) {
     return (
       <img
-        src="https://www.google.com/favicon.ico"
-        alt="Google"
-        title="External Google account"
-        style={common}
+        src={logo.src}
+        alt={logo.alt}
+        title={logo.alt}
+        style={{ width: 12, height: 12, verticalAlign: 'middle' }}
       />
     );
   }
+  return (
+    <span style={{ fontSize: 10, color: '#64748b' }} title={provider}>
+      {provider}
+    </span>
+  );
+}
+
+function AccountIcon({ kind }: { kind: AccountKind }) {
+  const common = { width: 20, height: 20, verticalAlign: 'middle' as const };
   if (kind === 'github') {
     return (
       <img
@@ -273,16 +278,6 @@ function AccountIcon({ kind }: { kind: AccountKind }) {
         src="https://images.jointheleague.org/logos/bolt.png"
         alt="League student"
         title="League student account (student in address)"
-        style={common}
-      />
-    );
-  }
-  if (kind === 'claude') {
-    return (
-      <img
-        src="https://www.anthropic.com/favicon.ico"
-        alt="Claude"
-        title="Claude (Anthropic) account"
         style={common}
       />
     );
@@ -349,8 +344,6 @@ const FEATURE_OPTIONS: { label: string; value: FeatureFilter }[] = [
   { label: 'Google', value: 'google' },
   { label: 'Pike 13', value: 'pike13' },
   { label: 'GitHub', value: 'github' },
-  { label: 'LLM Proxy', value: 'llm-proxy' },
-  { label: 'OAuth Client', value: 'oauth-client' },
 ];
 
 function FeatureLozengeBar({ value, onChange }: FeatureLozengeBarProps) {
@@ -1002,12 +995,19 @@ export default function AdminUsersPanel() {
                     <Link to={`/users/${user.id}`} style={emailLinkStyle}>
                       {user.email}
                     </Link>
-                    {userEmails(user).slice(1).map((e) => (
+                    {(user.providers ?? []).map((p, idx) => (
                       <span
-                        key={e}
-                        style={{ color: '#64748b', fontSize: 11, marginLeft: 0 }}
+                        key={`${p.provider}-${idx}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          color: '#64748b',
+                          fontSize: 11,
+                        }}
                       >
-                        {e}
+                        <ProviderEmailIcon provider={p.provider} />
+                        {p.email ?? p.username ?? '—'}
                       </span>
                     ))}
                   </div>

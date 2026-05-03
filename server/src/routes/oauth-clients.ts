@@ -68,6 +68,11 @@ oauthClientsRouter.post('/oauth-clients', async (req: Request, res: Response, ne
       return res.status(400).json({ error: 'allowed_scopes must be an array of strings' });
     }
 
+    // Pre-fetch group permissions so the service can apply the group permission
+    // gate without a GroupService dependency (Sprint 026 T003).
+    const userPermissions = await req.services.groups.userPermissions(actor.actorUserId);
+    const actorWithPermissions = { ...actor, userPermissions };
+
     const { client, plaintextSecret } = await req.services.oauthClients.create(
       {
         name: name as string,
@@ -76,7 +81,7 @@ oauthClientsRouter.post('/oauth-clients', async (req: Request, res: Response, ne
         allowed_scopes: allowed_scopes as string[],
       },
       actor.actorUserId,
-      actor,
+      actorWithPermissions,
     );
 
     // Return the client AND the plaintext secret (shown once, never again).

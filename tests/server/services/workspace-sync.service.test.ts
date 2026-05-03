@@ -6,6 +6,10 @@
  *   coverage but is no longer exercised by the sync path.
  * - syncCohorts assertions now check Group rows and groupsUpserted.
  *
+ * Sprint 026 T006: syncStudents no longer loops over cohort OUs.
+ * - All new student accounts target the /Students root OU (cohort_id=null).
+ * - CohortRepository removed from WorkspaceSyncService constructor.
+ *
  * Covers:
  *
  * CohortService.upsertByOUPath
@@ -30,9 +34,9 @@
  *
  * WorkspaceSyncService.syncStudents
  *  - Root OU users get cohort_id=null and role=student.
- *  - Cohort OU users get cohort_id set.
+ *  - Only the /Students root OU is fetched — no per-cohort OU calls.
  *  - Admin role is preserved (not set to student).
- *  - Staff role is set to student (staff sync and student sync are separate concerns).
+ *  - Admin seen in root OU has cohort_id set to null.
  *  - Workspace ExternalAccounts not seen in any OU are flagged removed.
  *  - workspace_sync_flagged audit event recorded for each flagged account.
  *  - Records sync_students_completed audit event.
@@ -50,7 +54,6 @@ import { CohortService } from '../../../server/src/services/cohort.service.js';
 import { WorkspaceSyncService } from '../../../server/src/services/workspace-sync.service.js';
 import { UserRepository } from '../../../server/src/services/repositories/user.repository.js';
 import { ExternalAccountRepository } from '../../../server/src/services/repositories/external-account.repository.js';
-import { CohortRepository } from '../../../server/src/services/repositories/cohort.repository.js';
 import { FakeGoogleWorkspaceAdminClient } from '../helpers/fake-google-workspace-admin.client.js';
 import { WorkspaceApiError } from '../../../server/src/services/google-workspace/google-workspace-admin.client.js';
 import { GroupRepository } from '../../../server/src/services/repositories/group.repository.js';
@@ -73,14 +76,13 @@ async function clearDb() {
 function makeServices(fake: FakeGoogleWorkspaceAdminClient) {
   const audit = new AuditService();
   // cohortService is kept for CohortService.upsertByOUPath tests below.
-  // WorkspaceSyncService no longer receives it — sprint 025 T004.
   const cohortService = new CohortService(prisma, audit);
+  // Sprint 026 T006: CohortRepository removed from WorkspaceSyncService constructor.
   const svc = new WorkspaceSyncService(
     prisma,
     fake,
     UserRepository,
     ExternalAccountRepository,
-    CohortRepository,
     audit,
   );
   return { svc, cohortService, audit };
@@ -456,6 +458,8 @@ describe('WorkspaceSyncService.syncStaff', () => {
 
 // ===========================================================================
 // WorkspaceSyncService.syncStudents
+// Sprint 026 T006: cohort OU loop removed; all students upserted with
+// cohort_id=null; only the /Students root OU is fetched.
 // ===========================================================================
 
 describe('WorkspaceSyncService.syncStudents', () => {
@@ -476,29 +480,36 @@ describe('WorkspaceSyncService.syncStudents', () => {
     expect(user.created_via).toBe('workspace_sync');
   });
 
-  it('assigns cohort_id to users in a cohort OU', async () => {
-    // Create a cohort with a google_ou_path
-    const cohort = await (prisma as any).cohort.create({
+  it('only fetches /Students root OU — no per-cohort OU calls (Sprint 026 T006)', async () => {
+    // Even when Cohort rows exist with google_ou_path, syncStudents must NOT
+    // call listUsersInOU for those paths. Only the studentRoot is fetched.
+    await (prisma as any).cohort.create({
       data: { name: 'Spring2026', google_ou_path: '/Students/Spring2026' },
     });
 
     const fake = new FakeGoogleWorkspaceAdminClient();
-    fake.seedUsers('/Students', []); // no root students
-    fake.seedUsers('/Students/Spring2026', [
-      { id: 'u2', primaryEmail: 'cohort.student@students.jointheleague.org', orgUnitPath: '/Students/Spring2026' },
+    fake.seedUsers('/Students', [
+      { id: 'u1', primaryEmail: 'root.student@students.jointheleague.org', orgUnitPath: '/Students' },
     ]);
+    // Intentionally no seed for /Students/Spring2026 — if the loop ran it
+    // would return [] by default and the test would still pass, but the call
+    // count assertion below is the real guard.
     const { svc } = makeServices(fake);
 
     const report = await svc.syncStudents();
 
     expect(report.studentsUpserted).toBe(1);
-    const user = await findUserByEmail('cohort.student@students.jointheleague.org');
-    expect(user.cohort_id).toBe(cohort.id);
+    // Only one listUsersInOU call: the root OU.
+    expect(fake.calls.listUsersInOU).toHaveLength(1);
+    expect(fake.calls.listUsersInOU[0]).toBe('/Students');
+
+    const user = await findUserByEmail('root.student@students.jointheleague.org');
+    expect(user.cohort_id).toBeNull();
     expect(user.role).toBe('student');
   });
 
   it('preserves admin role — does not set to student', async () => {
-    const admin = await (prisma as any).user.create({
+    await (prisma as any).user.create({
       data: {
         primary_email: 'admin@students.jointheleague.org',
         display_name: 'Admin Student',
@@ -519,7 +530,11 @@ describe('WorkspaceSyncService.syncStudents', () => {
     expect(user.role).toBe('admin');
   });
 
-  it('updates cohort_id for admin even when preserving role', async () => {
+  it('sets cohort_id=null for admin seen in root OU (Sprint 026 T006)', async () => {
+    // syncStudents now always passes cohortId=null to _upsertUserFromWorkspace.
+    // For admin users the existing cohort_id is updated to null when it differs
+    // from the passed-in value (null), so any pre-existing cohort assignment
+    // is cleared by a root-OU sync.
     const cohort = await (prisma as any).cohort.create({
       data: { name: 'Spring2026', google_ou_path: '/Students/Spring2026' },
     });
@@ -529,14 +544,13 @@ describe('WorkspaceSyncService.syncStudents', () => {
         display_name: 'Admin',
         role: 'admin',
         created_via: 'admin_created',
-        cohort_id: null,
+        cohort_id: cohort.id,
       },
     });
 
     const fake = new FakeGoogleWorkspaceAdminClient();
-    fake.seedUsers('/Students', []);
-    fake.seedUsers('/Students/Spring2026', [
-      { id: 'a1', primaryEmail: 'admin@students.jointheleague.org', orgUnitPath: '/Students/Spring2026' },
+    fake.seedUsers('/Students', [
+      { id: 'a1', primaryEmail: 'admin@students.jointheleague.org', orgUnitPath: '/Students' },
     ]);
     const { svc } = makeServices(fake);
 
@@ -544,7 +558,7 @@ describe('WorkspaceSyncService.syncStudents', () => {
 
     const user = await findUserByEmail('admin@students.jointheleague.org');
     expect(user.role).toBe('admin');
-    expect(user.cohort_id).toBe(cohort.id);
+    expect(user.cohort_id).toBeNull();
   });
 
   it('flags active workspace ExternalAccounts not seen in any OU', async () => {

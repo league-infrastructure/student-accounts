@@ -15,6 +15,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { hasStaffAccess } from '../lib/roles';
 import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import UsernamePasswordSection from './account/UsernamePasswordSection';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -248,8 +249,10 @@ interface LoginsSectionProps {
 function LoginsSection({ logins, role, onRemoveError, onRemove, removingId }: LoginsSectionProps) {
   const canRemove = logins.length > 1;
   const hasPike13 = logins.some((l) => l.provider === 'pike13');
-  const isStudent = role?.toLowerCase() === 'student';
-  // Pike 13 is for staff/admin onboarding; students never see the link button.
+  // /api/auth/me maps DB role 'student' → client role 'USER'; staff and admin
+  // come through as 'STAFF' and 'ADMIN'. Pike 13 is for staff/admin onboarding;
+  // students never see the link button.
+  const isStudent = !hasStaffAccess(role);
   const showPike13 = !hasPike13 && !isStudent;
 
   return (

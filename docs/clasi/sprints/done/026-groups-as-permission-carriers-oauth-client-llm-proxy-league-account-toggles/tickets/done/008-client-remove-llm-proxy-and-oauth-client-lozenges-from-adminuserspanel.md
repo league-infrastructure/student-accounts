@@ -1,12 +1,12 @@
 ---
-id: "008"
-title: "Client: Remove LLM Proxy and OAuth Client lozenges from AdminUsersPanel"
-status: todo
+id: 008
+title: 'Client: Remove LLM Proxy and OAuth Client lozenges from AdminUsersPanel'
+status: done
 use-cases:
-  - SUC-009
+- SUC-009
 depends-on: []
-github-issue: ""
-todo: ""
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -29,15 +29,15 @@ are removed.
 
 ## Acceptance Criteria
 
-- [ ] `AdminUsersPanel.tsx` feature lozenge bar renders only: `Google`, `Pike 13`, `GitHub`.
-- [ ] No "LLM Proxy" lozenge renders.
-- [ ] No "OAuth Client" lozenge renders.
-- [ ] The `FeatureFilter` type no longer includes `'llm-proxy'` or `'oauth-client'`.
-- [ ] The client-side filter predicate logic for `llmProxyEnabled` and `oauthClientCount` is removed.
-- [ ] Existing `Google`, `Pike 13`, and `GitHub` lozenges continue to function correctly.
-- [ ] Client unit tests (`npm run test:client`) pass.
-- [ ] New test asserts the absence of the two removed lozenges.
-- [ ] Any existing tests that assert on the presence of `LLM Proxy` or `OAuth Client` lozenges are updated.
+- [x] `AdminUsersPanel.tsx` feature lozenge bar renders only: `Google`, `Pike 13`, `GitHub`.
+- [x] No "LLM Proxy" lozenge renders.
+- [x] No "OAuth Client" lozenge renders.
+- [x] The `FeatureFilter` type no longer includes `'llm-proxy'` or `'oauth-client'`.
+- [x] The client-side filter predicate logic for `llmProxyEnabled` and `oauthClientCount` is removed.
+- [x] Existing `Google`, `Pike 13`, and `GitHub` lozenges continue to function correctly.
+- [x] Client unit tests (`npm run test:client`) pass.
+- [x] New test asserts the absence of the two removed lozenges.
+- [x] Any existing tests that assert on the presence of `LLM Proxy` or `OAuth Client` lozenges are updated.
 
 ## Implementation Plan
 

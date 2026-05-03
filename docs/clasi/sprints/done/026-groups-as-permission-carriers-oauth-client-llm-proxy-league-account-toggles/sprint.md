@@ -1,16 +1,16 @@
 ---
-id: "026"
-title: "Groups as permission carriers - OAuth client LLM proxy League account toggles"
-status: planning
+id: '026'
+title: Groups as permission carriers - OAuth client LLM proxy League account toggles
+status: done
 branch: sprint/026-groups-as-permission-carriers-oauth-client-llm-proxy-league-account-toggles
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
