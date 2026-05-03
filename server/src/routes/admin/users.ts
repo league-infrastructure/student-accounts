@@ -514,6 +514,58 @@ adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// PATCH /admin/users/:id/permissions — update per-user permission flags
+//
+// Body (all optional):
+//   { allows_oauth_client?: boolean, allows_llm_proxy?: boolean, allows_league_account?: boolean }
+//
+// Returns 200 with { allowsOauthClient, allowsLlmProxy, allowsLeagueAccount }.
+// Returns 400 if any provided field is not a boolean.
+// Returns 404 if the user does not exist.
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+
+    const actorId = (req.session as any).userId as number;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    // Validate each recognised field — must be boolean when present.
+    const PERMISSION_FIELDS = ['allows_oauth_client', 'allows_llm_proxy', 'allows_league_account'] as const;
+    for (const field of PERMISSION_FIELDS) {
+      if (field in body && typeof body[field] !== 'boolean') {
+        return res.status(400).json({ error: `Field '${field}' must be a boolean` });
+      }
+    }
+
+    const patch: {
+      allows_oauth_client?: boolean;
+      allows_llm_proxy?: boolean;
+      allows_league_account?: boolean;
+    } = {};
+    for (const field of PERMISSION_FIELDS) {
+      if (field in body) {
+        (patch as any)[field] = body[field] as boolean;
+      }
+    }
+
+    const permissions = await req.services.users.setPermissions(id, patch, actorId);
+
+    adminBus.notify('users');
+    userBus.notifyUser(id);
+
+    res.json(permissions);
+  } catch (err: any) {
+    if (err instanceof AppError && err.statusCode === 404) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    next(err);
+  }
+});
+
 /** Serialize a domain User to the legacy shape callers/tests expect. */
 function serializeUser(user: any) {
   return {
