@@ -3,6 +3,7 @@ import { prisma } from '../../services/prisma.js';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { AppError } from '../../errors.js';
 import { adminBus, userBus } from '../../services/change-bus.js';
+import { provisionUserIfNeeded } from '../../services/group.service.js';
 
 export const adminUsersRouter = Router();
 
@@ -552,10 +553,23 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
       }
     }
 
-    const permissions = await req.services.users.setPermissions(id, patch, actorId);
+    const { leagueAccountFlipped, ...permissions } =
+      await req.services.users.setPermissions(id, patch, actorId);
 
     adminBus.notify('users');
     userBus.notifyUser(id);
+
+    // Fire-and-soft-fail: if allows_league_account just flipped false→true,
+    // try to provision a Workspace account for the user. Failure does not
+    // affect the HTTP response or the audit event already written.
+    if (leagueAccountFlipped) {
+      void provisionUserIfNeeded(
+        prisma,
+        req.services.workspaceProvisioning,
+        id,
+        actorId,
+      );
+    }
 
     res.json(permissions);
   } catch (err: any) {

@@ -203,9 +203,10 @@ export class ServiceRegistry {
       this.audit,
     );
 
-    // GroupService — Sprint 012 T002. Sprint 026 T005: receives
-    // workspaceProvisioning so setPermission/addMember can fan out provisioning.
-    this.groups = new GroupService(defaultPrisma, this.audit, this.workspaceProvisioning);
+    // GroupService — Sprint 012 T002. Sprint 027 T004: workspaceProvisioning
+    // removed from constructor; provisioning is now triggered by the explicit
+    // permission toggle via provisionUserIfNeeded (see group.service.ts).
+    this.groups = new GroupService(defaultPrisma, this.audit);
 
     // BulkGroupService — Sprint 012 T003.
     this.bulkGroup = new BulkGroupService(
