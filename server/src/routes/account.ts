@@ -83,6 +83,9 @@ accountRouter.get(
         llmProxyEnabled,
         username: (user as any).username ?? null,
         has_password: ((user as any).password_hash ?? null) !== null,
+        allowsOauthClient: (user as any).allows_oauth_client ?? false,
+        allowsLlmProxy: (user as any).allows_llm_proxy ?? false,
+        allowsLeagueAccount: (user as any).allows_league_account ?? false,
       },
       logins: userLogins.map((l) => ({
         id: l.id,

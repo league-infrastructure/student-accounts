@@ -41,6 +41,11 @@ export interface AccountProfile {
   username?: string | null;
   /** True when a password_hash is stored for this account. */
   has_password?: boolean;
+  /** Per-user permission flags (sprint 027). Drive sidebar visibility +
+   *  feature gates on the client; server enforces them on every API call. */
+  allowsOauthClient?: boolean;
+  allowsLlmProxy?: boolean;
+  allowsLeagueAccount?: boolean;
 }
 
 export interface AccountLogin {

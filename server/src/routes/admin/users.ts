@@ -553,7 +553,7 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
       }
     }
 
-    const { leagueAccountFlipped, ...permissions } =
+    const { leagueAccountFlipped, llmProxyFlipped, ...permissions } =
       await req.services.users.setPermissions(id, patch, actorId);
 
     adminBus.notify('users');
@@ -569,6 +569,25 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
         id,
         actorId,
       );
+    }
+
+    // Fire-and-soft-fail: if allows_llm_proxy just flipped false→true,
+    // grant the user an LLM proxy token with default expiry/limit.
+    // Skip silently if the user already has an active token (ConflictError).
+    if (llmProxyFlipped) {
+      const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+      const expiresAt = new Date(Date.now() + oneYearMs);
+      const tokenLimit = 1_000_000;
+      void req.services.llmProxyTokens
+        .grant(id, { expiresAt, tokenLimit }, actorId, { llmProxyAllowed: true })
+        .then(() => userBus.notifyUser(id))
+        .catch((err: any) => {
+          // Ignore "user already has active token" — fail-soft.
+          if (err?.constructor?.name !== 'ConflictError') {
+            // eslint-disable-next-line no-console
+            console.warn('[users PATCH /:id/permissions] auto-grant LLM proxy failed', err);
+          }
+        });
     }
 
     res.json(permissions);

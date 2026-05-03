@@ -92,6 +92,9 @@ function makeAccountData(overrides: {
   externalAccounts?: { type: string }[];
   llmProxyEnabled?: boolean;
   approvalStatus?: 'approved' | 'pending';
+  allowsOauthClient?: boolean;
+  allowsLlmProxy?: boolean;
+  allowsLeagueAccount?: boolean;
 } = {}) {
   return {
     profile: {
@@ -101,6 +104,9 @@ function makeAccountData(overrides: {
       role: 'USER',
       llmProxyEnabled: overrides.llmProxyEnabled ?? false,
       approvalStatus: overrides.approvalStatus ?? 'approved',
+      allowsOauthClient: overrides.allowsOauthClient ?? false,
+      allowsLlmProxy: overrides.allowsLlmProxy ?? false,
+      allowsLeagueAccount: overrides.allowsLeagueAccount ?? false,
       createdAt: '2025-01-01T00:00:00Z',
       updatedAt: '2025-01-01T00:00:00Z',
     },
@@ -174,9 +180,17 @@ describe('AppLayout', () => {
   /* ---------------------------------------------------------------- */
 
   describe('student role', () => {
-    it('sees OAuth Clients in the sidebar', () => {
+    it('does NOT see OAuth Clients in the sidebar without the allowsOauthClient permission', () => {
       renderLayout();
-      expect(screen.getByText('OAuth Clients')).toBeInTheDocument();
+      expect(screen.queryByText('OAuth Clients')).not.toBeInTheDocument();
+    });
+
+    it('sees OAuth Clients in the sidebar when allowsOauthClient is true', async () => {
+      mockFetchWithAccount(makeAccountData({ allowsOauthClient: true }));
+      renderLayout();
+      await waitFor(() => {
+        expect(screen.getByText('OAuth Clients')).toBeInTheDocument();
+      });
     });
 
     it('sees About in the bottom nav', () => {
@@ -191,7 +205,7 @@ describe('AppLayout', () => {
       const accountLink = navLinks.find((a) => a.textContent === 'Account');
       expect(accountLink).toBeDefined();
       expect(accountLink).toHaveAttribute('href', '/account');
-      // Account is the first nav link (above OAuth Clients).
+      // Account is the first nav link.
       expect(navLinks[0]?.textContent).toBe('Account');
     });
 
