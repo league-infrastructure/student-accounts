@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { NavLink, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
-import { hasAdminAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
+import { hasAdminAccess, hasStaffAccess, roleShortLabel, roleBadgeStyle } from '../lib/roles';
 import { useAdminEventStream } from '../hooks/useAdminEventStream';
+import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import type { AccountData } from '../pages/Account';
 
 /* ------------------------------------------------------------------ */
@@ -80,6 +81,11 @@ const SIDEBAR_NAV: SidebarItem[] = [
     kind: 'link',
     to: '/oauth-clients',
     label: 'OAuth Clients',
+    // Staff/admin always see it. Other roles see it only when their
+    // user record has allowsOauthClient (granted via the group member
+    // grid in sprint 027).
+    gate: (role, account) =>
+      hasStaffAccess(role) || account?.profile.allowsOauthClient === true,
   },
 
   // --- Entitlement-gated items (require account data) ---
@@ -724,5 +730,10 @@ export default function AppLayout() {
  */
 function AdminEventStreamMount() {
   useAdminEventStream();
+  // Subscribe to per-user account events on every page (not just /account).
+  // Server fires userBus.notifyUser(id) on permission/token changes; the hook
+  // invalidates the ['account'] query so the sidebar's entitlement gates
+  // (OAuth Clients, LLM Proxy, Claude Code) re-evaluate immediately.
+  useAccountEventStream();
   return null;
 }
