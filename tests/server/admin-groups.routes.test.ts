@@ -55,6 +55,9 @@ const fakeGroups = {
       description: null,
       created_at: new Date('2026-01-01T00:00:00Z'),
       updated_at: new Date('2026-01-01T00:00:00Z'),
+      allows_oauth_client: false,
+      allows_llm_proxy: false,
+      allows_league_account: false,
     };
   }),
   update: vi.fn(async (id: number, data: any) => {
@@ -85,6 +88,24 @@ const fakeGroups = {
     return state.userSearchResult;
   }),
   listGroupsForUser: vi.fn(async () => state.listGroupsForUserResult),
+  setPermission: vi.fn(async (id: number, perm: string, value: boolean) => {
+    maybeThrow();
+    return {
+      id,
+      name: 'G',
+      description: null,
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      updated_at: new Date('2026-01-01T00:00:00Z'),
+      allows_oauth_client: perm === 'oauthClient' ? value : false,
+      allows_llm_proxy: perm === 'llmProxy' ? value : false,
+      allows_league_account: perm === 'leagueAccount' ? value : false,
+    };
+  }),
+  userPermissions: vi.fn(async () => ({
+    oauthClient: false,
+    llmProxy: false,
+    leagueAccount: false,
+  })),
 };
 
 const fakeBulkGroup = {
@@ -445,6 +466,114 @@ describe('POST /api/admin/groups/:id/bulk-remove-all', () => {
     state.throwNotFound = true;
     const res = await adminAgent.post('/api/admin/groups/1/bulk-remove-all');
     expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/groups/:id — extended response with permission flags
+// ---------------------------------------------------------------------------
+
+describe('GET /api/admin/groups/:id — permission flags', () => {
+  it('response includes all three permission flags', async () => {
+    const res = await adminAgent.get('/api/admin/groups/42');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: 42,
+      allowsOauthClient: false,
+      allowsLlmProxy: false,
+      allowsLeagueAccount: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /admin/groups/:id — permission flags (Sprint 026 T005)
+// ---------------------------------------------------------------------------
+
+describe('PATCH /api/admin/groups/:id', () => {
+  it('200 and calls setPermission for allowsOauthClient', async () => {
+    const res = await adminAgent
+      .patch('/api/admin/groups/1')
+      .send({ allowsOauthClient: true });
+    expect(res.status).toBe(200);
+    expect(fakeGroups.setPermission).toHaveBeenCalledWith(1, 'oauthClient', true, expect.any(Number));
+    expect(res.body).toMatchObject({ id: 1, allowsOauthClient: true });
+  });
+
+  it('200 and calls setPermission for allowsLlmProxy', async () => {
+    const res = await adminAgent
+      .patch('/api/admin/groups/1')
+      .send({ allowsLlmProxy: true });
+    expect(res.status).toBe(200);
+    expect(fakeGroups.setPermission).toHaveBeenCalledWith(1, 'llmProxy', true, expect.any(Number));
+    expect(res.body).toMatchObject({ id: 1, allowsLlmProxy: true });
+  });
+
+  it('200 and calls setPermission for allowsLeagueAccount', async () => {
+    const res = await adminAgent
+      .patch('/api/admin/groups/1')
+      .send({ allowsLeagueAccount: true });
+    expect(res.status).toBe(200);
+    expect(fakeGroups.setPermission).toHaveBeenCalledWith(1, 'leagueAccount', true, expect.any(Number));
+    expect(res.body).toMatchObject({ id: 1, allowsLeagueAccount: true });
+  });
+
+  it('200 and calls setPermission for multiple flags at once', async () => {
+    const res = await adminAgent
+      .patch('/api/admin/groups/1')
+      .send({ allowsOauthClient: true, allowsLlmProxy: false, allowsLeagueAccount: true });
+    expect(res.status).toBe(200);
+    expect(fakeGroups.setPermission).toHaveBeenCalledTimes(3);
+  });
+
+  it('200 with no flags provided — returns current group state', async () => {
+    const res = await adminAgent.patch('/api/admin/groups/1').send({});
+    expect(res.status).toBe(200);
+    expect(fakeGroups.setPermission).not.toHaveBeenCalled();
+    expect(fakeGroups.findById).toHaveBeenCalled();
+  });
+
+  it('400 when allowsOauthClient is not a boolean', async () => {
+    const res = await adminAgent
+      .patch('/api/admin/groups/1')
+      .send({ allowsOauthClient: 'yes' });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when allowsLlmProxy is not a boolean', async () => {
+    const res = await adminAgent
+      .patch('/api/admin/groups/1')
+      .send({ allowsLlmProxy: 1 });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 when allowsLeagueAccount is not a boolean', async () => {
+    const res = await adminAgent
+      .patch('/api/admin/groups/1')
+      .send({ allowsLeagueAccount: 'true' });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 on invalid group id', async () => {
+    const res = await adminAgent
+      .patch('/api/admin/groups/abc')
+      .send({ allowsOauthClient: true });
+    expect(res.status).toBe(400);
+  });
+
+  it('404 when group not found', async () => {
+    state.throwNotFound = true;
+    const res = await adminAgent
+      .patch('/api/admin/groups/1')
+      .send({ allowsOauthClient: true });
+    expect(res.status).toBe(404);
+  });
+
+  it('401 unauthenticated', async () => {
+    const res = await request(app)
+      .patch('/api/admin/groups/1')
+      .send({ allowsOauthClient: true });
+    expect(res.status).toBe(401);
   });
 });
 

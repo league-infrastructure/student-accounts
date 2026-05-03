@@ -1,14 +1,15 @@
 ---
-id: "005"
-title: "Server: GroupService.setPermission + addMember provisioning fan-out + PATCH endpoint"
-status: todo
+id: '005'
+title: 'Server: GroupService.setPermission + addMember provisioning fan-out + PATCH
+  endpoint'
+status: done
 use-cases:
-  - SUC-005
-  - SUC-006
+- SUC-005
+- SUC-006
 depends-on:
-  - "002"
-github-issue: ""
-todo: ""
+- '002'
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -35,17 +36,17 @@ existing Workspace accounts (grandfather).
 
 ## Acceptance Criteria
 
-- [ ] `GroupService.setPermission(groupId, 'oauthClient' | 'llmProxy' | 'leagueAccount', boolean, actorId)` exists and updates the Group row.
-- [ ] Calling `setPermission(groupId, 'leagueAccount', true, actorId)` fans out provisioning for every member who has no active Workspace ExternalAccount.
-- [ ] Members who already have an active Workspace account are not reprovisioned.
-- [ ] Calling `setPermission(groupId, 'leagueAccount', false, actorId)` does NOT delete or suspend existing Workspace accounts.
-- [ ] `setPermission` for `oauthClient` or `llmProxy` does not trigger any provisioning.
-- [ ] `GroupService.addMember` triggers Workspace provisioning for the new member when the group has `allowsLeagueAccount=true` and the user has no active Workspace account.
-- [ ] `GroupService.addMember` does not trigger provisioning when `allowsLeagueAccount=false`.
-- [ ] `PATCH /admin/groups/:id` endpoint exists; accepts `{ allowsOauthClient?, allowsLlmProxy?, allowsLeagueAccount? }`.
-- [ ] `PATCH /admin/groups/:id` returns the updated group object including all three permission flags.
-- [ ] `GET /admin/groups/:id` response is extended to include the three permission flags.
-- [ ] Integration tests cover: setPermission for each flag; fan-out on leagueAccount=true; no fan-out on toggle-off; addMember provisioning; addMember no-provisioning when flag is false.
+- [x] `GroupService.setPermission(groupId, 'oauthClient' | 'llmProxy' | 'leagueAccount', boolean, actorId)` exists and updates the Group row.
+- [x] Calling `setPermission(groupId, 'leagueAccount', true, actorId)` fans out provisioning for every member who has no active Workspace ExternalAccount.
+- [x] Members who already have an active Workspace account are not reprovisioned.
+- [x] Calling `setPermission(groupId, 'leagueAccount', false, actorId)` does NOT delete or suspend existing Workspace accounts.
+- [x] `setPermission` for `oauthClient` or `llmProxy` does not trigger any provisioning.
+- [x] `GroupService.addMember` triggers Workspace provisioning for the new member when the group has `allowsLeagueAccount=true` and the user has no active Workspace account.
+- [x] `GroupService.addMember` does not trigger provisioning when `allowsLeagueAccount=false`.
+- [x] `PATCH /admin/groups/:id` endpoint exists; accepts `{ allowsOauthClient?, allowsLlmProxy?, allowsLeagueAccount? }`.
+- [x] `PATCH /admin/groups/:id` returns the updated group object including all three permission flags.
+- [x] `GET /admin/groups/:id` response is extended to include the three permission flags.
+- [x] Integration tests cover: setPermission for each flag; fan-out on leagueAccount=true; no fan-out on toggle-off; addMember provisioning; addMember no-provisioning when flag is false.
 
 ## Implementation Plan
 

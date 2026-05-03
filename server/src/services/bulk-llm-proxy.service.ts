@@ -11,7 +11,8 @@
  *
  * Skipped semantics:
  *  - bulkGrant: user already has an active token (avoid duplicate
- *    ConflictErrors).
+ *    ConflictErrors), OR user has no group granting allowsLlmProxy
+ *    (Sprint 026 T004 permission gate — skipped with reason 'no_permission').
  *  - bulkRevoke: user has no active token to revoke.
  *
  * Return shape:
@@ -19,12 +20,15 @@
  *    plaintext token so the admin UI can surface the tokens to hand to
  *    students. The plaintext-once invariant holds: tokens are returned
  *    in this one response and never re-fetched.
+ *  - `skippedReasons` — a map of userId → reason string ('no_permission' or
+ *    'already_has_token') for users that were skipped in bulkGrant.
  */
 
 import { NotFoundError } from '../errors.js';
 import { createLogger } from './logger.js';
 import { GroupRepository } from './repositories/group.repository.js';
 import type { LlmProxyTokenService } from './llm-proxy-token.service.js';
+import type { GroupService } from './group.service.js';
 
 const logger = createLogger('bulk-llm-proxy-service');
 
@@ -49,6 +53,14 @@ export type BulkLlmProxyResult = {
   succeeded: number[];
   failed: BulkLlmProxyFailure[];
   skipped: number[];
+  /**
+   * Per-user reason for being skipped in a bulkGrant. Values:
+   *  - 'no_permission' — user has no group with allowsLlmProxy=true.
+   *  - 'already_has_token' — duplicate grant suppressed (user already has an active token).
+   *
+   * Sprint 026 T004.
+   */
+  skippedReasons?: Record<number, string>;
   /** Populated only by bulkGrant (plaintext tokens keyed by userId). */
   tokensByUser?: Record<number, string>;
 };
@@ -68,6 +80,8 @@ export class BulkLlmProxyService {
   constructor(
     private readonly prisma: any,
     private readonly llmProxyTokens: LlmProxyTokenService,
+    /** Optional GroupService used to gate bulk grants by allowsLlmProxy. Sprint 026 T004. */
+    private readonly groups?: GroupService,
   ) {}
 
   // --------------------------------------------------------------------
@@ -107,12 +121,29 @@ export class BulkLlmProxyService {
     const succeeded: number[] = [];
     const failed: BulkLlmProxyFailure[] = [];
     const skipped: number[] = [];
+    const skippedReasons: Record<number, string> = {};
     const tokensByUser: Record<number, string> = {};
 
     for (const m of members) {
+      // Permission gate — skip users whose groups do not grant LLM proxy access.
+      // Sprint 026 T004: only gate when GroupService is wired in.
+      if (this.groups) {
+        const perms = await this.groups.userPermissions(m.id);
+        if (!perms.llmProxy) {
+          skipped.push(m.id);
+          skippedReasons[m.id] = 'no_permission';
+          logger.debug(
+            { userId: m.id, scope },
+            '[bulk-llm-proxy] skipping user — no allowsLlmProxy group',
+          );
+          continue;
+        }
+      }
+
       const already = await this.llmProxyTokens.getActiveForUser(m.id);
       if (already) {
         skipped.push(m.id);
+        skippedReasons[m.id] = 'already_has_token';
         continue;
       }
       try {
@@ -137,7 +168,7 @@ export class BulkLlmProxyService {
       }
     }
 
-    return { succeeded, failed, skipped, tokensByUser };
+    return { succeeded, failed, skipped, skippedReasons, tokensByUser };
   }
 
   // --------------------------------------------------------------------

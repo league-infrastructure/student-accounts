@@ -23,7 +23,6 @@ import { FakeGoogleWorkspaceAdminClient } from '../../helpers/fake-google-worksp
 import { AuditService } from '../../../../server/src/services/audit.service.js';
 import { UserRepository } from '../../../../server/src/services/repositories/user.repository.js';
 import { ExternalAccountRepository } from '../../../../server/src/services/repositories/external-account.repository.js';
-import { CohortRepository } from '../../../../server/src/services/repositories/cohort.repository.js';
 
 process.env.NODE_ENV = 'test';
 
@@ -66,12 +65,12 @@ function injectFakeWorkspaceSync(fakeGoogle?: FakeGoogleWorkspaceAdminClient): {
   const original = (registry as any).workspaceSync;
   const client = fakeGoogle ?? new FakeGoogleWorkspaceAdminClient();
 
+  // Sprint 026 T006: CohortRepository removed from WorkspaceSyncService constructor.
   const fakeSync = new WorkspaceSyncService(
     prisma as any,
     client,
     UserRepository,
     ExternalAccountRepository,
-    CohortRepository,
     new AuditService(),
   );
 

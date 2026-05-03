@@ -1,13 +1,14 @@
 ---
-id: "006"
-title: "Server: WorkspaceSyncService.syncStudents — drop cohort OU loop; all upserts to /Students"
-status: todo
+id: '006'
+title: "Server: WorkspaceSyncService.syncStudents \u2014 drop cohort OU loop; all\
+  \ upserts to /Students"
+status: done
 use-cases:
-  - SUC-007
+- SUC-007
 depends-on:
-  - "001"
-github-issue: ""
-todo: ""
+- '001'
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -33,14 +34,14 @@ data or delete the Cohort model.
 
 ## Acceptance Criteria
 
-- [ ] `syncStudents` no longer calls `cohortRepo.findAllWithOUPath`.
-- [ ] All `_upsertUserFromWorkspace` calls within `syncStudents` use `cohortId=null`.
-- [ ] `syncStudents` still fetches root-level users from the `studentRoot` OU.
-- [ ] `syncStudents` still flags removed workspace ExternalAccounts and deactivates not-seen students.
-- [ ] Existing `CohortRepository` import may remain or be removed — if it becomes unused in `WorkspaceSyncService`, remove the import.
-- [ ] Existing Cohort rows and User.cohort_id assignments in the database are untouched.
-- [ ] All server tests pass after the change (`npm run test:server`).
-- [ ] Any existing `syncStudents` tests that mock cohort data are updated to reflect the simplified flow.
+- [x] `syncStudents` no longer calls `cohortRepo.findAllWithOUPath`.
+- [x] All `_upsertUserFromWorkspace` calls within `syncStudents` use `cohortId=null`.
+- [x] `syncStudents` still fetches root-level users from the `studentRoot` OU.
+- [x] `syncStudents` still flags removed workspace ExternalAccounts and deactivates not-seen students.
+- [x] Existing `CohortRepository` import may remain or be removed — if it becomes unused in `WorkspaceSyncService`, remove the import.
+- [x] Existing Cohort rows and User.cohort_id assignments in the database are untouched.
+- [x] All server tests pass after the change (`npm run test:server`).
+- [x] Any existing `syncStudents` tests that mock cohort data are updated to reflect the simplified flow.
 
 ## Implementation Plan
 

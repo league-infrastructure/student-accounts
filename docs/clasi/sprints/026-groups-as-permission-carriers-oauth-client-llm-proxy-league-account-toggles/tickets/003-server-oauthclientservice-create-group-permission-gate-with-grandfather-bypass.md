@@ -1,13 +1,13 @@
 ---
-id: "003"
-title: "Server: OAuthClientService.create group permission gate with grandfather bypass"
-status: todo
+id: '003'
+title: 'Server: OAuthClientService.create group permission gate with grandfather bypass'
+status: done
 use-cases:
-  - SUC-003
+- SUC-003
 depends-on:
-  - "002"
-github-issue: ""
-todo: ""
+- '002'
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -33,13 +33,13 @@ new registrations only.
 
 ## Acceptance Criteria
 
-- [ ] Non-admin user in no OAuth-client group, zero existing clients → `POST /api/oauth-clients` returns 403.
-- [ ] 403 error message identifies `allowsOauthClient` group permission as missing.
-- [ ] Non-admin user in an OAuth-client group → 201 (cap and scope rules still apply).
-- [ ] Non-admin user with one existing non-disabled client but no group permission → 201 (grandfather).
-- [ ] Admin user is never blocked by the group permission check.
-- [ ] All existing OAuth client route tests continue to pass.
-- [ ] New integration tests cover: denied (no group, no clients), permitted (group), grandfather (no group, has client), admin bypass.
+- [x] Non-admin user in no OAuth-client group, zero existing clients → `POST /api/oauth-clients` returns 403.
+- [x] 403 error message identifies `allowsOauthClient` group permission as missing.
+- [x] Non-admin user in an OAuth-client group → 201 (cap and scope rules still apply).
+- [x] Non-admin user with one existing non-disabled client but no group permission → 201 (grandfather).
+- [x] Admin user is never blocked by the group permission check.
+- [x] All existing OAuth client route tests continue to pass.
+- [x] New integration tests cover: denied (no group, no clients), permitted (group), grandfather (no group, has client), admin bypass.
 
 ## Implementation Plan
 

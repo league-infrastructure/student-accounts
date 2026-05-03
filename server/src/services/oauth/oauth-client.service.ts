@@ -117,10 +117,15 @@ export type CreateResult = {
  * Actor context passed to ownership-aware methods.
  * actorRole === 'admin' grants full access; all other roles are filtered
  * to resources owned by actorUserId (created_by).
+ *
+ * userPermissions is pre-fetched by the route handler (Sprint 026 T003).
+ * When present and the actor is non-admin with zero existing clients,
+ * oauthClient=false triggers a 403 (the grandfather bypass skips the check).
  */
 export type ActorContext = {
   actorUserId: number;
   actorRole: string;
+  userPermissions?: { oauthClient: boolean };
 };
 
 // ---------------------------------------------------------------------------
@@ -171,6 +176,22 @@ export class OAuthClientService {
       }
 
       ScopePolicy.assertAllowed(actor.actorRole, input.allowed_scopes);
+
+      // ------------------------------------------------------------------
+      // Group permission gate with grandfather bypass (Sprint 026 T003).
+      // Admins are always allowed. Non-admins with at least one existing
+      // non-disabled client are grandfathered and bypass the check.
+      // Non-admins with zero existing clients must have a group granting
+      // allowsOauthClient=true.
+      // ------------------------------------------------------------------
+      if (actor.actorRole !== 'admin') {
+        const grandfathered = activeCount > 0;
+        if (!grandfathered && !actor.userPermissions?.oauthClient) {
+          throw new ForbiddenError(
+            'Your account has no group granting the OAuth client permission (allowsOauthClient).',
+          );
+        }
+      }
     }
 
     const plaintext = generatePlaintext();

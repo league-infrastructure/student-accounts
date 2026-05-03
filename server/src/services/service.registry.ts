@@ -186,12 +186,13 @@ export class ServiceRegistry {
     // WorkspaceSyncService — Sprint 006 T006.
     // Sprint 025 T004: cohortService removed from constructor; syncCohorts now
     // writes Group rows instead of Cohort rows.
+    // Sprint 026 T006: CohortRepository removed; syncStudents no longer loops
+    // over cohort OUs — all new student accounts target /Students root.
     this.workspaceSync = new WorkspaceSyncService(
       defaultPrisma,
       wsClient,
       UserRepository,
       ExternalAccountRepository,
-      CohortRepository,
       this.audit,
     );
 
@@ -202,8 +203,9 @@ export class ServiceRegistry {
       this.audit,
     );
 
-    // GroupService — Sprint 012 T002.
-    this.groups = new GroupService(defaultPrisma, this.audit);
+    // GroupService — Sprint 012 T002. Sprint 026 T005: receives
+    // workspaceProvisioning so setPermission/addMember can fan out provisioning.
+    this.groups = new GroupService(defaultPrisma, this.audit, this.workspaceProvisioning);
 
     // BulkGroupService — Sprint 012 T003.
     this.bulkGroup = new BulkGroupService(
@@ -216,10 +218,11 @@ export class ServiceRegistry {
     // LlmProxyForwarderService — Sprint 013 T003.
     this.llmProxyForwarder = new LlmProxyForwarderService();
 
-    // BulkLlmProxyService — Sprint 013 T007.
+    // BulkLlmProxyService — Sprint 013 T007 / Sprint 026 T004 (groups wired for permission gate).
     this.bulkLlmProxy = new BulkLlmProxyService(
       defaultPrisma,
       this.llmProxyTokens,
+      this.groups,
     );
 
     // PassphraseService — Sprint 015 T003.

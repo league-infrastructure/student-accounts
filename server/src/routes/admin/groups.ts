@@ -7,8 +7,9 @@
  * Endpoints:
  *   GET    /admin/groups                              — list with member counts
  *   POST   /admin/groups                              — create
- *   GET    /admin/groups/:id                          — single group
+ *   GET    /admin/groups/:id                          — single group (includes permission flags)
  *   PUT    /admin/groups/:id                          — update name/description
+ *   PATCH  /admin/groups/:id                          — update permission flags (Sprint 026 T005)
  *   DELETE /admin/groups/:id                          — delete (cascades)
  *   GET    /admin/groups/:id/members                  — members with external accounts
  *   POST   /admin/groups/:id/members                  — add member {userId}
@@ -160,6 +161,9 @@ adminGroupsRouter.get('/groups/:id', async (req, res, next) => {
       description: g.description,
       createdAt: g.created_at,
       updatedAt: (g as any).updated_at,
+      allowsOauthClient: (g as any).allows_oauth_client ?? false,
+      allowsLlmProxy: (g as any).allows_llm_proxy ?? false,
+      allowsLeagueAccount: (g as any).allows_league_account ?? false,
     });
   } catch (err) {
     handleError(err, res, next);
@@ -205,6 +209,72 @@ adminGroupsRouter.put('/groups/:id', async (req, res, next) => {
       description: g.description,
       createdAt: g.created_at,
       updatedAt: (g as any).updated_at,
+    });
+  } catch (err) {
+    handleError(err, res, next);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /admin/groups/:id — update permission flags (Sprint 026 T005)
+// ---------------------------------------------------------------------------
+
+adminGroupsRouter.patch('/groups/:id', async (req, res, next) => {
+  try {
+    const id = parseIntParam(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Invalid group id' });
+
+    const {
+      allowsOauthClient,
+      allowsLlmProxy,
+      allowsLeagueAccount,
+    } = req.body as {
+      allowsOauthClient?: unknown;
+      allowsLlmProxy?: unknown;
+      allowsLeagueAccount?: unknown;
+    };
+
+    const actorId = (req.session as any).userId as number;
+
+    // Validate types
+    if (allowsOauthClient !== undefined && typeof allowsOauthClient !== 'boolean') {
+      return res.status(400).json({ error: 'allowsOauthClient must be a boolean' });
+    }
+    if (allowsLlmProxy !== undefined && typeof allowsLlmProxy !== 'boolean') {
+      return res.status(400).json({ error: 'allowsLlmProxy must be a boolean' });
+    }
+    if (allowsLeagueAccount !== undefined && typeof allowsLeagueAccount !== 'boolean') {
+      return res.status(400).json({ error: 'allowsLeagueAccount must be a boolean' });
+    }
+
+    // Apply each provided flag via setPermission
+    let g: any;
+    if (allowsOauthClient !== undefined) {
+      g = await req.services.groups.setPermission(id, 'oauthClient', allowsOauthClient as boolean, actorId);
+    }
+    if (allowsLlmProxy !== undefined) {
+      g = await req.services.groups.setPermission(id, 'llmProxy', allowsLlmProxy as boolean, actorId);
+    }
+    if (allowsLeagueAccount !== undefined) {
+      g = await req.services.groups.setPermission(id, 'leagueAccount', allowsLeagueAccount as boolean, actorId);
+    }
+
+    // If no field was provided, just return the current state
+    if (!g) {
+      g = await req.services.groups.findById(id);
+    }
+
+    adminBus.notify('groups');
+
+    return res.json({
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      createdAt: g.created_at,
+      updatedAt: g.updated_at,
+      allowsOauthClient: g.allows_oauth_client ?? false,
+      allowsLlmProxy: g.allows_llm_proxy ?? false,
+      allowsLeagueAccount: g.allows_league_account ?? false,
     });
   } catch (err) {
     handleError(err, res, next);

@@ -170,7 +170,13 @@ export async function makeProvisioningRequest(
 // ---------------------------------------------------------------------------
 
 export async function makeGroup(
-  overrides: Partial<{ name: string; description: string | null }> = {},
+  overrides: Partial<{
+    name: string;
+    description: string | null;
+    allows_oauth_client: boolean;
+    allows_llm_proxy: boolean;
+    allows_league_account: boolean;
+  }> = {},
 ): Promise<Group> {
   const n = seq();
   return (prisma as any).group.create({

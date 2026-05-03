@@ -1,13 +1,13 @@
 ---
-id: "004"
-title: "Server: LLM proxy grant group permission gate (single + bulk paths)"
-status: todo
+id: '004'
+title: 'Server: LLM proxy grant group permission gate (single + bulk paths)'
+status: done
 use-cases:
-  - SUC-004
+- SUC-004
 depends-on:
-  - "002"
-github-issue: ""
-todo: ""
+- '002'
+github-issue: ''
+todo: ''
 completes_todo: false
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -32,15 +32,15 @@ are grandfathered by inaction (not revoked).
 
 ## Acceptance Criteria
 
-- [ ] `LlmProxyTokenService.grant` accepts a `llmProxyAllowed?: boolean` option in `GrantOptions`.
-- [ ] When `llmProxyAllowed === false`, `grant` throws `ForbiddenError` with a message identifying `allowsLlmProxy`.
-- [ ] `POST /admin/users/:id/llm-proxy-token` route handler calls `GroupService.userPermissions(targetUserId)` and passes `.llmProxy` as `llmProxyAllowed`.
-- [ ] Target user in no llm-proxy group → `POST /admin/users/:id/llm-proxy-token` returns 403.
-- [ ] Target user in an llm-proxy group → grant succeeds (201).
-- [ ] Existing active tokens are NOT revoked when a group's `allowsLlmProxy` is toggled off.
-- [ ] Bulk grant path skips users without `allowsLlmProxy` (they appear in the `skipped` or `failed` field with a clear reason).
-- [ ] All existing LLM proxy token grant tests continue to pass.
-- [ ] New integration tests cover: denied (no group), permitted (has group), bulk skip.
+- [x] `LlmProxyTokenService.grant` accepts a `llmProxyAllowed?: boolean` option in `GrantOptions`.
+- [x] When `llmProxyAllowed === false`, `grant` throws `ForbiddenError` with a message identifying `allowsLlmProxy`.
+- [x] `POST /admin/users/:id/llm-proxy-token` route handler calls `GroupService.userPermissions(targetUserId)` and passes `.llmProxy` as `llmProxyAllowed`.
+- [x] Target user in no llm-proxy group → `POST /admin/users/:id/llm-proxy-token` returns 403.
+- [x] Target user in an llm-proxy group → grant succeeds (201).
+- [x] Existing active tokens are NOT revoked when a group's `allowsLlmProxy` is toggled off.
+- [x] Bulk grant path skips users without `allowsLlmProxy` (they appear in the `skipped` or `failed` field with a clear reason).
+- [x] All existing LLM proxy token grant tests continue to pass.
+- [x] New integration tests cover: denied (no group), permitted (has group), bulk skip.
 
 ## Implementation Plan
 
