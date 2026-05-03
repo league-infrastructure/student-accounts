@@ -42,12 +42,6 @@ interface GroupInfo {
   createdAt: string;
 }
 
-interface GroupPermissions {
-  allowsOauthClient: boolean;
-  allowsLlmProxy: boolean;
-  allowsLeagueAccount: boolean;
-}
-
 interface GroupDetail {
   group: GroupInfo;
   users: Member[];
@@ -108,25 +102,6 @@ export default function GroupDetailPanel() {
     },
     enabled: Number.isFinite(numericId),
   });
-
-  // Separate query for permission flags (GET /admin/groups/:id).
-  const permissionsQuery = useQuery<GroupPermissions>({
-    queryKey: ['admin', 'groups', numericId, 'permissions'],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/groups/${id}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.json();
-      return {
-        allowsOauthClient: body.allowsOauthClient ?? false,
-        allowsLlmProxy: body.allowsLlmProxy ?? false,
-        allowsLeagueAccount: body.allowsLeagueAccount ?? false,
-      };
-    },
-    enabled: Number.isFinite(numericId),
-  });
-
-  const [permPatchError, setPermPatchError] = useState<string | null>(null);
-  const [leagueAccountPending, setLeagueAccountPending] = useState(false);
 
   const data = detailQuery.data ?? null;
   const error = detailQuery.error ? (detailQuery.error as Error).message : null;
@@ -454,31 +429,6 @@ export default function GroupDetailPanel() {
     }
   }
 
-  // Sprint 026 T007: Permission toggle PATCH
-  async function patchPermission(field: keyof GroupPermissions, value: boolean) {
-    setPermPatchError(null);
-    const isLeague = field === 'allowsLeagueAccount';
-    if (isLeague) setLeagueAccountPending(true);
-    try {
-      const res = await fetch(`/api/admin/groups/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-      }
-      await queryClient.invalidateQueries({
-        queryKey: ['admin', 'groups', numericId, 'permissions'],
-      });
-    } catch (err: any) {
-      setPermPatchError(err.message || 'Permission update failed');
-    } finally {
-      if (isLeague) setLeagueAccountPending(false);
-    }
-  }
-
   // Ticket 007: Row selection helpers
   function toggleRowSelection(userId: number) {
     const newSelected = new Set(selectedIds);
@@ -649,52 +599,6 @@ export default function GroupDetailPanel() {
           scopeId={numericId}
           scopeName={data.group.name}
         />
-      )}
-
-      {/* Permission toggles (Sprint 026 T007) */}
-      {permissionsQuery.data && (
-        <div style={permSectionStyle}>
-          <h3 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 600, color: '#374151' }}>
-            Permissions
-          </h3>
-          {permPatchError && (
-            <div
-              role="alert"
-              style={{
-                padding: '6px 10px',
-                marginBottom: 8,
-                borderRadius: 4,
-                background: '#fee2e2',
-                color: '#991b1b',
-                fontSize: 13,
-              }}
-            >
-              {permPatchError}
-            </div>
-          )}
-          <PermissionToggleRow
-            label="OAuth Client registration"
-            caption="Toggling this on grants the capability to every member."
-            checked={permissionsQuery.data.allowsOauthClient}
-            disabled={busy !== null}
-            onChange={(v) => patchPermission('allowsOauthClient', v)}
-          />
-          <PermissionToggleRow
-            label="LLM Proxy access"
-            caption="Toggling this on grants the capability to every member."
-            checked={permissionsQuery.data.allowsLlmProxy}
-            disabled={busy !== null}
-            onChange={(v) => patchPermission('allowsLlmProxy', v)}
-          />
-          <PermissionToggleRow
-            label="League Account provisioning"
-            caption="Toggling this on grants the capability to every member."
-            checked={permissionsQuery.data.allowsLeagueAccount}
-            disabled={busy !== null || leagueAccountPending}
-            pending={leagueAccountPending}
-            onChange={(v) => patchPermission('allowsLeagueAccount', v)}
-          />
-        </div>
       )}
 
       {/* Bulk action buttons (Ticket 008) */}
@@ -872,56 +776,6 @@ export default function GroupDetailPanel() {
 // Subcomponents + styles
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// PermissionToggleRow
-// ---------------------------------------------------------------------------
-
-interface PermissionToggleRowProps {
-  label: string;
-  caption: string;
-  checked: boolean;
-  disabled: boolean;
-  pending?: boolean;
-  onChange: (value: boolean) => void;
-}
-
-function PermissionToggleRow({
-  label,
-  caption,
-  checked,
-  disabled,
-  pending = false,
-  onChange,
-}: PermissionToggleRowProps) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={checked}
-        disabled={disabled}
-        aria-label={label}
-        onChange={(e) => onChange(e.target.checked)}
-        style={{ marginTop: 2, cursor: disabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
-      />
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-          {label}
-          {pending && (
-            <span
-              aria-label="Provisioning…"
-              style={{ marginLeft: 8, fontSize: 12, color: '#92400e', fontWeight: 400 }}
-            >
-              Provisioning…
-            </span>
-          )}
-        </div>
-        <div style={{ fontSize: 12, color: '#64748b' }}>{caption}</div>
-      </div>
-    </div>
-  );
-}
-
 function StatusPill({ status }: { status: string }) {
   const color =
     status === 'active' ? '#065f46'
@@ -993,11 +847,4 @@ const searchItemStyle: React.CSSProperties = {
   border: 'none',
   borderBottom: '1px solid #f1f5f9',
   cursor: 'pointer',
-};
-const permSectionStyle: React.CSSProperties = {
-  padding: '12px 14px',
-  marginBottom: 16,
-  border: '1px solid #e2e8f0',
-  borderRadius: 6,
-  background: '#f8fafc',
 };
