@@ -516,9 +516,28 @@ export default function Account() {
     );
   }
 
+  // Surface OAuth-link callback errors via ?error=… on the URL.
+  const linkError = (() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('error');
+    if (code === 'already_linked') {
+      return 'That provider account is already linked to a different user. Sign in as that user to manage it, or use a different provider account.';
+    }
+    if (code === 'oauth_denied') {
+      return 'Sign-in was cancelled or failed. Try again.';
+    }
+    return null;
+  })();
+
   return (
     <div style={styles.container}>
       <h1 style={styles.pageTitle}>My Account</h1>
+
+      {linkError && (
+        <div role="alert" style={styles.linkErrorBanner} data-testid="link-error-banner">
+          {linkError}
+        </div>
+      )}
 
       {/* Identity sections: Profile, Logins, UsernamePassword — all roles */}
       <>
@@ -644,6 +663,15 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: 12,
     alignItems: 'flex-start',
+  },
+  linkErrorBanner: {
+    border: '1px solid #fca5a5',
+    background: '#fef2f2',
+    color: '#7f1d1d',
+    borderRadius: 8,
+    padding: '12px 16px',
+    fontSize: '0.9rem',
+    marginBottom: '1rem',
   },
   errorText: {
     color: '#dc2626',
