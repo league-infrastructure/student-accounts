@@ -27,7 +27,7 @@
 
 import { randomBytes, createHash } from 'node:crypto';
 
-import { AppError, ConflictError, NotFoundError } from '../errors.js';
+import { AppError, ConflictError, ForbiddenError, NotFoundError } from '../errors.js';
 import { createLogger } from './logger.js';
 import type { AuditService } from './audit.service.js';
 import { LlmProxyTokenRepository } from './repositories/llm-proxy-token.repository.js';
@@ -84,6 +84,14 @@ export type GrantOptions = {
   /** Origin of the grant — feeds the audit event `details` blob. */
   scope?: 'single' | 'cohort' | 'group';
   scopeId?: number | null;
+  /**
+   * Whether the target user has at least one group with `allowsLlmProxy`.
+   * When explicitly `false`, `grant` throws ForbiddenError (403).
+   * When `undefined` (default), the check is skipped (backwards-compatible).
+   *
+   * Sprint 026 T004.
+   */
+  llmProxyAllowed?: boolean;
 };
 
 export type GrantResult = {
@@ -122,6 +130,12 @@ export class LlmProxyTokenService {
     opts: GrantOptions = {},
     tx?: any,
   ): Promise<GrantResult> {
+    if (opts.llmProxyAllowed === false) {
+      throw new ForbiddenError(
+        'The target user has no group granting LLM proxy access (allowsLlmProxy).',
+      );
+    }
+
     const db = tx ?? this.prisma;
     const existing = await LlmProxyTokenRepository.findActiveForUser(
       db,

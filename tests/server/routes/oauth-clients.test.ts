@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app, { registry } from '../../../server/src/app.js';
 import { prisma } from '../../../server/src/services/prisma.js';
-import { makeUser } from '../helpers/factories.js';
+import { makeGroup, makeMembership, makeUser } from '../helpers/factories.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,6 +57,32 @@ async function asStaff(email = 'staff@test.com') {
   const user = await makeUser({ role: 'staff', primary_email: email });
   const agent = await loginAs(email, 'staff');
   return { agent, user };
+}
+
+/**
+ * Create a student in a group that grants allows_oauth_client=true.
+ * Used wherever POST /api/oauth-clients needs to succeed for a student
+ * with zero existing clients (Sprint 026 T003).
+ */
+async function asStudentWithOauthGroup(email = 'student@test.com') {
+  const user = await makeUser({ role: 'student', primary_email: email });
+  const group = await makeGroup({ allows_oauth_client: true });
+  await makeMembership(group, user);
+  const agent = await loginAs(email, 'student');
+  return { agent, user, group };
+}
+
+/**
+ * Create a staff user in a group that grants allows_oauth_client=true.
+ * Used wherever POST /api/oauth-clients needs to succeed for staff
+ * with zero existing clients (Sprint 026 T003).
+ */
+async function asStaffWithOauthGroup(email = 'staff@test.com') {
+  const user = await makeUser({ role: 'staff', primary_email: email });
+  const group = await makeGroup({ allows_oauth_client: true });
+  await makeMembership(group, user);
+  const agent = await loginAs(email, 'staff');
+  return { agent, user, group };
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +157,8 @@ describe('GET /api/oauth-clients', () => {
 
 describe('POST /api/oauth-clients', () => {
   it('creates a client and returns plaintext secret once', async () => {
-    const { agent } = await asStudent('creator@test.com');
+    // Student must have a group with allows_oauth_client=true (Sprint 026 T003).
+    const { agent } = await asStudentWithOauthGroup('creator@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'NewApp',
       description: 'Test',
@@ -166,7 +193,8 @@ describe('POST /api/oauth-clients', () => {
   });
 
   it('writes an oauth_client_created audit event', async () => {
-    const { agent } = await asStudent('auditor@test.com');
+    // Student must have group permission to reach the create path (Sprint 026 T003).
+    const { agent } = await asStudentWithOauthGroup('auditor@test.com');
     await agent.post('/api/oauth-clients').send({
       name: 'AuditApp',
       redirect_uris: [],
@@ -331,7 +359,8 @@ describe('Deprecated /api/admin/oauth-clients path', () => {
 
 describe('Scope ceiling — POST /api/oauth-clients', () => {
   it('student with profile only → 201', async () => {
-    const { agent } = await asStudent('scope-student-ok@test.com');
+    // Requires group permission (Sprint 026 T003).
+    const { agent } = await asStudentWithOauthGroup('scope-student-ok@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'StudentApp',
       redirect_uris: [],
@@ -340,8 +369,9 @@ describe('Scope ceiling — POST /api/oauth-clients', () => {
     expect(res.status).toBe(201);
   });
 
-  it('student with users:read → 403', async () => {
-    const { agent } = await asStudent('scope-student-bad@test.com');
+  it('student with users:read → 403 (scope ceiling)', async () => {
+    // Student has group permission but scope ceiling still applies.
+    const { agent } = await asStudentWithOauthGroup('scope-student-bad@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'BadApp',
       redirect_uris: [],
@@ -350,8 +380,9 @@ describe('Scope ceiling — POST /api/oauth-clients', () => {
     expect(res.status).toBe(403);
   });
 
-  it('student with profile + users:read → 403', async () => {
-    const { agent } = await asStudent('scope-student-bad2@test.com');
+  it('student with profile + users:read → 403 (scope ceiling)', async () => {
+    // Student has group permission but scope ceiling still applies.
+    const { agent } = await asStudentWithOauthGroup('scope-student-bad2@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'BadApp2',
       redirect_uris: [],
@@ -361,7 +392,8 @@ describe('Scope ceiling — POST /api/oauth-clients', () => {
   });
 
   it('staff with profile + users:read → 201', async () => {
-    const { agent } = await asStaff('scope-staff-ok@test.com');
+    // Requires group permission (Sprint 026 T003).
+    const { agent } = await asStaffWithOauthGroup('scope-staff-ok@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'StaffApp',
       redirect_uris: [],
@@ -542,8 +574,9 @@ describe('admin shared-pool invariant', () => {
 // ---------------------------------------------------------------------------
 
 describe('Per-user cap — POST /api/oauth-clients', () => {
-  it('student with 0 clients can create one → 201', async () => {
-    const { agent } = await asStudent('cap-student-first@test.com');
+  it('student with 0 clients and group permission can create one → 201', async () => {
+    // Requires group permission since activeCount=0 means not grandfathered (Sprint 026 T003).
+    const { agent } = await asStudentWithOauthGroup('cap-student-first@test.com');
     const res = await agent.post('/api/oauth-clients').send({
       name: 'FirstApp',
       redirect_uris: [],
@@ -559,7 +592,7 @@ describe('Per-user cap — POST /api/oauth-clients', () => {
       { name: 'First', redirect_uris: [], allowed_scopes: ['profile'] },
       user.id,
     );
-    // Second create via route should be rejected.
+    // Second create via route should be rejected (cap, student is grandfathered so gate passes).
     const res = await agent.post('/api/oauth-clients').send({
       name: 'Second',
       redirect_uris: [],
@@ -568,8 +601,10 @@ describe('Per-user cap — POST /api/oauth-clients', () => {
     expect(res.status).toBe(403);
   });
 
-  it('student who disabled their one client can create a new one → 201', async () => {
-    const { agent, user } = await asStudent('cap-student-disabled@test.com');
+  it('student who disabled their one client and has group permission can create a new one → 201', async () => {
+    // With only disabled clients, activeCount=0 and the student is not grandfathered.
+    // Group permission is required to create (Sprint 026 T003).
+    const { agent, user } = await asStudentWithOauthGroup('cap-student-disabled@test.com');
     const { client } = await registry.oauthClients.create(
       { name: 'DisabledApp', redirect_uris: [], allowed_scopes: ['profile'] },
       user.id,
@@ -585,9 +620,11 @@ describe('Per-user cap — POST /api/oauth-clients', () => {
     expect(res.status).toBe(201);
   });
 
-  it('staff with multiple existing clients can always create another → 201', async () => {
+  it('staff grandfathered by existing clients can always create another → 201', async () => {
+    // Staff has 2 existing clients (activeCount>0), so the grandfather bypass applies;
+    // no group permission needed (Sprint 026 T003). Staff has no per-user cap.
     const { agent, user } = await asStaff('cap-staff@test.com');
-    // Pre-create two clients via service.
+    // Pre-create two clients via service (bypasses policy).
     await registry.oauthClients.create({ name: 'S1', redirect_uris: [], allowed_scopes: [] }, user.id);
     await registry.oauthClients.create({ name: 'S2', redirect_uris: [], allowed_scopes: [] }, user.id);
 
@@ -618,7 +655,7 @@ describe('Per-user cap — POST /api/oauth-clients', () => {
       { name: 'First', redirect_uris: [], allowed_scopes: ['profile'] },
       user.id,
     );
-    // This should be rejected and audited.
+    // This should be rejected and audited (cap; student is grandfathered so gate passes).
     await agent.post('/api/oauth-clients').send({
       name: 'Second',
       redirect_uris: [],
@@ -630,5 +667,104 @@ describe('Per-user cap — POST /api/oauth-clients', () => {
     expect(events.length).toBeGreaterThan(0);
     expect(events[0].details.role).toBe('student');
     expect(events[0].details.cap).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Group permission gate — POST /api/oauth-clients (Sprint 026 ticket 003)
+// ---------------------------------------------------------------------------
+
+describe('Group permission gate — POST /api/oauth-clients', () => {
+  it('student with no group and no existing clients → 403 (denied)', async () => {
+    const { agent } = await asStudent('gate-denied@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'DeniedApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/allowsOauthClient/);
+  });
+
+  it('student with no group and no existing clients: 403 message names missing permission', async () => {
+    const { agent } = await asStudent('gate-message@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'NoPermApp',
+      redirect_uris: [],
+      allowed_scopes: [],
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain('allowsOauthClient');
+  });
+
+  it('student in an OAuth-client group → 201 (permitted)', async () => {
+    const { agent } = await asStudentWithOauthGroup('gate-permitted@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'PermittedApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('staff with one existing non-disabled client but no group → 201 (grandfather bypass)', async () => {
+    // Grandfather: activeCount > 0 bypasses the group permission gate.
+    // Use staff (no per-user cap) so the test isolates the group gate, not the cap.
+    const { agent, user } = await asStaff('gate-grandfather-staff@test.com');
+    // Pre-create a client directly via service (no actor → bypasses policy; staff has no cap).
+    await registry.oauthClients.create(
+      { name: 'StaffExisting', redirect_uris: [], allowed_scopes: [] },
+      user.id,
+    );
+    // Now staff has 1 active client → grandfathered; group gate is bypassed.
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'StaffGrandfathered',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('admin user with no group → 201 (admin bypass)', async () => {
+    const { agent } = await asAdmin();
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'AdminNoGroupApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile', 'users:read'],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('staff with group permission and no existing clients → 201', async () => {
+    const { agent } = await asStaffWithOauthGroup('gate-staff-permitted@test.com');
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'StaffPermittedApp',
+      redirect_uris: [],
+      allowed_scopes: ['profile', 'users:read'],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('cap from sprint 023 still applies after group gate passes', async () => {
+    // Student has group permission and no existing clients → gate passes.
+    // Then attempts to create a second → cap (student cap=1) blocks it.
+    const { agent, user } = await asStudentWithOauthGroup('gate-cap-still@test.com');
+    // Create first client via service (bypasses policy for setup).
+    await registry.oauthClients.create(
+      { name: 'FirstSetup', redirect_uris: [], allowed_scopes: ['profile'] },
+      user.id,
+    );
+    // Second create via route → student is grandfathered (1 client), cap blocks.
+    const res = await agent.post('/api/oauth-clients').send({
+      name: 'SecondBlocked',
+      redirect_uris: [],
+      allowed_scopes: ['profile'],
+    });
+    expect(res.status).toBe(403);
+    // Verify it was a cap rejection, not a group gate rejection.
+    const capEvents = await (prisma as any).auditEvent.findMany({
+      where: { action: 'oauth_client_create_rejected_cap' },
+    });
+    expect(capEvents.length).toBeGreaterThan(0);
   });
 });

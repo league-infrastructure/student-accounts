@@ -32,7 +32,6 @@ import type { AuditService } from './audit.service.js';
 import type { GoogleWorkspaceAdminClient } from './google-workspace/google-workspace-admin.client.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
-import { CohortRepository } from './repositories/cohort.repository.js';
 import { GroupRepository } from './repositories/group.repository.js';
 
 const logger = createLogger('workspace-sync');
@@ -70,7 +69,6 @@ export class WorkspaceSyncService {
     private readonly googleClient: GoogleWorkspaceAdminClient,
     private readonly userRepo: typeof UserRepository,
     private readonly externalAccountRepo: typeof ExternalAccountRepository,
-    private readonly cohortRepo: typeof CohortRepository,
     private readonly audit: AuditService,
   ) {}
 
@@ -231,13 +229,15 @@ export class WorkspaceSyncService {
    * Import Google Workspace student OU users as student User rows.
    *
    * Sequence:
-   *  1. Fetch root-level students (listUsersInOU(studentRoot)) — these get
-   *     cohort_id=null.
-   *  2. For each Cohort with a non-null google_ou_path, fetch users in that OU
-   *     and upsert them with cohort_id=cohort.id.
-   *  3. Collect all seen emails. For every workspace ExternalAccount whose
+   *  1. Fetch root-level students (listUsersInOU(studentRoot)). All new
+   *     accounts are created with cohort_id=null.
+   *  2. Collect all seen emails. For every workspace ExternalAccount whose
    *     user email was NOT seen, set status=removed and record a
    *     workspace_sync_flagged audit event.
+   *
+   * Sprint 026 (ticket 006): removed per-cohort OU iteration. All new
+   * student accounts target the /Students OU root. Existing Cohort rows and
+   * User.cohort_id values are left untouched.
    *
    * Role rules: sets role=student unless the user is already admin (preserved).
    * Does not overwrite staff role — students sync does not touch staff.
@@ -258,7 +258,7 @@ export class WorkspaceSyncService {
     const seenEmails = new Set<string>();
     let studentsUpserted = 0;
 
-    // 1. Root-level students (no cohort assignment)
+    // 1. Root-level students (cohort_id=null for all new accounts)
     const rootUsers = await this.googleClient.listUsersInOU(studentRoot);
     for (const wsUser of rootUsers) {
       if (wsUser.suspended) continue; // deactivated by the not-seen pass
@@ -267,26 +267,14 @@ export class WorkspaceSyncService {
       studentsUpserted++;
     }
 
-    // 2. Per-cohort students
-    const cohorts = await this.cohortRepo.findAllWithOUPath(db);
-    for (const cohort of cohorts) {
-      const cohortUsers = await this.googleClient.listUsersInOU(cohort.google_ou_path!);
-      for (const wsUser of cohortUsers) {
-        if (wsUser.suspended) continue;
-        await this._upsertUserFromWorkspace(db, wsUser, cohort.id, actorId);
-        seenEmails.add(wsUser.primaryEmail);
-        studentsUpserted++;
-      }
-    }
-
-    // 3a. Flag workspace ExternalAccounts whose email was not seen
+    // 2a. Flag workspace ExternalAccounts whose email was not seen
     const flaggedAccounts = await this._flagRemovedWorkspaceAccounts(
       db,
       seenEmails,
       actorId,
     );
 
-    // 3b. Soft-delete student Users whose Google account is no longer live
+    // 2b. Soft-delete student Users whose Google account is no longer live
     //     (suspended, moved to /graveyard, or deleted from Google).
     await this._deactivateNotSeen(db, 'student', seenEmails, actorId);
 

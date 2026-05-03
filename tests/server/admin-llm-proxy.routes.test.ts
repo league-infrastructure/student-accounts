@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app from '../../server/src/app';
 import { prisma } from '../../server/src/services/prisma';
-import { makeUser } from './helpers/factories';
+import { makeUser, makeGroup, makeMembership } from './helpers/factories';
 
 let adminAgent: ReturnType<typeof request.agent>;
 let adminUserId: number;
@@ -53,6 +53,14 @@ afterEach(async () => {
 
 // Helpers -----------------------------------------------------------------
 
+/** Create a user pre-enrolled in an llm-proxy-enabled group. */
+async function makeEligibleUser(opts: { role?: 'student' | 'staff' | 'admin' } = {}) {
+  const user = await makeUser({ role: opts.role ?? 'student' });
+  const group = await makeGroup({ allows_llm_proxy: true });
+  await makeMembership(group, user);
+  return user;
+}
+
 function futureIso(daysAhead = 30): string {
   return new Date(Date.now() + daysAhead * 24 * 3600 * 1000).toISOString();
 }
@@ -67,7 +75,7 @@ function pastIso(): string {
 
 describe('POST /api/admin/users/:id/llm-proxy-token', () => {
   it('201 creates a token and returns plaintext once', async () => {
-    const target = await makeUser({ role: 'student' });
+    const target = await makeEligibleUser({ role: 'student' });
     const res = await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
       .send({ expiresAt: futureIso(), tokenLimit: 1_000_000 });
@@ -124,7 +132,7 @@ describe('POST /api/admin/users/:id/llm-proxy-token', () => {
   });
 
   it('409 when the user already has an active token', async () => {
-    const target = await makeUser({ role: 'student' });
+    const target = await makeEligibleUser({ role: 'student' });
     await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
       .send({ expiresAt: futureIso(), tokenLimit: 1000 })
@@ -150,7 +158,7 @@ describe('POST /api/admin/users/:id/llm-proxy-token', () => {
 
 describe('DELETE /api/admin/users/:id/llm-proxy-token', () => {
   it('204 when there is an active token', async () => {
-    const target = await makeUser({ role: 'student' });
+    const target = await makeEligibleUser({ role: 'student' });
     await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
       .send({ expiresAt: futureIso(), tokenLimit: 1000 })
@@ -195,7 +203,7 @@ describe('GET /api/admin/users/:id/llm-proxy-token', () => {
   });
 
   it('returns the active shape without plaintext or hash', async () => {
-    const target = await makeUser({ role: 'student' });
+    const target = await makeEligibleUser({ role: 'student' });
     await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
       .send({ expiresAt: futureIso(), tokenLimit: 500_000 })

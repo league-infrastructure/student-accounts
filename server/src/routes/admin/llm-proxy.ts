@@ -136,12 +136,14 @@ adminLlmProxyRouter.post(
       const user = await UserRepository.findByIdIncludingInactive(prisma, userId);
       if (!user) throw new NotFoundError('User not found');
 
+      const perms = await req.services.groups.userPermissions(userId);
+
       const actorId = (req.session as any).userId as number;
       const result = await req.services.llmProxyTokens.grant(
         userId,
         { expiresAt, tokenLimit },
         actorId,
-        { scope: 'single' },
+        { scope: 'single', llmProxyAllowed: perms.llmProxy },
       );
 
       userBus.notifyUser(userId);
