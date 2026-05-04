@@ -21,6 +21,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from '../../client/src/context/ToastContext';
 import GroupDetailPanel from '../../client/src/pages/admin/GroupDetailPanel';
 
 /** Return a 404 for passphrase endpoints so PassphraseCard shows empty state. */
@@ -160,9 +161,11 @@ function renderPanel() {
   return render(
     <MemoryRouter initialEntries={['/groups/7']}>
       <QueryClientProvider client={client}>
-        <Routes>
-          <Route path="/groups/:id" element={<GroupDetailPanel />} />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path="/groups/:id" element={<GroupDetailPanel />} />
+          </Routes>
+        </ToastProvider>
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -187,9 +190,11 @@ function renderPanelWith(groupData: typeof GROUP_WITH_TWO) {
   render(
     <MemoryRouter initialEntries={['/groups/7']}>
       <QueryClientProvider client={client}>
-        <Routes>
-          <Route path="/groups/:id" element={<GroupDetailPanel />} />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path="/groups/:id" element={<GroupDetailPanel />} />
+          </Routes>
+        </ToastProvider>
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -613,9 +618,11 @@ describe('GroupDetailPanel — ColumnTriToggle (tri-state column headers)', () =
     render(
       <MemoryRouter initialEntries={['/groups/7']}>
         <QueryClientProvider client={client}>
-          <Routes>
-            <Route path="/groups/:id" element={<GroupDetailPanel />} />
-          </Routes>
+          <ToastProvider>
+            <Routes>
+              <Route path="/groups/:id" element={<GroupDetailPanel />} />
+            </Routes>
+          </ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
