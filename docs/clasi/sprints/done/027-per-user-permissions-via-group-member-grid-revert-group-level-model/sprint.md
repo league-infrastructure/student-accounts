@@ -1,18 +1,18 @@
 ---
-id: "027"
-title: "Per-user permissions via group member grid - revert group-level model"
-status: planning
+id: '027'
+title: Per-user permissions via group member grid - revert group-level model
+status: done
 branch: sprint/027-per-user-permissions-via-group-member-grid-revert-group-level-model
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
 todo:
-  - per-user-permissions-via-group-grid.md
+- per-user-permissions-via-group-grid.md
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
