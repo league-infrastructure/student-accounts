@@ -39,6 +39,33 @@ import {
 const logger = createLogger('sign-in.handler');
 
 // ---------------------------------------------------------------------------
+// Full-name heuristic
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when `name` looks like a first + last name: the trimmed string
+ * contains at least one space and has a total length greater than 3 characters.
+ *
+ * Providers (Google, GitHub, Pike 13) sometimes return usernames, email-prefix
+ * strings, or empty values instead of a real display name. When the heuristic
+ * returns false, `onboarding_completed` is left as false so the client-side
+ * onboarding gate (ticket 016) can collect the user's real name.
+ *
+ * Examples:
+ *   looksLikeFullName('Alice Smith')  → true
+ *   looksLikeFullName('alice')        → false  (no space)
+ *   looksLikeFullName('Al B')         → false  (length ≤ 3 after trim... wait, 4 chars → true)
+ *   looksLikeFullName('A B')          → false  (length 3, not > 3)
+ *   looksLikeFullName('')             → false
+ *   looksLikeFullName('  ')           → false
+ */
+export function looksLikeFullName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const trimmed = name.trim();
+  return trimmed.length > 3 && trimmed.includes(' ');
+}
+
+// ---------------------------------------------------------------------------
 // League-specific defaults
 // ---------------------------------------------------------------------------
 
@@ -305,7 +332,11 @@ export async function signInHandler(
           role: 'student',
           created_via: 'social_login',
           approval_status: 'pending',
-          onboarding_completed: false,
+          // Leave onboarding incomplete when the provider did not supply a
+          // name that looks like "First Last" — the client-side onboarding
+          // gate (ticket 016) will collect it. Set to true only when we
+          // have a plausible full name so the user can skip that step.
+          onboarding_completed: looksLikeFullName(displayName),
         },
         null, // system action; no acting user
       );

@@ -1,5 +1,6 @@
 /**
- * Integration tests for PATCH /api/account/credentials (Sprint 020 T003).
+ * Integration tests for PATCH /api/account/credentials (Sprint 020 T003;
+ * extended Sprint 028 T011 — first-time setup path + Login row creation).
  *
  * Uses the real SQLite test database via the shared Prisma client.
  * Auth is exercised via /api/auth/test-login.
@@ -56,6 +57,30 @@ async function makePassphraseUser(opts: {
       user_id: user.id,
       provider: 'passphrase',
       provider_user_id: `test:0:${opts.username}`,
+    },
+  });
+  return user.id;
+}
+
+/**
+ * Create a user with NO username and NO password_hash (first-time setup state).
+ * Returns the user id.
+ */
+async function makeCredentiallessUser(opts: {
+  email: string;
+  displayName?: string;
+  role?: 'student' | 'staff' | 'admin';
+}): Promise<number> {
+  const user = await (prisma as any).user.create({
+    data: {
+      display_name: opts.displayName ?? 'Test User',
+      primary_email: opts.email,
+      // username and password_hash intentionally omitted
+      role: opts.role ?? 'student',
+      created_via: 'passphrase_signup',
+      is_active: true,
+      onboarding_completed: false,
+      approval_status: 'approved',
     },
   });
   return user.id;
@@ -365,5 +390,162 @@ describe('PATCH /api/account/credentials — response shape', () => {
     const body = res.body as Record<string, unknown>;
     expect(body).not.toHaveProperty('password_hash');
     expect(Object.keys(body)).toEqual(expect.arrayContaining(['id', 'username']));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// First-time setup path — no currentPassword required
+// ---------------------------------------------------------------------------
+
+describe('PATCH /api/account/credentials — first-time setup (no credentials)', () => {
+  it('succeeds without currentPassword when user has no username and no password_hash', async () => {
+    const userId = await makeCredentiallessUser({ email: 'firsttime@example.com' });
+    const agent = await loginAs('firsttime@example.com', 'student');
+
+    const res = await agent.patch('/api/account/credentials').send({
+      username: 'newuser',
+      newPassword: 'mynewpass',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('id', userId);
+    expect(res.body).toHaveProperty('username', 'newuser');
+    expect(res.body).not.toHaveProperty('password_hash');
+  });
+
+  it('persists username and password_hash in DB on first-time setup', async () => {
+    const userId = await makeCredentiallessUser({ email: 'firsttime-db@example.com' });
+    const agent = await loginAs('firsttime-db@example.com', 'student');
+
+    await agent.patch('/api/account/credentials').send({
+      username: 'ftdbuser',
+      newPassword: 'ft-db-pass',
+    });
+
+    const updated = await (prisma as any).user.findUnique({ where: { id: userId } });
+    expect(updated.username).toBe('ftdbuser');
+    expect(updated.password_hash).toBeTruthy();
+  });
+
+  it('returns 400 when currentPassword is absent but user already has credentials', async () => {
+    await makePassphraseUser({
+      email: 'hascreds@example.com',
+      username: 'hascreds',
+      password: 'mypassword',
+    });
+    const agent = await loginAs('hascreds@example.com', 'student');
+
+    const res = await agent.patch('/api/account/credentials').send({
+      username: 'newname',
+      newPassword: 'newpass',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/currentPassword/i);
+  });
+
+  it('returns 400 when user has a username but no password_hash and omits currentPassword', async () => {
+    // A user with username but no password_hash still requires currentPassword
+    // (the "no credentials" condition is BOTH absent simultaneously).
+    const user = await (prisma as any).user.create({
+      data: {
+        display_name: 'Has Username',
+        primary_email: 'has-username-only@example.com',
+        username: 'hasusernameonly',
+        // password_hash absent
+        role: 'student',
+        created_via: 'passphrase_signup',
+        is_active: true,
+        onboarding_completed: false,
+        approval_status: 'approved',
+      },
+    });
+    // Need a login row so the session can be established without crashing
+    await (prisma as any).login.create({
+      data: {
+        user_id: user.id,
+        provider: 'passphrase',
+        provider_user_id: `test:0:hasusernameonly`,
+      },
+    });
+    const agent = await loginAs('has-username-only@example.com', 'student');
+
+    const res = await agent.patch('/api/account/credentials').send({
+      newPassword: 'newpass',
+    });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// First-time setup — Login row creation
+// ---------------------------------------------------------------------------
+
+describe('PATCH /api/account/credentials — Login row creation on first-time setup', () => {
+  it('creates a passphrase Login row after first-time setup', async () => {
+    const userId = await makeCredentiallessUser({ email: 'login-row@example.com' });
+    const agent = await loginAs('login-row@example.com', 'student');
+
+    await agent.patch('/api/account/credentials').send({
+      username: 'loginrowuser',
+      newPassword: 'loginrowpass',
+    });
+
+    const login = await (prisma as any).login.findFirst({
+      where: { user_id: userId, provider: 'passphrase' },
+    });
+    expect(login).not.toBeNull();
+    expect(login.provider_user_id).toBe(`self:${userId}:loginrowuser`);
+    expect(login.provider_email).toBe('login-row@example.com');
+    expect(login.provider_username).toBe('loginrowuser');
+  });
+
+  it('does not create a duplicate Login row when one already exists', async () => {
+    const userId = await makeCredentiallessUser({ email: 'login-row-dup@example.com' });
+
+    // Pre-create the passphrase Login row (simulating a partial setup).
+    await (prisma as any).login.create({
+      data: {
+        user_id: userId,
+        provider: 'passphrase',
+        provider_user_id: `self:${userId}:dupuser`,
+        provider_email: 'login-row-dup@example.com',
+        provider_username: 'dupuser',
+      },
+    });
+
+    const agent = await loginAs('login-row-dup@example.com', 'student');
+
+    await agent.patch('/api/account/credentials').send({
+      username: 'dupuser',
+      newPassword: 'dupuserpass',
+    });
+
+    const logins = await (prisma as any).login.findMany({
+      where: { user_id: userId, provider: 'passphrase' },
+    });
+    expect(logins).toHaveLength(1);
+  });
+
+  it('does not create a Login row on normal (non-first-time) credential update', async () => {
+    const userId = await makePassphraseUser({
+      email: 'no-extra-login@example.com',
+      username: 'noextralogin',
+      password: 'pass123',
+    });
+    const agent = await loginAs('no-extra-login@example.com', 'student');
+
+    await agent.patch('/api/account/credentials').send({
+      currentPassword: 'pass123',
+      newPassword: 'pass456',
+    });
+
+    const logins = await (prisma as any).login.findMany({
+      where: { user_id: userId, provider: 'passphrase' },
+    });
+    // Only the original login row created by makePassphraseUser should exist.
+    expect(logins).toHaveLength(1);
+    expect(logins[0].provider_user_id).toBe(`test:0:noextralogin`);
   });
 });

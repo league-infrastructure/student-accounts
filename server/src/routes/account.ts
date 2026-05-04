@@ -21,6 +21,7 @@ import { requireRole } from '../middleware/requireRole.js';
 import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../errors.js';
 import { adminBus } from '../services/change-bus.js';
 import { accountEventsRouter } from './account-events.js';
+import { LoginRepository } from '../services/repositories/login.repository.js';
 
 export const accountRouter = Router();
 
@@ -293,8 +294,14 @@ accountRouter.patch(
 // POST /api/account/complete-onboarding — one-time setup step for new users
 // ---------------------------------------------------------------------------
 //
-// Called by the Onboarding page. Accepts { displayName } in the body and
-// writes it to the signed-in user's row along with onboarding_completed=true.
+// Called by the Onboarding page. Accepts { displayName, email? } in the body
+// and writes them to the signed-in user's row along with
+// onboarding_completed=true.
+//
+// email is optional. If provided it must be a non-empty string containing
+// exactly one '@' with at least one '.' after it; it is normalised to
+// lowercase before being stored in User.primary_email.
+//
 // No role gate — League-identity users skip this path entirely (their
 // onboarding_completed is created as true), so in practice only newly
 // created external-identity students hit this.
@@ -304,16 +311,41 @@ accountRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId: number = (req.session as any).userId;
-      const raw = (req.body as { displayName?: unknown } | undefined)?.displayName;
+      const body = req.body as { displayName?: unknown; email?: unknown } | undefined;
+
+      // --- displayName ---
+      const raw = body?.displayName;
       const displayName = typeof raw === 'string' ? raw.trim() : '';
       if (displayName.length === 0 || displayName.length > 120) {
         return res
           .status(400)
           .json({ error: 'displayName must be a non-empty string under 120 characters' });
       }
+
+      // --- email (optional) ---
+      const rawEmail = body?.email;
+      let normalizedEmail: string | undefined;
+      if (rawEmail !== undefined && rawEmail !== null) {
+        const emailStr = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+        if (emailStr.length === 0) {
+          return res.status(400).json({ error: 'email must be a non-empty string when provided' });
+        }
+        // Basic shape check: must contain '@' and at least one '.' after it.
+        const atIndex = emailStr.indexOf('@');
+        if (atIndex < 1 || !emailStr.slice(atIndex + 1).includes('.')) {
+          return res.status(400).json({ error: 'email must be a valid email address' });
+        }
+        normalizedEmail = emailStr.toLowerCase();
+      }
+
+      // --- persist ---
       await prisma.user.update({
         where: { id: userId },
-        data: { display_name: displayName, onboarding_completed: true },
+        data: {
+          display_name: displayName,
+          onboarding_completed: true,
+          ...(normalizedEmail !== undefined ? { primary_email: normalizedEmail } : {}),
+        },
       });
       adminBus.notify('users');
       res.json({ ok: true });
@@ -376,12 +408,20 @@ accountRouter.get(
 // PATCH /api/account/credentials — self-service username / password update
 // ---------------------------------------------------------------------------
 //
-// Sprint 020 T003 (SUC-020-001).
+// Sprint 020 T003 (SUC-020-001); extended Sprint 028 T011.
 //
-// Body: { username?, currentPassword, newPassword? }
-// currentPassword is always required; at least one of username / newPassword
-// must be present. Returns { id, username } on success. 401 on wrong
-// currentPassword, 409 on username collision, 400 on invalid input.
+// Body: { username?, currentPassword?, newPassword? }
+//
+// Normal path (user already has username or password_hash):
+//   currentPassword is required. At least one of username / newPassword must
+//   be present. Returns { id, username } on success. 401 on wrong
+//   currentPassword, 409 on username collision, 400 on invalid input.
+//
+// First-time setup path (user has NEITHER username NOR password_hash):
+//   currentPassword is NOT required. The handler detects this state from the
+//   DB and sets allowFirstTimeSetup=true. On success a passphrase Login row is
+//   created (provider='passphrase', provider_user_id='self:<userId>:<username>')
+//   if one does not already exist.
 accountRouter.patch(
   '/account/credentials',
   requireAuth,
@@ -394,15 +434,35 @@ accountRouter.patch(
         newPassword?: unknown;
       };
 
+      // Determine whether this user is in first-time setup (no username AND
+      // no password_hash). This check hits the DB once before we proceed.
+      const dbUser = await (prisma as any).user.findUnique({ where: { id: userId } });
+      if (!dbUser) {
+        return res.status(401).json({ error: 'Session user not found' });
+      }
+      const isFirstTimeSetup =
+        !dbUser.username && !dbUser.password_hash;
+
+      // Require currentPassword on the normal path.
       const currentPassword =
         typeof body.currentPassword === 'string' ? body.currentPassword : '';
-      if (!currentPassword) {
+      if (!isFirstTimeSetup && !currentPassword) {
         return res.status(400).json({ error: 'currentPassword is required' });
       }
 
-      const patch: { username?: string; currentPassword: string; newPassword?: string } = {
-        currentPassword,
-      };
+      const patch: {
+        username?: string;
+        currentPassword?: string;
+        newPassword?: string;
+        allowFirstTimeSetup?: boolean;
+      } = {};
+
+      if (currentPassword) {
+        patch.currentPassword = currentPassword;
+      }
+      if (isFirstTimeSetup) {
+        patch.allowFirstTimeSetup = true;
+      }
       if (body.username !== undefined) {
         patch.username = typeof body.username === 'string' ? body.username : '';
       }
@@ -412,6 +472,26 @@ accountRouter.patch(
 
       const { users } = req.services;
       const result = await users.updateCredentials(userId, patch);
+
+      // First-time setup: create a passphrase Login row if none exists.
+      if (isFirstTimeSetup && result.username) {
+        const providerUserId = `self:${userId}:${result.username}`;
+        const existing = await LoginRepository.findByProvider(
+          prisma,
+          'passphrase',
+          providerUserId,
+        );
+        if (!existing) {
+          await LoginRepository.create(prisma, {
+            user_id: userId,
+            provider: 'passphrase',
+            provider_user_id: providerUserId,
+            provider_email: dbUser.primary_email ?? null,
+            provider_username: result.username,
+          });
+        }
+      }
+
       res.json(result);
     } catch (err) {
       if (err instanceof UnauthorizedError) {

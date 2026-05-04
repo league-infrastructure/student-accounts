@@ -165,7 +165,10 @@ export class UserService {
    * Update the user's own username and/or password.
    *
    * Rules:
-   *  - currentPassword is always required and verified against the stored hash.
+   *  - currentPassword is required unless the user is in first-time setup
+   *    (has neither a username nor a password_hash). In that case the patch
+   *    is accepted without it (the route sets allowFirstTimeSetup=true after
+   *    verifying the user has no credentials at all).
    *  - At least one of username or newPassword must be provided.
    *  - Empty/whitespace-only newPassword is a ValidationError (400).
    *  - Username uniqueness is enforced by the DB unique constraint (→ ConflictError).
@@ -176,19 +179,23 @@ export class UserService {
     userId: number,
     patch: {
       username?: string;
-      currentPassword: string;
+      currentPassword?: string;
       newPassword?: string;
+      allowFirstTimeSetup?: boolean;
     },
   ): Promise<{ id: number; username: string | null }> {
     // 1. Load the user; not-found maps to 401 (actor is the signed-in user).
     const user = await UserRepository.findById(this.prisma, userId);
     if (!user) throw new UnauthorizedError('Session user not found');
 
-    // 2. Verify current password.
+    // 2. Verify current password — unless this is a first-time setup call.
     const stored = (user as any).password_hash as string | null;
-    if (!stored) throw new UnauthorizedError('Account has no password set');
-    const match = await verifyPassword(patch.currentPassword, stored);
-    if (!match) throw new UnauthorizedError('Current password is incorrect');
+    if (!patch.allowFirstTimeSetup) {
+      if (!stored) throw new UnauthorizedError('Account has no password set');
+      if (!patch.currentPassword) throw new UnauthorizedError('currentPassword is required');
+      const match = await verifyPassword(patch.currentPassword, stored);
+      if (!match) throw new UnauthorizedError('Current password is incorrect');
+    }
 
     // 3. Validate the patch payload.
     const hasNewPassword = patch.newPassword !== undefined;
