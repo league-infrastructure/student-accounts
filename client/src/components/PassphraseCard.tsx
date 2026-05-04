@@ -199,69 +199,39 @@ export function PassphraseCard({ scopeKind, scopeId, scopeName }: PassphraseCard
   return (
     <>
       <div style={cardStyle}>
-        {/* Two compact panels side-by-side: passphrase on the left,
-            invitation URL on the right. Each panel sizes to its content. */}
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          {/* Passphrase panel */}
-          <div style={panelStyle}>
-            <div style={labelStyle}>Passphrase</div>
-            <div style={panelRowStyle}>
-              <code style={valueStyle}>{record.plaintext}</code>
-              <button
-                type="button"
-                onClick={() => handleCopy('passphrase')}
-                style={smBtn}
-              >
-                {copied === 'passphrase' ? 'Copied!' : 'Copy'}
-              </button>
-              <button
-                type="button"
-                onClick={() => rotateMutation.mutate()}
-                disabled={rotateMutation.isPending}
-                style={smBtn}
-              >
-                {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
-              </button>
-            </div>
-          </div>
+        {/* Single horizontal row: passphrase value + copy icon, URL value +
+            copy icon, one shared Regenerate, expires, revoke. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={labelStyle}>Passphrase</span>
+          <code style={valueStyle}>{record.plaintext}</code>
+          <CopyIconButton
+            ariaLabel="Copy passphrase"
+            copied={copied === 'passphrase'}
+            onClick={() => handleCopy('passphrase')}
+          />
 
-          {/* Invitation URL panel */}
-          <div style={panelStyle}>
-            <div style={labelStyle}>Invitation URL</div>
-            <div style={panelRowStyle}>
-              <code style={{ ...valueStyle, fontSize: 12 }}>{inviteUrl}</code>
-              <button
-                type="button"
-                onClick={() => handleCopy('url')}
-                style={smBtn}
-              >
-                {copied === 'url' ? 'Copied!' : 'Copy'}
-              </button>
-              <button
-                type="button"
-                onClick={() => rotateMutation.mutate()}
-                disabled={rotateMutation.isPending}
-                style={smBtn}
-              >
-                {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
-              </button>
-            </div>
-          </div>
-        </div>
+          <span style={{ ...labelStyle, marginLeft: 8 }}>Invitation URL</span>
+          <code style={{ ...valueStyle, fontSize: 12 }}>{inviteUrl}</code>
+          <CopyIconButton
+            ariaLabel="Copy invitation URL"
+            copied={copied === 'url'}
+            onClick={() => handleCopy('url')}
+          />
 
-        {/* Footer — TTL + Revoke */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            marginTop: 10,
-            flexWrap: 'wrap',
-          }}
-        >
+          <button
+            type="button"
+            onClick={() => rotateMutation.mutate()}
+            disabled={rotateMutation.isPending}
+            style={smBtn}
+            title="Regenerate the passphrase (also rotates the invitation URL)"
+          >
+            {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
+          </button>
+
           <span
             style={{
               fontSize: 12,
+              marginLeft: 8,
               color: countdown === 'expired' ? '#dc2626' : '#64748b',
             }}
           >
@@ -278,7 +248,7 @@ export function PassphraseCard({ scopeKind, scopeId, scopeName }: PassphraseCard
                 fontWeight: 600,
               }}
             >
-              ✓ Includes LLM proxy
+              ✓ LLM proxy
             </span>
           )}
           <button
@@ -314,6 +284,47 @@ export function PassphraseCard({ scopeKind, scopeId, scopeName }: PassphraseCard
 }
 
 // ---------------------------------------------------------------------------
+// CopyIconButton — small clipboard glyph button. Flips to a check mark
+// for ~2s after a successful copy.
+// ---------------------------------------------------------------------------
+
+function CopyIconButton({
+  ariaLabel,
+  copied,
+  onClick,
+}: {
+  ariaLabel: string;
+  copied: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={iconBtnStyle}
+      aria-label={ariaLabel}
+      title={copied ? 'Copied!' : 'Copy'}
+    >
+      {copied ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M5 12l5 5L20 7" stroke="#15803d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="9" y="9" width="11" height="11" rx="2" stroke="#475569" strokeWidth="1.8" />
+          <path
+            d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+            stroke="#475569"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
@@ -325,19 +336,6 @@ const cardStyle: React.CSSProperties = {
   borderRadius: 6,
   fontSize: 13,
   color: '#475569',
-};
-
-const panelStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-};
-
-const panelRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  flexWrap: 'wrap',
 };
 
 const labelStyle: React.CSSProperties = {
@@ -358,6 +356,17 @@ const valueStyle: React.CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   maxWidth: 360,
+};
+
+const iconBtnStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  padding: 4,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 4,
 };
 
 const smBtn: React.CSSProperties = {
