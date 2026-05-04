@@ -83,9 +83,16 @@ export class MailService {
       port: Number(port),
       secure,
       auth: { user: username, pass: password },
+      // Surface the SMTP transcript in dev when SMTP_DEBUG=true.
+      logger: process.env.SMTP_DEBUG === 'true',
+      debug: process.env.SMTP_DEBUG === 'true',
     });
 
     this.configured = true;
+
+    logger.info(
+      `[mail-service] SMTP transporter ready — host=${host} port=${port} secure=${secure} from=${this.from} user=${username}`,
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -109,17 +116,34 @@ export class MailService {
    */
   async send(opts: SendOptions): Promise<SendResult> {
     if (!this.configured || !this.transporter) {
+      logger.warn(
+        `[mail-service] send() called while not configured — to=${opts.to} subject="${opts.subject}"`,
+      );
       throw new MailNotConfiguredError();
     }
 
-    const info = await this.transporter.sendMail({
-      from: this.from,
-      to: opts.to,
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html,
-    });
+    logger.info(
+      `[mail-service] sending — to=${opts.to} from=${this.from} subject="${opts.subject}"`,
+    );
 
-    return { messageId: info.messageId };
+    try {
+      const info = await this.transporter.sendMail({
+        from: this.from,
+        to: opts.to,
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html,
+      });
+
+      logger.info(
+        `[mail-service] sent — messageId=${info.messageId} response=${(info as any).response ?? '(no transport response)'} accepted=${JSON.stringify(info.accepted)} rejected=${JSON.stringify(info.rejected)}`,
+      );
+      return { messageId: info.messageId };
+    } catch (err: any) {
+      logger.error(
+        `[mail-service] send failed — to=${opts.to} from=${this.from}: ${err?.message ?? err} (code=${err?.code ?? 'n/a'} response=${err?.response ?? 'n/a'} responseCode=${err?.responseCode ?? 'n/a'})`,
+      );
+      throw err;
+    }
   }
 }
