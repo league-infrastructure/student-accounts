@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { isSafeNext } from './login/isSafeNext';
 
@@ -62,6 +62,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 export default function Login() {
   const { loginWithCredentials } = useAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +76,32 @@ export default function Login() {
     }
   }, [searchParams]);
 
+  // Invitation-URL handler: when ?passphrase= is present, check whether the
+  // user already has a session. If yes, go to /account (or ?next=). If no,
+  // redirect to /signup preserving the passphrase so they can create an account.
+  useEffect(() => {
+    const passphraseParam = searchParams.get('passphrase');
+    if (!passphraseParam) return;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          // Already signed in — go to the destination.
+          const nextParam = searchParams.get('next');
+          const destination = isSafeNext(nextParam) ? nextParam! : '/account';
+          navigate(destination, { replace: true });
+        } else {
+          // Not signed in — redirect to signup with the passphrase.
+          navigate(`/signup?passphrase=${encodeURIComponent(passphraseParam)}`, { replace: true });
+        }
+      } catch {
+        // Network error — fall through and show the normal login form.
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -85,40 +112,16 @@ export default function Login() {
     const nextParam = searchParams.get('next');
     const destination = isSafeNext(nextParam) ? nextParam! : '/account';
 
-    // Try logging in first — works for any returning user.
+    // Try logging in — works for any returning user.
     const login = await loginWithCredentials(username.trim(), passphrase);
     if (login.ok) {
       window.location.assign(destination);
       return;
     }
 
-    // Login failed. Try signup with the same credentials — this is the
-    // first-time-with-class-passphrase path. The signup endpoint enforces
-    // its own validation; on failure we surface a generic message.
-    try {
-      const res = await fetch('/api/auth/passphrase-signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), passphrase }),
-      });
-      if (res.ok) {
-        window.location.assign(destination);
-        return;
-      }
-      const body = await res.json().catch(() => ({}));
-      const serverError = (body as { error?: string }).error ?? null;
-      if (res.status === 409) {
-        setError('That username is already taken. Try another.');
-      } else if (res.status === 400 && serverError) {
-        setError(serverError);
-      } else {
-        setError(
-          'Invalid username or passphrase. If your instructor gave you a passphrase, double-check it.',
-        );
-      }
-    } catch {
-      setError('Network error. Try again.');
-    }
+    setError(
+      login.error ?? 'Invalid username or passphrase.',
+    );
     setSubmitting(false);
   }
 

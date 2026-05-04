@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { hasStaffAccess } from '../lib/roles';
 import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import UsernamePasswordSection from './account/UsernamePasswordSection';
+import AddCredentialsModal from './account/AddCredentialsModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +58,10 @@ export interface AccountProfile {
   allowsOauthClient?: boolean;
   allowsLlmProxy?: boolean;
   allowsLeagueAccount?: boolean;
+  /** False for newly-registered external-identity students who have not yet
+   *  completed the one-time onboarding step (full name + email). True for
+   *  all other users. */
+  onboarding_completed?: boolean;
 }
 
 export interface AccountLogin {
@@ -126,6 +131,18 @@ async function patchNotificationEmail(notificationEmail: string | null): Promise
   }
 }
 
+async function postCompleteOnboarding(displayName: string, email: string): Promise<void> {
+  const res = await fetch('/api/account/complete-onboarding', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName, email }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -144,6 +161,108 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 function providerLabel(p: string): string {
   return PROVIDER_LABELS[p] ?? p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+// ---------------------------------------------------------------------------
+// CompleteProfileSection — shown when onboarding_completed === false
+// ---------------------------------------------------------------------------
+
+/**
+ * Rendered instead of the normal Account sections when the signed-in user
+ * has not yet completed onboarding. Collects a display name and email,
+ * POSTs to /api/account/complete-onboarding, then invalidates ['account']
+ * so the normal sections take over.
+ */
+function CompleteProfileSection({
+  profile,
+  onComplete,
+}: {
+  profile: AccountProfile;
+  onComplete: () => Promise<void>;
+}) {
+  const [displayName, setDisplayName] = useState(profile.displayName ?? '');
+  const [email, setEmail] = useState(profile.primaryEmail ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmedName = displayName.trim();
+    if (trimmedName.length === 0) {
+      setError('Full name is required.');
+      return;
+    }
+    const trimmedEmail = email.trim();
+    if (trimmedEmail.length === 0) {
+      setError('Email is required.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await postCompleteOnboarding(trimmedName, trimmedEmail);
+      await onComplete();
+    } catch (err: any) {
+      setError(err.message ?? 'Could not save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.card} data-testid="complete-profile-section">
+      <h2 style={styles.sectionTitle}>Complete your profile</h2>
+      <p style={{ ...styles.helpText, marginBottom: '1.25rem' }}>
+        Before you can access your account, please provide your full name and
+        confirm your email address.
+      </p>
+      <form onSubmit={(e) => void handleSubmit(e)} noValidate>
+        <div style={styles.formField}>
+          <label htmlFor="onboarding-display-name" style={styles.formLabel}>
+            Full name
+          </label>
+          <input
+            id="onboarding-display-name"
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            disabled={saving}
+            autoFocus
+            autoComplete="name"
+            style={styles.formInput}
+            aria-required="true"
+          />
+        </div>
+        <div style={styles.formField}>
+          <label htmlFor="onboarding-email" style={styles.formLabel}>
+            Email address
+          </label>
+          <input
+            id="onboarding-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={saving}
+            autoComplete="email"
+            style={styles.formInput}
+            aria-required="true"
+          />
+        </div>
+        {error && (
+          <div role="alert" style={styles.profileNameError}>
+            {error}
+          </div>
+        )}
+        <button
+          type="submit"
+          disabled={saving}
+          style={saving ? styles.submitButtonDisabled : styles.submitButton}
+        >
+          {saving ? 'Saving…' : 'Save and continue'}
+        </button>
+      </form>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -411,9 +530,12 @@ interface LoginsSectionProps {
   onRemoveError: string | null;
   onRemove: (login: AccountLogin) => void;
   removingId: number | null;
+  /** True when the user has no username AND no password — show "Add username/password". */
+  showAddCredentials: boolean;
+  onAddCredentials: () => void;
 }
 
-function LoginsSection({ logins, role, onRemoveError, onRemove, removingId }: LoginsSectionProps) {
+function LoginsSection({ logins, role, onRemoveError, onRemove, removingId, showAddCredentials, onAddCredentials }: LoginsSectionProps) {
   const canRemove = logins.length > 1;
   const hasPike13 = logins.some((l) => l.provider === 'pike13');
   // /api/auth/me maps DB role 'student' → client role 'USER'; staff and admin
@@ -497,6 +619,16 @@ function LoginsSection({ logins, role, onRemoveError, onRemove, removingId }: Lo
           >
             <Pike13Logo />
           </a>
+        )}
+        {showAddCredentials && (
+          <button
+            type="button"
+            onClick={onAddCredentials}
+            aria-label="Add username/password"
+            style={{ ...styles.addButton, ...styles.addButtonCredentials }}
+          >
+            <span style={styles.addCredentialsLabel}>+ username/password</span>
+          </button>
         )}
       </div>
     </div>
@@ -657,6 +789,9 @@ export default function Account() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingLogin, setPendingLogin] = useState<AccountLogin | null>(null);
 
+  // Add credentials modal state
+  const [addCredentialsOpen, setAddCredentialsOpen] = useState(false);
+
   // Open SSE connection to receive real-time account updates from the server.
   useAccountEventStream();
 
@@ -748,6 +883,23 @@ export default function Account() {
     );
   }
 
+  // Onboarding gate: new external-identity students must complete their
+  // profile before accessing the rest of the Account page.
+  const needsOnboarding = data.profile.onboarding_completed === false;
+  if (needsOnboarding) {
+    return (
+      <div style={styles.container}>
+        <h1 style={styles.pageTitle}>My Account</h1>
+        <CompleteProfileSection
+          profile={data.profile}
+          onComplete={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['account'] });
+          }}
+        />
+      </div>
+    );
+  }
+
   // Surface OAuth-link callback errors via ?error=… on the URL.
   const linkError = (() => {
     const params = new URLSearchParams(window.location.search);
@@ -806,6 +958,16 @@ export default function Account() {
             setConfirmOpen(true);
           }}
           removingId={removeLoginMutation.isPending ? (removeLoginMutation.variables ?? null) : null}
+          showAddCredentials={!hasCredentials}
+          onAddCredentials={() => setAddCredentialsOpen(true)}
+        />
+
+        <AddCredentialsModal
+          open={addCredentialsOpen}
+          onClose={() => setAddCredentialsOpen(false)}
+          onSuccess={() => {
+            void queryClient.invalidateQueries({ queryKey: ['account'] });
+          }}
         />
 
         <ConfirmDialog
@@ -1103,6 +1265,16 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#00833D',
     color: '#fff',
   },
+  addButtonCredentials: {
+    background: '#f8fafc',
+    color: '#374151',
+    border: '1px solid #cbd5e1',
+    fontSize: '0.8rem',
+    fontWeight: 500,
+  },
+  addCredentialsLabel: {
+    whiteSpace: 'nowrap' as const,
+  },
   inlineError: {
     fontSize: '0.85rem',
     color: '#dc2626',
@@ -1179,5 +1351,50 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     border: '1px solid',
     marginBottom: 4,
+  },
+  formField: {
+    marginBottom: '1rem',
+  },
+  formLabel: {
+    display: 'block',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: '#374151',
+    marginBottom: 4,
+  },
+  formInput: {
+    display: 'block',
+    width: '100%',
+    maxWidth: 420,
+    padding: '8px 10px',
+    fontSize: '0.9rem',
+    border: '1px solid #cbd5e1',
+    borderRadius: 6,
+    color: '#1e293b',
+    background: '#fff',
+    boxSizing: 'border-box' as const,
+  },
+  submitButton: {
+    marginTop: '0.5rem',
+    padding: '8px 20px',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    border: 'none',
+    borderRadius: 6,
+    background: '#2563eb',
+    color: '#fff',
+    cursor: 'pointer',
+  },
+  submitButtonDisabled: {
+    marginTop: '0.5rem',
+    padding: '8px 20px',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    border: 'none',
+    borderRadius: 6,
+    background: '#93c5fd',
+    color: '#fff',
+    cursor: 'not-allowed',
+    opacity: 0.7,
   },
 };

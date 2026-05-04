@@ -5,6 +5,7 @@ import { ToastProvider } from './context/ToastContext';
 import AppLayout from './components/AppLayout';
 import AdminOnlyRoute from './components/AdminOnlyRoute';
 import Login from './pages/Login';
+import Signup from './pages/Signup';
 
 import About from './pages/About';
 import McpSetup from './pages/McpSetup';
@@ -58,6 +59,7 @@ function App() {
           <Routes>
             {/* Standalone pages (no AppLayout) */}
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
 
             {/* OAuth consent screen — public, no AppLayout, no auth gate.
                 Authentication for this flow is handled upstream at /oauth/authorize. */}

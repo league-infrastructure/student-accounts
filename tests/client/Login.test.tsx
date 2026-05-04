@@ -80,26 +80,26 @@ describe('Login — next param redirect', () => {
     });
   });
 
-  it('redirects to next on successful passphrase-signup when next is safe', async () => {
-    // Login fails → falls through to signup path
-    mockLoginWithCredentials.mockResolvedValue({ ok: false });
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+  it('shows an error when login fails (passphrase-signup fallback removed)', async () => {
+    // Login fails → show error from loginWithCredentials (no fallback to signup)
+    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid credentials' });
 
     renderLogin('?next=/account/onboarding');
     await submitForm();
     await waitFor(() => {
-      expect(mockAssign).toHaveBeenCalledWith('/account/onboarding');
+      expect(screen.getByRole('alert')).toHaveTextContent(/invalid credentials/i);
     });
+    expect(mockAssign).not.toHaveBeenCalled();
   });
 
-  it('redirects to /account on signup success when next is invalid', async () => {
-    mockLoginWithCredentials.mockResolvedValue({ ok: false });
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+  it('shows an error when login fails with unsafe next param', async () => {
+    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid credentials' });
 
     renderLogin('?next=javascript:alert(1)');
     await submitForm();
     await waitFor(() => {
-      expect(mockAssign).toHaveBeenCalledWith('/account');
+      expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+    expect(mockAssign).not.toHaveBeenCalled();
   });
 });

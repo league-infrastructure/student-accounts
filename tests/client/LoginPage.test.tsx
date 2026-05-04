@@ -101,38 +101,25 @@ describe('Login page', () => {
     await waitFor(() => expect(mockLocationAssign).toHaveBeenCalledWith('/account'));
   });
 
-  it('falls through to signup when login returns 401, and redirects on signup success', async () => {
+  it('shows an error when login fails (passphrase-signup fallback removed in Sprint 028)', async () => {
+    // The passphrase-signup fallback from the Login form has been removed.
+    // First-time students now go through /signup via the invitation URL flow.
+    // A failed login just shows the error from loginWithCredentials.
     mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid' });
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ id: 42, username: 'bob' }),
-    });
 
     renderLogin();
     await userEvent.type(screen.getByLabelText(/username/i), 'bob');
     await userEvent.type(screen.getByLabelText(/passphrase/i), 'orange-pencil-cloud');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    await waitFor(() =>
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        '/api/auth/passphrase-signup',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ username: 'bob', passphrase: 'orange-pencil-cloud' }),
-        }),
-      ),
-    );
-    await waitFor(() => expect(mockLocationAssign).toHaveBeenCalledWith('/account'));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/invalid/i);
+    });
+    expect(mockLocationAssign).not.toHaveBeenCalled();
   });
 
-  it('shows a generic error when both login and signup fail', async () => {
-    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid' });
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ error: 'Invalid or expired passphrase' }),
-    });
+  it('shows error from loginWithCredentials when login fails', async () => {
+    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid username or passphrase' });
 
     renderLogin();
     await userEvent.type(screen.getByLabelText(/username/i), 'unknown');
@@ -143,24 +130,6 @@ describe('Login page', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/invalid username or passphrase/i);
     });
     expect(mockLocationAssign).not.toHaveBeenCalled();
-  });
-
-  it('shows a username-taken error when signup returns 409', async () => {
-    mockLoginWithCredentials.mockResolvedValue({ ok: false, error: 'Invalid' });
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 409,
-      json: async () => ({ error: 'That username is already taken' }),
-    });
-
-    renderLogin();
-    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
-    await userEvent.type(screen.getByLabelText(/passphrase/i), 'pen-paper-river');
-    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(/username is already taken/i);
-    });
   });
 
   it('shows the permanently-denied message when ?error=permanently_denied is present', () => {

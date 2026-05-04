@@ -1297,3 +1297,511 @@ describe('Account page — Send-test button', () => {
     }
   });
 });
+
+// ===========================================================================
+// AddCredentials button + modal (Sprint 028 ticket 015)
+// ===========================================================================
+
+describe('Account page — Add username/password button', () => {
+  it('shows "Add username/password" button when user has no username and no password', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: null, has_password: false },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole('button', { name: /add username\/password/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the button when user already has both username and password', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: 'theuser', has_password: true },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole('button', { name: /add username\/password/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides the button when user has only a username (partial credentials)', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: 'theuser', has_password: false },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    // hasCredentials = true when username is set, so button is hidden
+    expect(
+      screen.queryByRole('button', { name: /add username\/password/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides the button when user has only a password (no username)', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: null, has_password: true },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+
+    // hasCredentials = true when has_password is set, so button is hidden
+    expect(
+      screen.queryByRole('button', { name: /add username\/password/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens the AddCredentials modal when button is clicked', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: null, has_password: false },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add username\/password/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /add username\/password/i }));
+
+    expect(screen.getByRole('dialog', { name: /add username and password/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^username/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password \*/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
+  });
+
+  it('closes the modal when Cancel is clicked', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: null, has_password: false },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add username\/password/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /add username\/password/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /add username and password/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /add username and password/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('submits PATCH /api/account/credentials with username + newPassword (no currentPassword) on submit', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/account') {
+        return {
+          ok: true,
+          json: async () => ({
+            ...STUDENT_ACCOUNT_BASE,
+            profile: { ...STUDENT_ACCOUNT_BASE.profile, username: null, has_password: false },
+          }),
+        };
+      }
+      if (
+        url === '/api/account/credentials' &&
+        (init?.method ?? '').toUpperCase() === 'PATCH'
+      ) {
+        return { ok: true, status: 200, json: async () => ({ id: 1, username: 'newuser' }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add username\/password/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /add username\/password/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /add username and password/i })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/^username/i), { target: { value: 'newuser' } });
+    fireEvent.change(screen.getByLabelText(/^password \*/i), { target: { value: 'secret123' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'secret123' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /set credentials/i }));
+
+    await waitFor(() => {
+      const credCalls = fetchMock.mock.calls.filter(
+        ([url, init]: [string, RequestInit | undefined]) =>
+          url === '/api/account/credentials' &&
+          (init?.method ?? '').toUpperCase() === 'PATCH',
+      );
+      expect(credCalls).toHaveLength(1);
+      const body = JSON.parse(credCalls[0][1]!.body as string);
+      expect(body.username).toBe('newuser');
+      expect(body.newPassword).toBe('secret123');
+      // Must NOT include currentPassword in the first-time path
+      expect(body.currentPassword).toBeUndefined();
+    });
+  });
+
+  it('closes modal and invalidates [account] query on success', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    let accountCallCount = 0;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/account') {
+        accountCallCount++;
+        return {
+          ok: true,
+          json: async () => ({
+            ...STUDENT_ACCOUNT_BASE,
+            profile: { ...STUDENT_ACCOUNT_BASE.profile, username: null, has_password: false },
+          }),
+        };
+      }
+      if (
+        url === '/api/account/credentials' &&
+        (init?.method ?? '').toUpperCase() === 'PATCH'
+      ) {
+        return { ok: true, status: 200, json: async () => ({ id: 1, username: 'newuser' }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add username\/password/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /add username\/password/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /add username and password/i })).toBeInTheDocument();
+    });
+
+    const callCountBeforeSubmit = accountCallCount;
+
+    fireEvent.change(screen.getByLabelText(/^username/i), { target: { value: 'newuser' } });
+    fireEvent.change(screen.getByLabelText(/^password \*/i), { target: { value: 'secret123' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'secret123' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /set credentials/i }));
+
+    // Modal should close
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /add username and password/i })).not.toBeInTheDocument();
+    });
+
+    // Account query should have been re-fetched at least once more after submit
+    await waitFor(() => {
+      expect(accountCallCount).toBeGreaterThan(callCountBeforeSubmit);
+    });
+  });
+
+  it('shows an inline error when passwords do not match', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: null, has_password: false },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add username\/password/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /add username\/password/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /add username and password/i })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/^username/i), { target: { value: 'user1' } });
+    fireEvent.change(screen.getByLabelText(/^password \*/i), { target: { value: 'aaa' } });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'bbb' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /set credentials/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Passwords do not match');
+    });
+  });
+});
+
+// ===========================================================================
+// CompleteProfileSection — onboarding gate (Sprint 028 ticket 016)
+// ===========================================================================
+
+/**
+ * Account data with onboarding_completed = false.
+ * displayName is null (new user) and primaryEmail is pre-filled.
+ */
+const ONBOARDING_ACCOUNT = {
+  ...STUDENT_ACCOUNT_BASE,
+  profile: {
+    ...STUDENT_ACCOUNT_BASE.profile,
+    displayName: null,
+    primaryEmail: 'newstudent@example.com',
+    onboarding_completed: false,
+  },
+};
+
+describe('Account page — onboarding gate (CompleteProfileSection)', () => {
+  it('renders the complete-profile form and hides normal sections when onboarding_completed is false', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ONBOARDING_ACCOUNT as any);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('complete-profile-section')).toBeInTheDocument();
+    });
+
+    // The form heading should be visible
+    expect(screen.getByText('Complete your profile')).toBeInTheDocument();
+
+    // Normal sections must be absent
+    expect(screen.queryByText('Sign-in Methods')).not.toBeInTheDocument();
+    expect(screen.queryByText('Help & Contact')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-section')).not.toBeInTheDocument();
+  });
+
+  it('pre-fills full-name field with existing displayName when available', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const accountWithName = {
+      ...ONBOARDING_ACCOUNT,
+      profile: { ...ONBOARDING_ACCOUNT.profile, displayName: 'Jane Doe' },
+    };
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, accountWithName as any);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('complete-profile-section')).toBeInTheDocument();
+    });
+
+    const nameInput = screen.getByLabelText(/full name/i) as HTMLInputElement;
+    expect(nameInput.value).toBe('Jane Doe');
+  });
+
+  it('pre-fills email field with primaryEmail', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ONBOARDING_ACCOUNT as any);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('complete-profile-section')).toBeInTheDocument();
+    });
+
+    const emailInput = screen.getByLabelText(/email address/i) as HTMLInputElement;
+    expect(emailInput.value).toBe('newstudent@example.com');
+  });
+
+  it('POSTs the correct body to /api/account/complete-onboarding on submit', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/account') {
+        // First call returns onboarding incomplete; subsequent calls return completed
+        const callCount = fetchMock.mock.calls.filter(([u]: [string]) => u === '/api/account').length;
+        if (callCount <= 1) {
+          return { ok: true, json: async () => ({ ...ONBOARDING_ACCOUNT }) };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            ...STUDENT_ACCOUNT_BASE,
+            profile: { ...STUDENT_ACCOUNT_BASE.profile, onboarding_completed: true, displayName: 'Alice Smith' },
+          }),
+        };
+      }
+      if (url === '/api/account/complete-onboarding') {
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('complete-profile-section')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /save and continue/i }));
+
+    await waitFor(() => {
+      const onboardingCalls = fetchMock.mock.calls.filter(
+        ([url, init]: [string, RequestInit | undefined]) =>
+          url === '/api/account/complete-onboarding' &&
+          (init?.method ?? '').toUpperCase() === 'POST',
+      );
+      expect(onboardingCalls).toHaveLength(1);
+      const body = JSON.parse(onboardingCalls[0][1]!.body as string);
+      expect(body.displayName).toBe('Alice Smith');
+      expect(body.email).toBe('alice@example.com');
+    });
+  });
+
+  it('invalidates [account] on success so the page re-renders without the gate', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    let callIndex = 0;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/account') {
+        callIndex++;
+        if (callIndex === 1) {
+          return { ok: true, json: async () => ({ ...ONBOARDING_ACCOUNT }) };
+        }
+        // After onboarding, return completed profile
+        return {
+          ok: true,
+          json: async () => ({
+            ...STUDENT_ACCOUNT_BASE,
+            profile: { ...STUDENT_ACCOUNT_BASE.profile, onboarding_completed: true, displayName: 'Alice Smith' },
+          }),
+        };
+      }
+      if (url === '/api/account/complete-onboarding') {
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('complete-profile-section')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Alice Smith' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'alice@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /save and continue/i }));
+
+    // After success, the gate should disappear and normal sections appear
+    await waitFor(() => {
+      expect(screen.queryByTestId('complete-profile-section')).not.toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-in Methods')).toBeInTheDocument();
+    });
+  });
+
+  it('shows a validation error when name is empty and does not POST', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/account') {
+        return { ok: true, json: async () => ({ ...ONBOARDING_ACCOUNT }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('complete-profile-section')).toBeInTheDocument();
+    });
+
+    // Clear the name field
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /save and continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Full name is required.');
+    });
+
+    const onboardingCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit | undefined]) =>
+        url === '/api/account/complete-onboarding' &&
+        (init?.method ?? '').toUpperCase() === 'POST',
+    );
+    expect(onboardingCalls).toHaveLength(0);
+  });
+
+  it('shows an API error inline when the POST fails', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/account') {
+        return { ok: true, json: async () => ({ ...ONBOARDING_ACCOUNT }) };
+      }
+      if (url === '/api/account/complete-onboarding') {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'displayName must be a non-empty string' }),
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('complete-profile-section')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Bob Jones' } });
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'bob@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /save and continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('displayName must be a non-empty string');
+    });
+  });
+
+  it('page header is visible during onboarding gate', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, ONBOARDING_ACCOUNT as any);
+
+    renderAccount();
+
+    // Wait for data to load (complete-profile-section appears only after data loads)
+    await waitFor(() => {
+      expect(screen.getByTestId('complete-profile-section')).toBeInTheDocument();
+    });
+
+    // The page header must also be present
+    expect(screen.getByRole('heading', { name: /my account/i })).toBeInTheDocument();
+  });
+});
