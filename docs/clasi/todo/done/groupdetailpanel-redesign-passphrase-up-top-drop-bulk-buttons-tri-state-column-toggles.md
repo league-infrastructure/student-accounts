@@ -1,5 +1,10 @@
 ---
-status: pending
+status: done
+sprint: 028
+tickets:
+- '005'
+- '006'
+- '007'
 ---
 
 # GroupDetailPanel redesign — passphrase up top, drop bulk buttons, tri-state column toggles
