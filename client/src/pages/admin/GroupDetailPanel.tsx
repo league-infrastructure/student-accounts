@@ -10,8 +10,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button } from '../../components/ui/button';
-import { LlmProxyGrantModal } from '../../components/LlmProxyGrantModal';
 import { PassphraseCard } from '../../components/PassphraseCard';
 
 // ---------------------------------------------------------------------------
@@ -55,19 +53,6 @@ interface UserMatch {
   displayName: string;
   email: string;
   matchedOn: string;
-}
-
-type AccountType = 'workspace' | 'claude';
-
-interface BulkResult {
-  succeeded: number[];
-  failed: Array<{
-    accountId?: number;
-    userId: number;
-    userName: string;
-    type?: AccountType;
-    error: string;
-  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,14 +107,9 @@ export default function GroupDetailPanel() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
 
-  // Row selection (Ticket 007)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedQuery = useDebounced(searchQuery, 300);
   const [matches, setMatches] = useState<UserMatch[]>([]);
-
-  const [showGrantModal, setShowGrantModal] = useState(false);
 
   // Per-row permission patch state
   const [permissionError, setPermissionError] = useState<string | null>(null);
@@ -199,183 +179,6 @@ export default function GroupDetailPanel() {
       await load();
     } catch (err: any) {
       setBanner({ ok: false, msg: err.message || 'Remove failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-
-  async function runBulkProvision(accountType: AccountType, label: string) {
-    const product = accountType === 'workspace' ? 'League accounts' : 'Claude seats';
-    if (!confirm(`Create ${product} for selected members?`)) return;
-    setBusy(`provision-${accountType}`);
-    setBanner(null);
-    try {
-      const body: any = { accountType };
-      if (selectedIds.size > 0) {
-        body.userIds = Array.from(selectedIds);
-      }
-      const res = await fetch(`/api/admin/groups/${id}/bulk-provision`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const responseBody = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
-      if (!res.ok && res.status !== 207) {
-        const msg = (responseBody as { error?: string }).error ?? `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      const r = responseBody as BulkResult;
-      setBanner({
-        ok: r.failed.length === 0,
-        msg:
-          `${label}: ${r.succeeded.length} succeeded, ${r.failed.length} failed.` +
-          (r.failed.length
-            ? ` ${r.failed.map((f) => `${f.userName}: ${f.error}`).join('; ')}`
-            : ''),
-      });
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'Bulk action failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function runBulkLlmProxyGrant(expiresAtStr: string, tokenLimit: number) {
-    setBusy('llm-proxy-grant');
-    setBanner(null);
-    setShowGrantModal(false);
-    try {
-      const body: any = { expiresAt: expiresAtStr, tokenLimit };
-      if (selectedIds.size > 0) {
-        body.userIds = Array.from(selectedIds);
-      }
-      const res = await fetch(
-        `/api/admin/groups/${id}/llm-proxy/bulk-grant`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-      );
-      const responseBody = (await res.json().catch(() => ({}))) as any;
-      if (!res.ok && res.status !== 207) {
-        const msg = (responseBody as { error?: string }).error ?? `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      const s = responseBody.succeeded?.length ?? 0;
-      const f = responseBody.failed?.length ?? 0;
-      const skip = responseBody.skipped?.length ?? 0;
-      let csv = '';
-      if (responseBody.tokensByUser) {
-        csv = Object.entries(responseBody.tokensByUser)
-          .map(([uid, tok]) => `${uid},${tok}`)
-          .join('\n');
-      }
-      setBanner({
-        ok: f === 0,
-        msg:
-          `LLM proxy grant: ${s} succeeded, ${f} failed, ${skip} skipped.` +
-          (csv ? `\nTokens (user_id,token):\n${csv}` : ''),
-      });
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'LLM proxy grant failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function runBulkLlmProxyRevoke() {
-    if (
-      !confirm(
-        'Revoke LLM proxy access for selected members who have active tokens?',
-      )
-    )
-      return;
-    setBusy('llm-proxy-revoke');
-    setBanner(null);
-    try {
-      const body: any = {};
-      if (selectedIds.size > 0) {
-        body.userIds = Array.from(selectedIds);
-      }
-      const res = await fetch(
-        `/api/admin/groups/${id}/llm-proxy/bulk-revoke`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-      );
-      const responseBody = (await res.json().catch(() => ({}))) as any;
-      if (!res.ok && res.status !== 207) {
-        const msg = (responseBody as { error?: string }).error ?? `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      const s = responseBody.succeeded?.length ?? 0;
-      const f = responseBody.failed?.length ?? 0;
-      const skip = responseBody.skipped?.length ?? 0;
-      setBanner({
-        ok: f === 0,
-        msg: `LLM proxy revoke: ${s} succeeded, ${f} failed, ${skip} skipped.`,
-      });
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'LLM proxy revoke failed' });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function runBulkAll(op: 'suspend' | 'remove', label: string) {
-    const verb = op === 'suspend' ? 'Suspend' : 'Delete';
-    if (
-      !confirm(
-        `${verb} EVERY League and Claude account for selected members?`,
-      )
-    )
-      return;
-    setBusy(`${op}-all`);
-    setBanner(null);
-    try {
-      const endpoint =
-        op === 'suspend'
-          ? `/api/admin/groups/${id}/bulk-suspend-all`
-          : `/api/admin/groups/${id}/bulk-remove-all`;
-      const body: any = {};
-      if (selectedIds.size > 0) {
-        body.userIds = Array.from(selectedIds);
-      }
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const responseBody = (await res.json().catch(() => ({}))) as BulkResult | { error?: string };
-      if (!res.ok && res.status !== 207) {
-        const msg = (responseBody as { error?: string }).error ?? `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      const r = responseBody as BulkResult;
-      setBanner({
-        ok: r.failed.length === 0,
-        msg:
-          `${label}: ${r.succeeded.length} succeeded, ${r.failed.length} failed.` +
-          (r.failed.length
-            ? ' ' +
-              r.failed
-                .map((f) => {
-                  const t = f.type ? ` (${f.type})` : '';
-                  return `${f.userName}${t}: ${f.error}`;
-                })
-                .join('; ')
-            : ''),
-      });
-      await load();
-    } catch (err: any) {
-      setBanner({ ok: false, msg: err.message || 'Bulk action failed' });
     } finally {
       setBusy(null);
     }
@@ -468,74 +271,6 @@ export default function GroupDetailPanel() {
     } finally {
       setBusy(null);
     }
-  }
-
-  // Ticket 007: Row selection helpers
-  function toggleRowSelection(userId: number) {
-    const newSelected = new Set(selectedIds);
-    if (newSelected.has(userId)) {
-      newSelected.delete(userId);
-    } else {
-      newSelected.add(userId);
-    }
-    setSelectedIds(newSelected);
-  }
-
-  function toggleSelectAll() {
-    if (!data) return;
-    if (selectedIds.size === data.users.length) {
-      // All selected, deselect all
-      setSelectedIds(new Set());
-    } else {
-      // Select all
-      setSelectedIds(new Set(data.users.map((u) => u.id)));
-    }
-  }
-
-  function isSelectAllIndeterminate() {
-    if (!data || data.users.length === 0) return false;
-    return selectedIds.size > 0 && selectedIds.size < data.users.length;
-  }
-
-  // Ticket 008: Compute effective target members for button counts
-  function getEffectiveMembers(): Member[] {
-    if (!data) return [];
-    if (selectedIds.size > 0) {
-      return data.users.filter((m) => selectedIds.has(m.id));
-    }
-    return data.users;
-  }
-
-  // Ticket 008: Button count computations
-  function getCreateLeagueCount(): number {
-    return getEffectiveMembers().filter(
-      (m) => !m.externalAccounts.some((a) => a.type === 'workspace' && a.status === 'active'),
-    ).length;
-  }
-
-  function getRemoveLeagueCount(): number {
-    return getEffectiveMembers().filter(
-      (m) => m.externalAccounts.some((a) => a.type === 'workspace' && a.status === 'active'),
-    ).length;
-  }
-
-  function getSuspendCount(): number {
-    // Count non-suspended members
-    return getEffectiveMembers().filter(
-      (m) => !m.externalAccounts.some((a) => a.status === 'suspended'),
-    ).length;
-  }
-
-  function getGrantLlmProxyCount(): number {
-    return getEffectiveMembers().filter(
-      (m) => m.llmProxyToken.status !== 'active',
-    ).length;
-  }
-
-  function getRevokeLlmProxyCount(): number {
-    return getEffectiveMembers().filter(
-      (m) => m.llmProxyToken.status === 'active',
-    ).length;
   }
 
   // -------------------------------------------------------------------------
@@ -656,47 +391,6 @@ export default function GroupDetailPanel() {
         </div>
       )}
 
-      {/* Bulk action buttons (Ticket 008) */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        <Button
-          variant="default"
-          disabled={busy !== null || getCreateLeagueCount() === 0}
-          onClick={() => runBulkProvision('workspace', 'Create League accounts')}
-        >
-          Create League ({getCreateLeagueCount()})
-        </Button>
-        <Button
-          variant="destructive"
-          disabled={busy !== null || getRemoveLeagueCount() === 0}
-          onClick={() => runBulkAll('remove', 'Delete all accounts')}
-        >
-          Remove League ({getRemoveLeagueCount()})
-        </Button>
-        <Button
-          variant="outline"
-          disabled={busy !== null || getSuspendCount() === 0}
-          onClick={() => runBulkAll('suspend', 'Suspend all accounts')}
-        >
-          Suspend ({getSuspendCount()})
-        </Button>
-        <Button
-          variant="default"
-          disabled={busy !== null || getGrantLlmProxyCount() === 0}
-          onClick={() => setShowGrantModal(true)}
-        >
-          Grant LLM Proxy ({getGrantLlmProxyCount()})
-        </Button>
-        {getRevokeLlmProxyCount() > 0 && (
-          <Button
-            variant="outline"
-            disabled={busy !== null}
-            onClick={runBulkLlmProxyRevoke}
-          >
-            Revoke LLM Proxy ({getRevokeLlmProxyCount()})
-          </Button>
-        )}
-      </div>
-
       {/* Add-member search */}
       <div style={{ marginBottom: 16 }}>
         <input
@@ -731,20 +425,6 @@ export default function GroupDetailPanel() {
       <table style={tableStyle}>
         <thead>
           <tr>
-            <th style={{ ...th, width: 40 }}>
-              <input
-                type="checkbox"
-                checked={data.users.length > 0 && selectedIds.size === data.users.length}
-                ref={(el) => {
-                  if (el) {
-                    el.indeterminate = isSelectAllIndeterminate();
-                  }
-                }}
-                onChange={toggleSelectAll}
-                aria-label="Select all members"
-                style={{ cursor: 'pointer' }}
-              />
-            </th>
             <th style={th}>Name</th>
             <th style={th}>Email</th>
             <th style={{ ...th, textAlign: 'center' }}>OAuth</th>
@@ -757,15 +437,6 @@ export default function GroupDetailPanel() {
           {data.users.map((m) => {
             return (
               <tr key={m.id}>
-                <td style={{ ...td, width: 40 }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(m.id)}
-                    onChange={() => toggleRowSelection(m.id)}
-                    aria-label={`Select ${m.displayName || m.email}`}
-                    style={{ cursor: 'pointer' }}
-                  />
-                </td>
                 <td style={td}>
                   <Link
                     to={`/users/${m.id}`}
@@ -836,7 +507,7 @@ export default function GroupDetailPanel() {
           })}
           {data.users.length === 0 && (
             <tr>
-              <td colSpan={7} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
+              <td colSpan={6} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
                 No members yet. Search above to add one.
               </td>
             </tr>
@@ -844,12 +515,6 @@ export default function GroupDetailPanel() {
         </tbody>
       </table>
 
-      <LlmProxyGrantModal
-        isOpen={showGrantModal}
-        onCancel={() => setShowGrantModal(false)}
-        onConfirm={runBulkLlmProxyGrant}
-        isLoading={busy === 'llm-proxy-grant'}
-      />
     </div>
   );
 }
@@ -857,24 +522,6 @@ export default function GroupDetailPanel() {
 // ---------------------------------------------------------------------------
 // Subcomponents + styles
 // ---------------------------------------------------------------------------
-
-function StatusPill({ status }: { status: string }) {
-  const color =
-    status === 'active' ? '#065f46'
-    : status === 'pending' ? '#92400e'
-    : status === 'suspended' ? '#9a3412'
-    : '#475569';
-  const bg =
-    status === 'active' ? '#d1fae5'
-    : status === 'pending' ? '#fef3c7'
-    : status === 'suspended' ? '#fed7aa'
-    : '#e2e8f0';
-  return (
-    <span style={{ fontSize: 11, padding: '2px 8px', background: bg, color, borderRadius: 999, fontWeight: 600 }}>
-      {status}
-    </span>
-  );
-}
 
 const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 14 };
 const th: React.CSSProperties = {

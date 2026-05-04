@@ -1,13 +1,13 @@
 ---
-id: "006"
-title: "GroupDetailPanel drop bulk-action toolbar selection column and GrantLlmProxyModal"
-status: todo
+id: '006'
+title: GroupDetailPanel drop bulk-action toolbar selection column and GrantLlmProxyModal
+status: done
 use-cases:
-  - SUC-007
+- SUC-007
 depends-on:
-  - "005"
-github-issue: ""
-todo: ""
+- '005'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -30,18 +30,18 @@ in the following ticket 007.
 
 ## Acceptance Criteria
 
-- [ ] The five bulk-action buttons (`Create League`, `Remove League`, `Suspend`, `Grant LLM Proxy`, `Revoke LLM Proxy`) no longer render.
-- [ ] `runBulkProvision`, `runBulkAll`, `runBulkLlmProxyRevoke` handler functions are deleted.
-- [ ] Count-getter helpers (`getCreateLeagueCount`, `getRemoveLeagueCount`, `getSuspendCount`, `getGrantLlmProxyCount`, `getRevokeLlmProxyCount`) are deleted.
-- [ ] `LlmProxyGrantModal` (or `LlmProxyGrantModal`/`GrantLlmProxyModal`) import and render are removed.
-- [ ] `showGrantModal` state variable is deleted.
-- [ ] `selectedIds` state variable (and any `setSelectedIds`) is deleted.
-- [ ] The per-row select `<td>` checkbox column is removed from the member table.
-- [ ] The select-all `<th>` column header is removed.
-- [ ] Any `BulkResult` type that is now unused is deleted.
-- [ ] No references to deleted symbols remain (TypeScript compiles clean).
-- [ ] Tests asserting on the deleted bulk buttons are removed or updated.
-- [ ] `npm run test:client -- GroupDetailPanel` passes.
+- [x] The five bulk-action buttons (`Create League`, `Remove League`, `Suspend`, `Grant LLM Proxy`, `Revoke LLM Proxy`) no longer render.
+- [x] `runBulkProvision`, `runBulkAll`, `runBulkLlmProxyRevoke` handler functions are deleted.
+- [x] Count-getter helpers (`getCreateLeagueCount`, `getRemoveLeagueCount`, `getSuspendCount`, `getGrantLlmProxyCount`, `getRevokeLlmProxyCount`) are deleted.
+- [x] `LlmProxyGrantModal` (or `LlmProxyGrantModal`/`GrantLlmProxyModal`) import and render are removed.
+- [x] `showGrantModal` state variable is deleted.
+- [x] `selectedIds` state variable (and any `setSelectedIds`) is deleted.
+- [x] The per-row select `<td>` checkbox column is removed from the member table.
+- [x] The select-all `<th>` column header is removed.
+- [x] Any `BulkResult` type that is now unused is deleted.
+- [x] No references to deleted symbols remain (TypeScript compiles clean).
+- [x] Tests asserting on the deleted bulk buttons are removed or updated.
+- [x] `npm run test:client -- GroupDetailPanel` passes.
 
 ## Implementation Plan
 

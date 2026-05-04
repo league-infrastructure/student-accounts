@@ -225,6 +225,17 @@ export interface CreateUserParams {
    * brand-new League inbox that the student can't yet log into.
    */
   recoveryEmail?: string | null;
+  /**
+   * Initial password for the new account. When provided, overrides the
+   * GOOGLE_WORKSPACE_TEMP_PASSWORD env var fallback inside the real client.
+   * Sprint 028 T004: callers now supply the password explicitly.
+   */
+  password?: string;
+  /**
+   * When true, the student must change their password on first sign-in.
+   * Sprint 028 T004: callers now supply this explicitly.
+   */
+  changePasswordAtNextLogin?: boolean;
 }
 
 export interface CreatedUser {
@@ -712,17 +723,19 @@ export class GoogleWorkspaceAdminClientImpl implements GoogleWorkspaceAdminClien
 
     try {
       const adminSdk = google.admin({ version: 'directory_v1', auth });
-      // Shared one-shot temp password. The student sees it on their
-      // Account page; changePasswordAtNextLogin forces a rotation on
-      // first login so the shared value never becomes a real secret.
+      // Use caller-supplied password if provided; otherwise fall back to env var.
+      // Sprint 028 T004: callers now supply the password explicitly so that a
+      // missing env var is caught early (UnprocessableError) before hitting the
+      // Google API.
       const tempPassword =
-        process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD ?? 'ChangeMeNow!';
+        params.password ?? process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD ?? 'ChangeMeNow!';
+      const changePasswordAtNextLogin = params.changePasswordAtNextLogin ?? true;
       const requestBody: Record<string, unknown> = {
         primaryEmail,
         orgUnitPath,
         name: { givenName, familyName },
         password: tempPassword,
-        changePasswordAtNextLogin: true,
+        changePasswordAtNextLogin: changePasswordAtNextLogin,
       };
       if (recoveryEmail && recoveryEmail.trim() !== '') {
         requestBody.recoveryEmail = recoveryEmail.trim();

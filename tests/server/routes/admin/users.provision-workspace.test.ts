@@ -23,8 +23,9 @@ import { WorkspaceProvisioningService } from '../../../../server/src/services/wo
 import { AuditService } from '../../../../server/src/services/audit.service.js';
 import { ExternalAccountRepository } from '../../../../server/src/services/repositories/external-account.repository.js';
 import { UserRepository } from '../../../../server/src/services/repositories/user.repository.js';
-import { CohortRepository } from '../../../../server/src/services/repositories/cohort.repository.js';
 import { WorkspaceApiError } from '../../../../server/src/services/google-workspace/google-workspace-admin.client.js';
+import type { MailService } from '../../../../server/src/services/mail.service.js';
+import { vi } from 'vitest';
 import { makeUser, makeCohort, makeExternalAccount } from '../../helpers/factories.js';
 
 process.env.NODE_ENV = 'test';
@@ -53,6 +54,13 @@ async function loginAs(
   return agent;
 }
 
+function makeMailMock(): MailService {
+  return {
+    isConfigured: () => true,
+    send: vi.fn().mockResolvedValue({ messageId: 'mock-msg-id' }),
+  } as unknown as MailService;
+}
+
 /**
  * Inject a WorkspaceProvisioningService backed by the given FakeGoogleWorkspaceAdminClient
  * into the app's singleton registry. Returns a cleanup function that restores the original.
@@ -65,7 +73,7 @@ function injectFakeWorkspaceProvisioning(fakeGoogle: FakeGoogleWorkspaceAdminCli
     ExternalAccountRepository,
     new AuditService(),
     UserRepository,
-    CohortRepository,
+    makeMailMock(),
   );
 
   (registry as any).workspaceProvisioning = fakeService;
@@ -82,11 +90,14 @@ const STUDENT_DOMAIN = 'students.jointheleague.org';
 // ---------------------------------------------------------------------------
 
 let savedDomain: string | undefined;
+let savedTempPassword: string | undefined;
 
 beforeEach(async () => {
   await cleanDb();
   savedDomain = process.env.GOOGLE_STUDENT_DOMAIN;
+  savedTempPassword = process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD;
   process.env.GOOGLE_STUDENT_DOMAIN = STUDENT_DOMAIN;
+  process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD = 'route-test-temp-password';
 });
 
 afterEach(async () => {
@@ -95,6 +106,12 @@ afterEach(async () => {
   } else {
     delete process.env.GOOGLE_STUDENT_DOMAIN;
   }
+  if (savedTempPassword !== undefined) {
+    process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD = savedTempPassword;
+  } else {
+    delete process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD;
+  }
+  vi.restoreAllMocks();
 });
 
 afterAll(async () => {
@@ -184,7 +201,7 @@ describe('POST /api/admin/users/:id/provision-workspace — 201 success', () => 
       await agent.post(`/api/admin/users/${student.id}/provision-workspace`);
 
       expect(fakeGoogle.calls.createUser).toHaveLength(1);
-      expect(fakeGoogle.calls.createUser[0].orgUnitPath).toBe('/Students/Fall2025');
+      expect(fakeGoogle.calls.createUser[0].orgUnitPath).toBe('/Students');
       expect(fakeGoogle.calls.createUser[0].primaryEmail).toContain(STUDENT_DOMAIN);
     } finally {
       restore();
@@ -242,11 +259,11 @@ describe('POST /api/admin/users/:id/provision-workspace — 422 not a student', 
 });
 
 // ===========================================================================
-// 422 — student has no cohort assigned
+// 201 — student without cohort: Sprint 028 T004 removed cohort requirement
 // ===========================================================================
 
-describe('POST /api/admin/users/:id/provision-workspace — 422 no cohort', () => {
-  it('returns 422 when student has no cohort_id', async () => {
+describe('POST /api/admin/users/:id/provision-workspace — 201 student with no cohort', () => {
+  it('returns 201 even when student has no cohort_id (cohort check removed Sprint 028)', async () => {
     const fakeGoogle = new FakeGoogleWorkspaceAdminClient();
     const restore = injectFakeWorkspaceProvisioning(fakeGoogle);
 
@@ -256,44 +273,16 @@ describe('POST /api/admin/users/:id/provision-workspace — 422 no cohort', () =
         primary_email: 'student-nc@example.com',
         role: 'student',
         cohort_id: null,
+        display_name: 'No Cohort Student',
       });
 
       const agent = await loginAs('admin-prov-nc@example.com', 'admin');
       const res = await agent.post(`/api/admin/users/${student.id}/provision-workspace`);
 
-      expect(res.status).toBe(422);
-      expect(res.body.error).toBeDefined();
-      expect(fakeGoogle.calls.createUser).toHaveLength(0);
-    } finally {
-      restore();
-    }
-  });
-});
-
-// ===========================================================================
-// 422 — cohort has no google_ou_path
-// ===========================================================================
-
-describe('POST /api/admin/users/:id/provision-workspace — 422 cohort missing OU path', () => {
-  it('returns 422 when the student cohort has no google_ou_path', async () => {
-    const fakeGoogle = new FakeGoogleWorkspaceAdminClient();
-    const restore = injectFakeWorkspaceProvisioning(fakeGoogle);
-
-    try {
-      await makeUser({ primary_email: 'admin-prov-nou@example.com', role: 'admin' });
-      const cohort = await makeCohort({ google_ou_path: null });
-      const student = await makeUser({
-        primary_email: 'student-nou@example.com',
-        role: 'student',
-        cohort_id: cohort.id,
-      });
-
-      const agent = await loginAs('admin-prov-nou@example.com', 'admin');
-      const res = await agent.post(`/api/admin/users/${student.id}/provision-workspace`);
-
-      expect(res.status).toBe(422);
-      expect(res.body.error).toBeDefined();
-      expect(fakeGoogle.calls.createUser).toHaveLength(0);
+      // No longer 422 — cohort is not required
+      expect(res.status).toBe(201);
+      expect(fakeGoogle.calls.createUser).toHaveLength(1);
+      expect(fakeGoogle.calls.createUser[0].orgUnitPath).toBe('/Students');
     } finally {
       restore();
     }

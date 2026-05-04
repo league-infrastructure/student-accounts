@@ -1,18 +1,25 @@
 /**
  * Integration tests for WorkspaceProvisioningService (Sprint 004, T004).
+ * Updated Sprint 028 T004:
+ *  - CohortRepository 5th arg replaced with MailService mock.
+ *  - Cohort-derived OU path precondition tests removed (no longer applies).
+ *  - New assertions: orgUnitPath '/Students', password env, changePasswordAtNextLogin.
+ *  - New tests: mailService.send called, fail-soft on email error,
+ *    GOOGLE_WORKSPACE_TEMP_PASSWORD missing → UnprocessableError.
  *
  * Covers:
  *  - Happy path: ExternalAccount created, audit event recorded, Google client
- *    called with correct arguments, Pike13 stub invoked.
+ *    called with correct arguments (orgUnitPath '/Students', password, changePasswordAtNextLogin),
+ *    Pike13 stub invoked, welcome email sent.
  *  - Non-student role → UnprocessableError, no API call.
- *  - No cohort assigned → UnprocessableError, no API call.
- *  - Cohort without google_ou_path → UnprocessableError, no API call.
  *  - Existing active workspace ExternalAccount → ConflictError.
  *  - Existing pending workspace ExternalAccount → ConflictError.
  *  - Workspace client throws WorkspaceApiError → propagates, no ExternalAccount.
  *  - Workspace client throws WorkspaceDomainGuardError → propagates.
  *  - Workspace client throws WorkspaceWriteDisabledError → propagates.
  *  - Missing GOOGLE_STUDENT_DOMAIN env var → UnprocessableError.
+ *  - Missing GOOGLE_WORKSPACE_TEMP_PASSWORD env var → UnprocessableError.
+ *  - mailService.send throws → provision() still resolves (fail-soft).
  */
 
 import { prisma } from '../../../server/src/services/prisma.js';
@@ -20,7 +27,6 @@ import { AuditService } from '../../../server/src/services/audit.service.js';
 import { WorkspaceProvisioningService } from '../../../server/src/services/workspace-provisioning.service.js';
 import { ExternalAccountRepository } from '../../../server/src/services/repositories/external-account.repository.js';
 import { UserRepository } from '../../../server/src/services/repositories/user.repository.js';
-import { CohortRepository } from '../../../server/src/services/repositories/cohort.repository.js';
 import {
   WorkspaceApiError,
   WorkspaceDomainGuardError,
@@ -32,6 +38,7 @@ import { makeCohort, makeUser, makeExternalAccount } from '../helpers/factories.
 import * as pike13WritebackStub from '../../../server/src/services/pike13/pike13-writeback.service.js';
 import { vi } from 'vitest';
 import type { Prisma } from '../../../server/src/generated/prisma/client.js';
+import type { MailService } from '../../../server/src/services/mail.service.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,14 +54,25 @@ async function clearDb() {
 }
 
 const STUDENT_DOMAIN = 'students.jointheleague.org';
+const TEMP_PASSWORD = 'test-temp-password';
 
-function makeService(fake: FakeGoogleWorkspaceAdminClient): WorkspaceProvisioningService {
+function makeMailMock(): MailService {
+  return {
+    isConfigured: () => true,
+    send: vi.fn().mockResolvedValue({ messageId: 'mock-msg-id' }),
+  } as unknown as MailService;
+}
+
+function makeService(
+  fake: FakeGoogleWorkspaceAdminClient,
+  mailService?: MailService,
+): WorkspaceProvisioningService {
   return new WorkspaceProvisioningService(
     fake,
     ExternalAccountRepository,
     new AuditService(),
     UserRepository,
-    CohortRepository,
+    mailService ?? makeMailMock(),
   );
 }
 
@@ -75,12 +93,15 @@ async function runInTransaction<T>(
 
 let fakeClient: FakeGoogleWorkspaceAdminClient;
 let originalDomain: string | undefined;
+let originalTempPassword: string | undefined;
 
 beforeEach(async () => {
   await clearDb();
   fakeClient = new FakeGoogleWorkspaceAdminClient();
   originalDomain = process.env.GOOGLE_STUDENT_DOMAIN;
+  originalTempPassword = process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD;
   process.env.GOOGLE_STUDENT_DOMAIN = STUDENT_DOMAIN;
+  process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD = TEMP_PASSWORD;
 });
 
 afterEach(async () => {
@@ -88,6 +109,11 @@ afterEach(async () => {
     process.env.GOOGLE_STUDENT_DOMAIN = originalDomain;
   } else {
     delete process.env.GOOGLE_STUDENT_DOMAIN;
+  }
+  if (originalTempPassword !== undefined) {
+    process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD = originalTempPassword;
+  } else {
+    delete process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD;
   }
   vi.restoreAllMocks();
 });
@@ -113,7 +139,7 @@ describe('WorkspaceProvisioningService.provision — happy path', () => {
     expect(account.status_changed_at).not.toBeNull();
   });
 
-  it('calls googleClient.createUser with correct arguments', async () => {
+  it('calls googleClient.createUser with orgUnitPath /Students, password, and changePasswordAtNextLogin:true', async () => {
     const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
     const student = await makeUser({
       role: 'student',
@@ -128,10 +154,12 @@ describe('WorkspaceProvisioningService.provision — happy path', () => {
     expect(fakeClient.calls.createUser).toHaveLength(1);
     const callArgs = fakeClient.calls.createUser[0];
     expect(callArgs.primaryEmail).toBe(`alice.smith@${STUDENT_DOMAIN}`);
-    expect(callArgs.orgUnitPath).toBe('/Students/Spring2025');
+    expect(callArgs.orgUnitPath).toBe('/Students');
     expect(callArgs.givenName).toBe('Alice');
     expect(callArgs.familyName).toBe('Smith');
     expect(callArgs.sendNotificationEmail).toBe(true);
+    expect(callArgs.password).toBe(TEMP_PASSWORD);
+    expect(callArgs.changePasswordAtNextLogin).toBe(true);
   });
 
   it('records a provision_workspace audit event with correct details', async () => {
@@ -196,6 +224,51 @@ describe('WorkspaceProvisioningService.provision — happy path', () => {
 
     expect(account.external_id).toBe(`student@${STUDENT_DOMAIN}`);
   });
+
+  it('calls mailService.send with the student email address and temp password in the body', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
+    const student = await makeUser({
+      role: 'student',
+      cohort_id: cohort.id,
+      display_name: 'Alice Smith',
+      primary_email: 'alice@personal.example.com',
+    });
+    const admin = await makeUser({ role: 'admin' });
+
+    const mailMock = makeMailMock();
+    const svc = makeService(fakeClient, mailMock);
+    await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
+
+    expect(mailMock.send).toHaveBeenCalledOnce();
+    const sendArgs = (mailMock.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sendArgs.to).toBe('alice@personal.example.com');
+    expect(sendArgs.text).toContain(`alice.smith@${STUDENT_DOMAIN}`);
+    expect(sendArgs.text).toContain(TEMP_PASSWORD);
+  });
+
+  it('uses notification_email as the mail to address when set', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
+    // makeUser may not support notification_email directly — create and update
+    const student = await makeUser({
+      role: 'student',
+      cohort_id: cohort.id,
+      display_name: 'Bob Jones',
+      primary_email: 'bob@personal.example.com',
+    });
+    // Set notification_email directly via prisma
+    await (prisma as any).user.update({
+      where: { id: student.id },
+      data: { notification_email: 'bob.notify@other.example.com' },
+    });
+    const admin = await makeUser({ role: 'admin' });
+
+    const mailMock = makeMailMock();
+    const svc = makeService(fakeClient, mailMock);
+    await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
+
+    const sendArgs = (mailMock.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sendArgs.to).toBe('bob.notify@other.example.com');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -221,35 +294,6 @@ describe('WorkspaceProvisioningService.provision — non-student role', () => {
 
     await expect(
       runInTransaction((tx) => svc.provision(user.id, user.id, tx)),
-    ).rejects.toThrow(UnprocessableError);
-
-    expect(fakeClient.calls.createUser).toHaveLength(0);
-  });
-});
-
-describe('WorkspaceProvisioningService.provision — no cohort assigned', () => {
-  it('throws UnprocessableError when user has no cohort_id', async () => {
-    const student = await makeUser({ role: 'student', cohort_id: null });
-    const admin = await makeUser({ role: 'admin' });
-    const svc = makeService(fakeClient);
-
-    await expect(
-      runInTransaction((tx) => svc.provision(student.id, admin.id, tx)),
-    ).rejects.toThrow(UnprocessableError);
-
-    expect(fakeClient.calls.createUser).toHaveLength(0);
-  });
-});
-
-describe('WorkspaceProvisioningService.provision — cohort without google_ou_path', () => {
-  it('throws UnprocessableError when cohort has null google_ou_path', async () => {
-    const cohort = await makeCohort({ google_ou_path: null });
-    const student = await makeUser({ role: 'student', cohort_id: cohort.id });
-    const admin = await makeUser({ role: 'admin' });
-    const svc = makeService(fakeClient);
-
-    await expect(
-      runInTransaction((tx) => svc.provision(student.id, admin.id, tx)),
     ).rejects.toThrow(UnprocessableError);
 
     expect(fakeClient.calls.createUser).toHaveLength(0);
@@ -410,7 +454,7 @@ describe('WorkspaceProvisioningService.provision — workspace client throws', (
 });
 
 // ---------------------------------------------------------------------------
-// Missing environment variable
+// Missing environment variables
 // ---------------------------------------------------------------------------
 
 describe('WorkspaceProvisioningService.provision — GOOGLE_STUDENT_DOMAIN missing', () => {
@@ -428,5 +472,58 @@ describe('WorkspaceProvisioningService.provision — GOOGLE_STUDENT_DOMAIN missi
     ).rejects.toThrow(UnprocessableError);
 
     expect(fakeClient.calls.createUser).toHaveLength(0);
+  });
+});
+
+describe('WorkspaceProvisioningService.provision — GOOGLE_WORKSPACE_TEMP_PASSWORD missing', () => {
+  it('throws UnprocessableError when GOOGLE_WORKSPACE_TEMP_PASSWORD is not set', async () => {
+    delete process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD;
+
+    const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
+    const student = await makeUser({ role: 'student', cohort_id: cohort.id });
+    const admin = await makeUser({ role: 'admin' });
+
+    const svc = makeService(fakeClient);
+
+    await expect(
+      runInTransaction((tx) => svc.provision(student.id, admin.id, tx)),
+    ).rejects.toThrow(UnprocessableError);
+
+    expect(fakeClient.calls.createUser).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Welcome email fail-soft
+// ---------------------------------------------------------------------------
+
+describe('WorkspaceProvisioningService.provision — welcome email fail-soft', () => {
+  it('resolves successfully even when mailService.send throws', async () => {
+    const cohort = await makeCohort({ google_ou_path: '/Students/Spring2025' });
+    const student = await makeUser({
+      role: 'student',
+      cohort_id: cohort.id,
+      display_name: 'Alice Smith',
+      primary_email: 'alice@personal.example.com',
+    });
+    const admin = await makeUser({ role: 'admin' });
+
+    const failingMailMock: MailService = {
+      isConfigured: () => true,
+      send: vi.fn().mockRejectedValue(new Error('SMTP connection refused')),
+    } as unknown as MailService;
+
+    const svc = makeService(fakeClient, failingMailMock);
+
+    // Should NOT throw even though mail fails
+    const account = await runInTransaction((tx) => svc.provision(student.id, admin.id, tx));
+
+    expect(account).toBeDefined();
+    expect(account.status).toBe('active');
+    // ExternalAccount was still created
+    const accounts = await (prisma as any).externalAccount.findMany({
+      where: { user_id: student.id },
+    });
+    expect(accounts).toHaveLength(1);
   });
 });
