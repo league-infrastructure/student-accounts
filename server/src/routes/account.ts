@@ -425,4 +425,97 @@ accountRouter.patch(
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /api/account/test-email — send a one-off SMTP test to an owned address
+// ---------------------------------------------------------------------------
+//
+// Sprint 028 T002.
+//
+// Body: { to?: string }
+//   - If `to` is omitted, the user's notification_email (or primary_email) is used.
+//   - If `to` is provided, it must be one of the user's owned addresses
+//     (primary, any Login provider_email, or any workspace ExternalAccount external_id).
+//
+// Returns:
+//   400 { error } when SMTP is not configured
+//   400 { error } when `to` does not belong to the user
+//   200 { ok: true, messageId, to } on success
+//
+// An audit event `account_test_email_sent` is written on success.
+accountRouter.post(
+  '/account/test-email',
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId: number = (req.session as any).userId;
+      const { mail, users, logins, externalAccounts, audit } = req.services;
+      const rawTo = (req.body as { to?: unknown } | undefined)?.to;
+
+      // Fetch the user record (needed for display name, notification email, primary email).
+      const user = await users.findById(userId);
+
+      // Resolve the target address.
+      let resolved: string;
+      if (rawTo === undefined || rawTo === null || rawTo === '') {
+        // No explicit `to` — fall back to notification_email then primary_email.
+        resolved = (user as any).notification_email ?? user.primary_email;
+      } else if (typeof rawTo !== 'string') {
+        return res.status(400).json({ error: '`to` must be a string email address or omitted' });
+      } else {
+        // Caller-supplied address: validate ownership.
+        const [userLogins, userAccounts] = await Promise.all([
+          logins.findAllByUser(userId),
+          externalAccounts.findAllByUser(userId),
+        ]);
+        const owned = new Set<string>();
+        const add = (e?: string | null) => {
+          if (e) owned.add(e.toLowerCase());
+        };
+        add(user.primary_email);
+        for (const l of userLogins) add(l.provider_email);
+        for (const a of userAccounts) {
+          if (a.type === 'workspace') add(a.external_id);
+        }
+        if (!owned.has(rawTo.toLowerCase())) {
+          return res.status(400).json({ error: 'Address does not belong to this account' });
+        }
+        resolved = rawTo;
+      }
+
+      // Gate on SMTP configuration.
+      if (!mail.isConfigured()) {
+        return res
+          .status(400)
+          .json({ error: 'SMTP not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD in .env.' });
+      }
+
+      // Build message body.
+      const displayName = (user as any).display_name ?? 'there';
+      const timestamp = new Date().toISOString();
+      const text =
+        `Hi ${displayName},\n\n` +
+        `This is a test email sent from the My Account page at ${timestamp}.\n\n` +
+        `If you received this, your SMTP configuration is working correctly.`;
+
+      // Send the email.
+      const { messageId } = await mail.send({
+        to: resolved,
+        subject: 'League Accounts - test email',
+        text,
+      });
+
+      // Write audit event.
+      await audit.record(prisma, {
+        action: 'account_test_email_sent',
+        actor_user_id: userId,
+        details: { to: resolved },
+      });
+
+      res.json({ ok: true, messageId, to: resolved });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 accountRouter.use('/account', accountEventsRouter);

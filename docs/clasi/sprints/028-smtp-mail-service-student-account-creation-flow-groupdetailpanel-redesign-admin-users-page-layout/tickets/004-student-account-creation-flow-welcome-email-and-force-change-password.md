@@ -1,12 +1,12 @@
 ---
 id: '004'
 title: Student account creation flow welcome email and force-change-password
-status: todo
+status: done
 use-cases:
-  - SUC-003
-  - SUC-004
+- SUC-003
+- SUC-004
 depends-on:
-  - "001"
+- '001'
 github-issue: ''
 todo: verify-and-finish-student-account-creation-flow.md
 completes_todo: true
@@ -30,17 +30,17 @@ The current service validates cohort assignment and derives `orgUnitPath` from
 
 ## Acceptance Criteria
 
-- [ ] `WorkspaceProvisioningService` constructor signature is updated: `cohortRepo` parameter removed; `mailService: MailService` parameter added (same position, 5th arg).
-- [ ] `ServiceRegistry` updates the `workspaceProvisioning` instantiation: remove `CohortRepository` arg, add `this.mail`.
-- [ ] `provision()` no longer validates `user.cohort_id` or fetches from `CohortRepository`.
-- [ ] `createUser` call includes `orgUnitPath: '/Students'` (hard-coded string).
-- [ ] `createUser` call includes `password: process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD`. Throws `UnprocessableError` if env var is absent.
-- [ ] `createUser` call includes `changePasswordAtNextLogin: true`.
-- [ ] After `createUser` succeeds, `mailService.send()` is called with `to` = the student's notification email (fallback: `primary_email`). Body includes new League email address and temp password.
-- [ ] If `mailService.send()` throws, the error is logged but `provision()` does not propagate it (fail-soft).
-- [ ] `User.cohort_id` is not modified during provisioning.
-- [ ] Integration test passes (see Testing Plan).
-- [ ] Existing tests that provided `CohortRepository` as the 5th constructor arg are updated to provide a `MailService` mock instead.
+- [x] `WorkspaceProvisioningService` constructor signature is updated: `cohortRepo` parameter removed; `mailService: MailService` parameter added (same position, 5th arg).
+- [x] `ServiceRegistry` updates the `workspaceProvisioning` instantiation: remove `CohortRepository` arg, add `this.mail`.
+- [x] `provision()` no longer validates `user.cohort_id` or fetches from `CohortRepository`.
+- [x] `createUser` call includes `orgUnitPath: '/Students'` (hard-coded string).
+- [x] `createUser` call includes `password: process.env.GOOGLE_WORKSPACE_TEMP_PASSWORD`. Throws `UnprocessableError` if env var is absent.
+- [x] `createUser` call includes `changePasswordAtNextLogin: true`.
+- [x] After `createUser` succeeds, `mailService.send()` is called with `to` = the student's notification email (fallback: `primary_email`). Body includes new League email address and temp password.
+- [x] If `mailService.send()` throws, the error is logged but `provision()` does not propagate it (fail-soft).
+- [x] `User.cohort_id` is not modified during provisioning.
+- [x] Integration test passes (see Testing Plan).
+- [x] Existing tests that provided `CohortRepository` as the 5th constructor arg are updated to provide a `MailService` mock instead.
 
 ## Implementation Plan
 

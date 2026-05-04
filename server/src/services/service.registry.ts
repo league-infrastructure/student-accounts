@@ -33,7 +33,6 @@ import { OAuthConsentService } from './oauth/oauth-consent.service';
 import { MailService } from './mail.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
-import { CohortRepository } from './repositories/cohort.repository';
 import {
   GoogleWorkspaceAdminClientImpl,
   type GoogleWorkspaceAdminClient,
@@ -137,7 +136,7 @@ export class ServiceRegistry {
       ExternalAccountRepository,
       this.audit,
       UserRepository,
-      CohortRepository,
+      this.mail,
     );
 
     // Build an Anthropic Admin client if not provided. Prefers

@@ -1,13 +1,13 @@
 ---
-id: "002"
-title: "POST /api/account/test-email endpoint"
-status: todo
+id: '002'
+title: POST /api/account/test-email endpoint
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on:
-  - "001"
-github-issue: ""
-todo: ""
+- '001'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -24,14 +24,14 @@ gates on `MailService.isConfigured()`, calls `services.mail.send()`, and writes 
 
 ## Acceptance Criteria
 
-- [ ] `POST /api/account/test-email` is registered in the account routes and protected by `requireAuth`.
-- [ ] If `to` is omitted: resolves the user's notification email from their profile (fallback: `primary_email`).
-- [ ] If `to` is provided: validates that the address belongs to the user (primary, any login email, or any workspace `external_id`) — returns 400 if not.
-- [ ] Returns 400 with a descriptive message when `services.mail.isConfigured()` is `false`.
-- [ ] On success: returns 200 `{ ok: true, messageId: string, to: string }`.
-- [ ] Audit event `account_test_email_sent` is written on success with `details: { to }`.
-- [ ] Subject: `"League Accounts - test email"`. Body (text) includes the user's display name, the current timestamp, and an explanation that the email was triggered from the My Account page.
-- [ ] Integration tests pass (see Testing Plan).
+- [x] `POST /api/account/test-email` is registered in the account routes and protected by `requireAuth`.
+- [x] If `to` is omitted: resolves the user's notification email from their profile (fallback: `primary_email`).
+- [x] If `to` is provided: validates that the address belongs to the user (primary, any login email, or any workspace `external_id`) — returns 400 if not.
+- [x] Returns 400 with a descriptive message when `services.mail.isConfigured()` is `false`.
+- [x] On success: returns 200 `{ ok: true, messageId: string, to: string }`.
+- [x] Audit event `account_test_email_sent` is written on success with `details: { to }`.
+- [x] Subject: `"League Accounts - test email"`. Body (text) includes the user's display name, the current timestamp, and an explanation that the email was triggered from the My Account page.
+- [x] Integration tests pass (see Testing Plan).
 
 ## Implementation Plan
 

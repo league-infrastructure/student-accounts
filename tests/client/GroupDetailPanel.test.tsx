@@ -1,18 +1,20 @@
 /**
- * Tests for GroupDetailPanel (Sprint 012 T005).
+ * Tests for GroupDetailPanel (Sprint 012 T005, updated Sprint 028 T006).
  *
  * Focused on the narrow behaviours the sprint brief specifies:
  *   - Member table renders.
  *   - Search-and-add posts a membership and re-fetches.
  *   - Remove posts a DELETE and re-fetches.
- *   - Each of the four bulk buttons hits the correct endpoint.
- *   - Suspend-all failure banner renders "name (type): reason".
+ *   - Per-row permission checkboxes render and send the right PATCH.
  *
  * Note (Sprint 015 T007): GroupDetailPanel now renders a PassphraseCard which
  * makes an additional GET /api/admin/groups/:id/passphrase fetch. Tests that
  * use url-agnostic sequential mocks (mockResolvedValueOnce) need the passphrase
  * fetch to be handled. The helpers below route by URL so each endpoint gets the
  * correct response regardless of call order.
+ *
+ * Note (Sprint 028 T006): Bulk-action toolbar and row-selection column have
+ * been removed from the component. Tests for those features are deleted here.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -175,87 +177,26 @@ describe('GroupDetailPanel', () => {
     );
   });
 
-  it('row checkbox selection works', async () => {
+  it('bulk-action buttons are not rendered', async () => {
     vi.stubGlobal('fetch', buildFetchMock());
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
 
+    expect(screen.queryByRole('button', { name: /Create League/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Remove League/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Suspend/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Grant LLM Proxy/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Revoke LLM Proxy/i })).toBeNull();
+  });
+
+  it('select-all and per-row select checkboxes are not rendered', async () => {
+    vi.stubGlobal('fetch', buildFetchMock());
     renderPanel();
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
 
-    // Verify checkboxes exist
-    const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes.length).toBeGreaterThan(0); // select-all + rows
-  });
-
-  it('Suspend button renders with count and hits bulk-suspend-all', async () => {
-    window.confirm = vi.fn().mockReturnValue(true);
-    const suspendBody = {
-      succeeded: [101],
-      failed: [
-        { accountId: 202, userId: 12, userName: 'Bob', type: 'claude', error: 'boom' },
-      ],
-    };
-    const fetchMock = buildFetchMock({
-      '/bulk-suspend-all': (_url: string, opts?: RequestInit) =>
-        opts?.method === 'POST'
-          ? { ok: false, status: 207, json: () => Promise.resolve(suspendBody) }
-          : { ok: true, json: () => Promise.resolve({}) },
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: /Suspend/ }));
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/Bob \(claude\): boom/),
-    );
-  });
-
-  it('Create League button hits bulk-provision workspace', async () => {
-    window.confirm = vi.fn().mockReturnValue(true);
-    const fetchMock = buildFetchMock({
-      '/bulk-provision': (_url: string, opts?: RequestInit) =>
-        opts?.method === 'POST'
-          ? { ok: true, status: 200, json: () => Promise.resolve({ succeeded: [1], failed: [] }) }
-          : { ok: true, json: () => Promise.resolve({}) },
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Create League/ }));
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some((c) => {
-          if (typeof c[0] !== 'string' || !c[0].endsWith('/bulk-provision')) return false;
-          if (c[1]?.method !== 'POST') return false;
-          const body = JSON.parse(c[1].body);
-          return body.accountType === 'workspace';
-        }),
-      ).toBe(true),
-    );
-  });
-
-  it('Remove League button hits bulk-remove-all', async () => {
-    window.confirm = vi.fn().mockReturnValue(true);
-    const fetchMock = buildFetchMock({
-      '/bulk-remove-all': (_url: string, opts?: RequestInit) =>
-        opts?.method === 'POST'
-          ? { ok: true, status: 200, json: () => Promise.resolve({ succeeded: [1], failed: [] }) }
-          : { ok: true, json: () => Promise.resolve({}) },
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Remove League/ }));
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(
-          (c) => typeof c[0] === 'string' && c[0].endsWith('/bulk-remove-all'),
-        ),
-      ).toBe(true),
-    );
+    expect(screen.queryByRole('checkbox', { name: /Select all members/i })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /Select Alice/i })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /Select Bob/i })).toBeNull();
   });
 
   it('permission checkboxes render with current flag values from listMembers', async () => {
