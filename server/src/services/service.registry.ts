@@ -30,6 +30,7 @@ import { OAuthTokenService } from './oauth/oauth-token.service';
 import { OAuthCodeService } from './oauth/oauth-code.service';
 import { OAuthRefreshService } from './oauth/oauth-refresh.service';
 import { OAuthConsentService } from './oauth/oauth-consent.service';
+import { MailService } from './mail.service';
 import { ExternalAccountRepository } from './repositories/external-account.repository';
 import { UserRepository } from './repositories/user.repository';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -100,6 +101,8 @@ export class ServiceRegistry {
   readonly oauthRefreshTokens: OAuthRefreshService;
   /** OAuth consent recording and lookup (Sprint 019). */
   readonly oauthConsents: OAuthConsentService;
+  /** Outbound SMTP mail wrapper (Sprint 028). */
+  readonly mail: MailService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -107,6 +110,8 @@ export class ServiceRegistry {
     anthropicAdminClient?: AnthropicAdminClient,
   ) {
     this.source = source;
+    // MailService — Sprint 028 T001. Reads env directly; never throws.
+    this.mail = new MailService();
     this.audit = new AuditService();
     this.users = new UserService(defaultPrisma, this.audit);
     this.logins = new LoginService(defaultPrisma, this.audit);
