@@ -12,7 +12,7 @@
 
 import request from 'supertest';
 import { prisma } from '../../../../server/src/services/prisma.js';
-import { makeUser } from '../../helpers/factories.js';
+import { makeUser, makeGroup, makeMembership } from '../../helpers/factories.js';
 
 process.env.NODE_ENV = 'test';
 
@@ -118,7 +118,8 @@ describe('DELETE /api/admin/users/:id — success (200)', () => {
 
     const res = await agent.delete(`/api/admin/users/${target.id}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ success: true });
+    expect(res.body).toMatchObject({ success: true });
+    expect(typeof res.body.removedMemberships).toBe('number');
 
     // User must be soft-deleted (is_active=false) — not hard-deleted
     const dbUser = await (prisma as any).user.findUnique({ where: { id: target.id } });
@@ -131,6 +132,28 @@ describe('DELETE /api/admin/users/:id — success (200)', () => {
     });
     expect(audit).not.toBeNull();
     expect(audit.actor_user_id).toBe(admin.id);
+  });
+
+  it('removes the user from every Group they belonged to', async () => {
+    await makeUser({ primary_email: 'admin-mem@example.com', role: 'admin' });
+    const target = await makeUser({ primary_email: 'target-mem@example.com', role: 'student' });
+    const groupA = await makeGroup({ name: 'Mem Group A' });
+    const groupB = await makeGroup({ name: 'Mem Group B' });
+    await makeMembership(groupA, target);
+    await makeMembership(groupB, target);
+
+    // Sanity: 2 memberships exist before delete
+    const before = await (prisma as any).userGroup.count({ where: { user_id: target.id } });
+    expect(before).toBe(2);
+
+    const agent = await loginAs('admin-mem@example.com', 'admin');
+    const res = await agent.delete(`/api/admin/users/${target.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.removedMemberships).toBe(2);
+
+    // No UserGroup rows for the target remain
+    const after = await (prisma as any).userGroup.count({ where: { user_id: target.id } });
+    expect(after).toBe(0);
   });
 
   it('deleted user does not appear in GET /api/admin/users', async () => {

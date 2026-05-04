@@ -201,16 +201,30 @@ adminUsersRouter.delete('/users/:id', async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    let removedMemberships = 0;
     await prisma.$transaction(async (tx) => {
+      // Drop the user from every Group they belong to. Soft-deleted users
+      // shouldn't count toward member rosters or receive any group-driven
+      // permissions/provisioning. (UserGroup.user_id is onDelete: Cascade,
+      // but soft-delete leaves the User row in place — we do this explicitly.)
+      const removed = await tx.userGroup.deleteMany({ where: { user_id: id } });
+      removedMemberships = removed.count;
+
       await tx.user.update({ where: { id }, data: { is_active: false } });
       await tx.auditEvent.create({
-        data: { action: 'delete_user', actor_user_id: actorId, target_user_id: id },
+        data: {
+          action: 'delete_user',
+          actor_user_id: actorId,
+          target_user_id: id,
+          details: { removed_group_memberships: removedMemberships },
+        },
       });
     });
 
     adminBus.notify('users');
+    adminBus.notify('groups');
     userBus.notifyUser(id);
-    res.json({ success: true });
+    res.json({ success: true, removedMemberships });
   } catch (err: any) {
     next(err);
   }
