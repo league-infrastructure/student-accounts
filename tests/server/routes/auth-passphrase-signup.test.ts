@@ -122,13 +122,19 @@ describe('POST /api/auth/passphrase-signup — cohort happy path', () => {
     const agent = request.agent(app);
     const res = await agent
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'alice', passphrase: 'word-test-blue' });
+      .send({
+        username: 'alice',
+        passphrase: 'word-test-blue',
+        password: 'SecurePass1!',
+        displayName: 'Alice Happy',
+        email: 'alice-happy-cohort@test.example.com',
+      });
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBeDefined();
     expect(res.body.username).toBe('alice');
-    expect(res.body.displayName).toBe('alice');
-    expect(res.body.primaryEmail).toMatch(/^alice@students\.jointheleague\.org$/);
+    expect(res.body.displayName).toBe('Alice Happy');
+    expect(res.body.primaryEmail).toBe('alice-happy-cohort@test.example.com');
     expect(res.body.cohort).toEqual({ id: cohort.id });
 
     // Verify user row
@@ -137,6 +143,8 @@ describe('POST /api/auth/passphrase-signup — cohort happy path', () => {
     expect(user.password_hash).toBeTruthy();
     expect(user.cohort_id).toBe(cohort.id);
     expect(user.created_via).toBe('passphrase_signup');
+    expect(user.display_name).toBe('Alice Happy');
+    expect(user.primary_email).toBe('alice-happy-cohort@test.example.com');
 
     // Verify login row
     const login = await (prisma as any).login.findFirst({ where: { user_id: user.id, provider: 'passphrase' } });
@@ -161,7 +169,13 @@ describe('POST /api/auth/passphrase-signup — cohort + grantLlmProxy=true', () 
 
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'bob', passphrase: 'llm-test-phrase' });
+      .send({
+        username: 'bob',
+        passphrase: 'llm-test-phrase',
+        password: 'SecurePass1!',
+        displayName: 'Bob LLM',
+        email: 'bob-llm-cohort@test.example.com',
+      });
 
     expect(res.status).toBe(200);
     expect(res.body.llmProxy?.granted).toBe(true);
@@ -188,7 +202,13 @@ describe('POST /api/auth/passphrase-signup — group happy path', () => {
 
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'charlie', passphrase: 'group-join-phrase' });
+      .send({
+        username: 'charlie',
+        passphrase: 'group-join-phrase',
+        password: 'SecurePass1!',
+        displayName: 'Charlie Group',
+        email: 'charlie-group@test.example.com',
+      });
 
     expect(res.status).toBe(200);
     expect(res.body.cohort).toBeNull();
@@ -232,7 +252,13 @@ describe('POST /api/auth/passphrase-signup — workspace provisioning fail-soft'
       const agent = request.agent(app);
       const res = await agent
         .post('/api/auth/passphrase-signup')
-        .send({ username: 'daisy', passphrase: 'workspace-fail-phrase' });
+        .send({
+          username: 'daisy',
+          passphrase: 'workspace-fail-phrase',
+          password: 'SecurePass1!',
+          displayName: 'Daisy Prov',
+          email: 'daisy-provfail@test.example.com',
+        });
 
       expect(res.status).toBe(200);
       expect(res.body.workspace.provisioned).toBe(false);
@@ -261,7 +287,13 @@ describe('POST /api/auth/passphrase-signup — wrong passphrase', () => {
   it('returns 401 and does not create a user', async () => {
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'eve', passphrase: 'totally-wrong-phrase' });
+      .send({
+        username: 'eve',
+        passphrase: 'totally-wrong-phrase',
+        password: 'SecurePass1!',
+        displayName: 'Eve Wrong',
+        email: 'eve-wrong@test.example.com',
+      });
 
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/invalid|expired/i);
@@ -283,7 +315,13 @@ describe('POST /api/auth/passphrase-signup — expired passphrase', () => {
 
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'frank', passphrase: 'expired-phrase' });
+      .send({
+        username: 'frank',
+        passphrase: 'expired-phrase',
+        password: 'SecurePass1!',
+        displayName: 'Frank Expired',
+        email: 'frank-expired@test.example.com',
+      });
 
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/invalid|expired/i);
@@ -304,7 +342,13 @@ describe('POST /api/auth/passphrase-signup — invalid username format', () => {
 
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'hello world', passphrase: 'shape-test-one' });
+      .send({
+        username: 'hello world',
+        passphrase: 'shape-test-one',
+        password: 'SecurePass1!',
+        displayName: 'Test User',
+        email: 'shape-test-one@test.example.com',
+      });
 
     expect(res.status).toBe(400);
   });
@@ -315,7 +359,13 @@ describe('POST /api/auth/passphrase-signup — invalid username format', () => {
 
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'alice!@#', passphrase: 'shape-test-two' });
+      .send({
+        username: 'alice!@#',
+        passphrase: 'shape-test-two',
+        password: 'SecurePass1!',
+        displayName: 'Test User',
+        email: 'shape-test-two@test.example.com',
+      });
 
     expect(res.status).toBe(400);
   });
@@ -326,7 +376,13 @@ describe('POST /api/auth/passphrase-signup — invalid username format', () => {
 
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'a', passphrase: 'shape-test-three' });
+      .send({
+        username: 'a',
+        passphrase: 'shape-test-three',
+        password: 'SecurePass1!',
+        displayName: 'Test User',
+        email: 'shape-test-three@test.example.com',
+      });
 
     expect(res.status).toBe(400);
   });
@@ -337,7 +393,13 @@ describe('POST /api/auth/passphrase-signup — invalid username format', () => {
 
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'a'.repeat(33), passphrase: 'shape-test-four' });
+      .send({
+        username: 'a'.repeat(33),
+        passphrase: 'shape-test-four',
+        password: 'SecurePass1!',
+        displayName: 'Test User',
+        email: 'shape-test-four@test.example.com',
+      });
 
     expect(res.status).toBe(400);
   });
@@ -365,7 +427,13 @@ describe('POST /api/auth/passphrase-signup — username collision', () => {
 
     const res = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'alice', passphrase: 'collision-phrase' });
+      .send({
+        username: 'alice',
+        passphrase: 'collision-phrase',
+        password: 'SecurePass1!',
+        displayName: 'Alice Collision',
+        email: 'alice-collision@test.example.com',
+      });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/already taken/i);
