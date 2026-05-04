@@ -16,6 +16,9 @@ import { PassphraseCard } from '../../components/PassphraseCard';
 // Types
 // ---------------------------------------------------------------------------
 
+type TriState = 'all-on' | 'all-off' | 'mixed';
+type PermField = 'allowsOauthClient' | 'allowsLlmProxy' | 'allowsLeagueAccount';
+
 interface ExternalAccount {
   type: string;
   status: string;
@@ -58,6 +61,58 @@ interface UserMatch {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Maps a PermField to the snake_case API key used in PATCH bodies. */
+const FIELD_TO_API_KEY: Record<PermField, string> = {
+  allowsOauthClient: 'allows_oauth_client',
+  allowsLlmProxy: 'allows_llm_proxy',
+  allowsLeagueAccount: 'allows_league_account',
+};
+
+/**
+ * Derives the tri-state for a permission column from the current user list.
+ * Returns 'mixed' for an empty array.
+ */
+function triState(field: PermField, users: Member[]): TriState {
+  if (users.length === 0) return 'mixed';
+  const onCount = users.filter((u) => u[field]).length;
+  if (onCount === users.length) return 'all-on';
+  if (onCount === 0) return 'all-off';
+  return 'mixed';
+}
+
+/** Stateless three-state indicator button. */
+function ColumnTriToggle({
+  state,
+  onClick,
+  busy,
+}: {
+  state: TriState;
+  onClick: () => void;
+  busy: boolean;
+}) {
+  const glyph = state === 'all-on' ? '☑' : state === 'all-off' ? '☒' : '☐';
+  const title =
+    state === 'all-on' ? 'All on — click to turn all off' : 'Click to turn all on';
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      style={{
+        background: 'none',
+        border: 'none',
+        cursor: busy ? 'default' : 'pointer',
+        fontSize: 14,
+        padding: '0 2px',
+        lineHeight: 1,
+      }}
+      title={title}
+      aria-label={title}
+    >
+      {glyph}
+    </button>
+  );
+}
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -114,6 +169,9 @@ export default function GroupDetailPanel() {
   // Per-row permission patch state
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [provisioningIds, setProvisioningIds] = useState<Set<number>>(new Set());
+
+  // Column-level bulk-action state
+  const [columnBusy, setColumnBusy] = useState<PermField | null>(null);
 
   // Live search effect
   useEffect(() => {
@@ -216,6 +274,30 @@ export default function GroupDetailPanel() {
           return next;
         });
       }
+    }
+  }
+
+  async function bulkSetPermission(field: PermField, value: boolean) {
+    if (!data) return;
+    setColumnBusy(field);
+    const apiKey = FIELD_TO_API_KEY[field];
+    try {
+      await Promise.allSettled(
+        data.users.map((u) =>
+          fetch(`/api/admin/users/${u.id}/permissions`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [apiKey]: value }),
+          }).catch((err) => {
+            console.warn('Bulk PATCH failed for user', u.id, err);
+          }),
+        ),
+      );
+    } finally {
+      setColumnBusy(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['admin', 'groups', numericId, 'detail'],
+      });
     }
   }
 
@@ -427,9 +509,54 @@ export default function GroupDetailPanel() {
           <tr>
             <th style={th}>Name</th>
             <th style={th}>Email</th>
-            <th style={{ ...th, textAlign: 'center' }}>OAuth</th>
-            <th style={{ ...th, textAlign: 'center' }}>LLM Proxy</th>
-            <th style={{ ...th, textAlign: 'center' }}>Lg Acct</th>
+            <th style={{ ...th, textAlign: 'center' }}>
+              OAuth{' '}
+              <ColumnTriToggle
+                state={triState('allowsOauthClient', data.users)}
+                onClick={() => {
+                  const current = triState('allowsOauthClient', data.users);
+                  bulkSetPermission('allowsOauthClient', current !== 'all-on');
+                }}
+                busy={columnBusy === 'allowsOauthClient'}
+              />
+              {columnBusy === 'allowsOauthClient' && (
+                <span style={{ fontSize: 11, display: 'block', color: '#64748b' }}>
+                  Updating...
+                </span>
+              )}
+            </th>
+            <th style={{ ...th, textAlign: 'center' }}>
+              LLM Proxy{' '}
+              <ColumnTriToggle
+                state={triState('allowsLlmProxy', data.users)}
+                onClick={() => {
+                  const current = triState('allowsLlmProxy', data.users);
+                  bulkSetPermission('allowsLlmProxy', current !== 'all-on');
+                }}
+                busy={columnBusy === 'allowsLlmProxy'}
+              />
+              {columnBusy === 'allowsLlmProxy' && (
+                <span style={{ fontSize: 11, display: 'block', color: '#64748b' }}>
+                  Updating...
+                </span>
+              )}
+            </th>
+            <th style={{ ...th, textAlign: 'center' }}>
+              Lg Acct{' '}
+              <ColumnTriToggle
+                state={triState('allowsLeagueAccount', data.users)}
+                onClick={() => {
+                  const current = triState('allowsLeagueAccount', data.users);
+                  bulkSetPermission('allowsLeagueAccount', current !== 'all-on');
+                }}
+                busy={columnBusy === 'allowsLeagueAccount'}
+              />
+              {columnBusy === 'allowsLeagueAccount' && (
+                <span style={{ fontSize: 11, display: 'block', color: '#64748b' }}>
+                  Updating...
+                </span>
+              )}
+            </th>
             <th style={{ ...th, width: 80, textAlign: 'center' }}>Actions</th>
           </tr>
         </thead>

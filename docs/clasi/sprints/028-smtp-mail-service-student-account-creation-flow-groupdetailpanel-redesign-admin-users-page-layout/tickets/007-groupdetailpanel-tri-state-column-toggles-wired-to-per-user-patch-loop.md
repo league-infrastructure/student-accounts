@@ -1,13 +1,13 @@
 ---
-id: "007"
-title: "GroupDetailPanel tri-state column toggles wired to per-user PATCH loop"
-status: todo
+id: '007'
+title: GroupDetailPanel tri-state column toggles wired to per-user PATCH loop
+status: done
 use-cases:
-  - SUC-008
+- SUC-008
 depends-on:
-  - "006"
-github-issue: ""
-todo: ""
+- '006'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -30,16 +30,16 @@ No new server endpoint is added; the existing per-user PATCH is reused.
 
 ## Acceptance Criteria
 
-- [ ] `ColumnTriToggle` component (file-local or extracted) renders: a check glyph when all rows have the permission; an X glyph when no rows have it; an empty-square glyph when mixed.
-- [ ] `triState(field, users)` is a pure function of `data.users` — no extra state.
-- [ ] Each of the three permission column headers (OAuth, LLM Proxy, Lg Acct) contains a `<ColumnTriToggle>` widget.
-- [ ] Clicking the toggle when showing check: calls `bulkSetPermission(field, false)` → all rows receive `PATCH { allows_X: false }`.
-- [ ] Clicking the toggle when showing X or mixed: calls `bulkSetPermission(field, true)` → all rows receive `PATCH { allows_X: true }`.
-- [ ] A per-column "Updating..." indicator is visible while PATCHes are in-flight.
-- [ ] Group detail query is invalidated (refetched) after all PATCHes settle (resolved or rejected).
-- [ ] Each PATCH failure is logged but does not abort the remaining PATCHes (fail-soft per row).
-- [ ] No new server endpoint is added.
-- [ ] Client tests pass (see Testing Plan).
+- [x] `ColumnTriToggle` component (file-local or extracted) renders: a check glyph when all rows have the permission; an X glyph when no rows have it; an empty-square glyph when mixed.
+- [x] `triState(field, users)` is a pure function of `data.users` — no extra state.
+- [x] Each of the three permission column headers (OAuth, LLM Proxy, Lg Acct) contains a `<ColumnTriToggle>` widget.
+- [x] Clicking the toggle when showing check: calls `bulkSetPermission(field, false)` → all rows receive `PATCH { allows_X: false }`.
+- [x] Clicking the toggle when showing X or mixed: calls `bulkSetPermission(field, true)` → all rows receive `PATCH { allows_X: true }`.
+- [x] A per-column "Updating..." indicator is visible while PATCHes are in-flight.
+- [x] Group detail query is invalidated (refetched) after all PATCHes settle (resolved or rejected).
+- [x] Each PATCH failure is logged but does not abort the remaining PATCHes (fail-soft per row).
+- [x] No new server endpoint is added.
+- [x] Client tests pass (see Testing Plan).
 
 ## Implementation Plan
 

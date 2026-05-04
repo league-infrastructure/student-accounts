@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Account from '../../../client/src/pages/Account';
@@ -1049,5 +1049,251 @@ describe('Account page — login removal confirmation dialog', () => {
     const dialog = screen.getByRole('dialog');
     expect(dialog.textContent).toContain('Google');
     expect(dialog.textContent).toContain('Add Google');
+  });
+});
+
+// ===========================================================================
+// Send-test button (Sprint 028 ticket 003)
+// ===========================================================================
+
+/**
+ * Account data with two available emails so the NotificationEmailPicker
+ * renders as a clickable button (not a flat div).  The Send-test button
+ * is in ProfileSection regardless, but this fixture keeps it realistic.
+ */
+const MULTI_EMAIL_ACCOUNT = {
+  ...STUDENT_ACCOUNT_BASE,
+  profile: {
+    ...STUDENT_ACCOUNT_BASE.profile,
+    notificationEmail: 'alt@example.com',
+    availableEmails: ['student@example.com', 'alt@example.com'],
+  },
+};
+
+describe('Account page — Send-test button', () => {
+  it('renders a "Send test" button in the profile section', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {}, undefined, MULTI_EMAIL_ACCOUNT);
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send test email/i })).toBeInTheDocument();
+    });
+  });
+
+  it('POSTs to /api/account/test-email with the current notification email on click', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/account' ) {
+        return {
+          ok: true,
+          json: async () => ({
+            ...MULTI_EMAIL_ACCOUNT,
+            profile: { ...MULTI_EMAIL_ACCOUNT.profile },
+          }),
+        };
+      }
+      if (url === '/api/account/test-email') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, messageId: 'abc', to: 'alt@example.com' }),
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send test email/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /send test email/i }));
+
+    await waitFor(() => {
+      const testEmailCalls = fetchMock.mock.calls.filter(
+        ([url, init]: [string, RequestInit | undefined]) =>
+          url === '/api/account/test-email' &&
+          (init?.method ?? '').toUpperCase() === 'POST',
+      );
+      expect(testEmailCalls).toHaveLength(1);
+      const body = JSON.parse(testEmailCalls[0][1]!.body as string);
+      expect(body.to).toBe('alt@example.com');
+    });
+  });
+
+  it('shows a green success pill after a successful test-email POST', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/api/account') {
+        return { ok: true, json: async () => ({ ...MULTI_EMAIL_ACCOUNT }) };
+      }
+      if (url === '/api/account/test-email') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, messageId: 'abc', to: 'alt@example.com' }),
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send test email/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /send test email/i }));
+
+    await waitFor(() => {
+      const pill = screen.getByTestId('test-email-pill');
+      expect(pill).toBeInTheDocument();
+      expect(pill.textContent).toContain('Test email sent to alt@example.com');
+    });
+
+    // Pill should be styled green
+    const pill = screen.getByTestId('test-email-pill');
+    expect(pill).toHaveStyle({ color: '#065f46' });
+  });
+
+  it('shows a red error pill when the test-email POST returns an error', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/api/account') {
+        return { ok: true, json: async () => ({ ...MULTI_EMAIL_ACCOUNT }) };
+      }
+      if (url === '/api/account/test-email') {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'SMTP not configured' }),
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send test email/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /send test email/i }));
+
+    await waitFor(() => {
+      const pill = screen.getByTestId('test-email-pill');
+      expect(pill).toBeInTheDocument();
+      expect(pill.textContent).toContain('SMTP not configured');
+    });
+
+    // Pill should be styled red
+    const pill = screen.getByTestId('test-email-pill');
+    expect(pill).toHaveStyle({ color: '#991b1b' });
+  });
+
+  it('disables the button while the POST is in-flight', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    // Fetch that never resolves for the test-email endpoint
+    let resolveTestEmail!: (v: unknown) => void;
+    const testEmailPromise = new Promise((resolve) => {
+      resolveTestEmail = resolve;
+    });
+
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/api/account') {
+        return { ok: true, json: async () => ({ ...MULTI_EMAIL_ACCOUNT }) };
+      }
+      if (url === '/api/account/test-email') {
+        return testEmailPromise;
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send test email/i })).toBeInTheDocument();
+    });
+
+    const btn = screen.getByRole('button', { name: /send test email/i });
+    expect(btn).not.toBeDisabled();
+
+    fireEvent.click(btn);
+
+    // Button should become disabled while in-flight
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send test email/i })).toBeDisabled();
+    });
+
+    // Resolve the pending promise so the component can clean up
+    act(() => {
+      resolveTestEmail({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, messageId: 'x', to: 'alt@example.com' }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send test email/i })).not.toBeDisabled();
+    });
+  });
+
+  it('pill disappears after 5 seconds', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url === '/api/account') {
+        return { ok: true, json: async () => ({ ...MULTI_EMAIL_ACCOUNT }) };
+      }
+      if (url === '/api/account/test-email') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, messageId: 'abc', to: 'alt@example.com' }),
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    renderAccount();
+
+    // Wait for the button to appear (account data loaded)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send test email/i })).toBeInTheDocument();
+    });
+
+    // Switch to fake timers after initial async setup completes
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /send test email/i }));
+
+      // Fetch mock resolves asynchronously — flush promises
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Pill should now be visible
+      expect(screen.getByTestId('test-email-pill')).toBeInTheDocument();
+
+      // Advance clock past the 5 s auto-clear
+      await act(async () => {
+        vi.advanceTimersByTime(5001);
+      });
+
+      expect(screen.queryByTestId('test-email-pill')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

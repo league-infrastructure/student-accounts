@@ -1,13 +1,13 @@
 ---
-id: "003"
-title: "Client Send-test button on Account page"
-status: todo
+id: '003'
+title: Client Send-test button on Account page
+status: done
 use-cases:
-  - SUC-001
+- SUC-001
 depends-on:
-  - "002"
-github-issue: ""
-todo: ""
+- '002'
+github-issue: ''
+todo: ''
 completes_todo: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -25,13 +25,13 @@ transient success/error pill for approximately 5 seconds.
 
 ## Acceptance Criteria
 
-- [ ] "Send test" button is visible in `ProfileSection` adjacent to the notification-email picker.
-- [ ] Button is disabled while the POST is in-flight (prevents double-submit).
-- [ ] On success: green pill "Test email sent to \<addr\>" appears and auto-clears after ~5 s.
-- [ ] On error: red pill with the server's error message appears and auto-clears after ~5 s.
-- [ ] The POST body includes the currently selected notification email (or falls back gracefully if none selected).
-- [ ] No permanent state is added — pill disappears, button re-enables after completion.
-- [ ] Client tests pass (see Testing Plan).
+- [x] "Send test" button is visible in `ProfileSection` adjacent to the notification-email picker.
+- [x] Button is disabled while the POST is in-flight (prevents double-submit).
+- [x] On success: green pill "Test email sent to \<addr\>" appears and auto-clears after ~5 s.
+- [x] On error: red pill with the server's error message appears and auto-clears after ~5 s.
+- [x] The POST body includes the currently selected notification email (or falls back gracefully if none selected).
+- [x] No permanent state is added — pill disappears, button re-enables after completion.
+- [x] Client tests pass (see Testing Plan).
 
 ## Implementation Plan
 
