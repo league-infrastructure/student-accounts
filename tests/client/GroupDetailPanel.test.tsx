@@ -104,6 +104,9 @@ const GROUP_ALL_OFF = {
  * Callers can override specific URL matchers via `overrides`.
  */
 function buildFetchMock(overrides: Record<string, (url: string, opts?: RequestInit) => any> = {}) {
+  // The PassphraseCard auto-creates on first GET 404 — the POST handler
+  // here returns a stable fake record so tests see a populated card.
+  let passphraseGetReturned404Once = false;
   return vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
     // Check overrides first
     for (const [key, handler] of Object.entries(overrides)) {
@@ -112,7 +115,35 @@ function buildFetchMock(overrides: Record<string, (url: string, opts?: RequestIn
       }
     }
     if (url.endsWith('/passphrase')) {
-      return Promise.resolve(passphraseNotFound());
+      const method = opts?.method ?? 'GET';
+      if (method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: () => Promise.resolve({
+            plaintext: 'auto-passphrase-1',
+            expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+            grantLlmProxy: false,
+            createdAt: new Date().toISOString(),
+          }),
+        });
+      }
+      if (!passphraseGetReturned404Once) {
+        passphraseGetReturned404Once = true;
+        return Promise.resolve(passphraseNotFound());
+      }
+      // Subsequent GETs (after the auto-create POST invalidated the query)
+      // see the just-created passphrase.
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          plaintext: 'auto-passphrase-1',
+          expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+          grantLlmProxy: false,
+          createdAt: new Date().toISOString(),
+        }),
+      });
     }
     // Members list
     if (url.endsWith('/members') && (!opts?.method || opts.method === 'GET')) {
@@ -379,15 +410,14 @@ describe('GroupDetailPanel', () => {
   it('PassphraseCard renders before the member table', async () => {
     vi.stubGlobal('fetch', buildFetchMock());
     renderPanel();
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+    // Wait for the auto-created passphrase to land — the "Passphrase"
+    // label appears once the POST resolves and the query refetches.
+    await waitFor(() => expect(screen.getByText('Passphrase')).toBeInTheDocument());
 
-    // PassphraseCard renders a "Passphrase" label; member table contains "Alice"
     const passphraseLabel = screen.getByText('Passphrase');
     const aliceCell = screen.getByText('Alice');
 
-    // Compare DOM position: passphrase label should appear before Alice in document order
     const position = passphraseLabel.compareDocumentPosition(aliceCell);
-    // DOCUMENT_POSITION_FOLLOWING = 4, means aliceCell comes after passphraseLabel
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

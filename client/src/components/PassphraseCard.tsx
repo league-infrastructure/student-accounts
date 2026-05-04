@@ -49,6 +49,27 @@ export function PassphraseCard({ scopeKind, scopeId, scopeName }: PassphraseCard
     enabled: Number.isFinite(scopeId),
   });
 
+  // Rotate (or create-on-first-use) — same POST endpoint with default
+  // settings. Used by both Regenerate buttons (passphrase + invite URL)
+  // and by the auto-create effect below.
+  const rotateMutation = useMutation<PassphraseRecord, Error, void>({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/${scopeKind}s/${scopeId}/passphrase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grantLlmProxy: false }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
   const revokeMutation = useMutation<void, Error, void>({
     mutationFn: async () => {
       const res = await fetch(`/api/admin/${scopeKind}s/${scopeId}/passphrase`, {
@@ -66,9 +87,32 @@ export function PassphraseCard({ scopeKind, scopeId, scopeName }: PassphraseCard
 
   const [modalOpen, setModalOpen] = useState(false);
   const [countdown, setCountdown] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'passphrase' | 'url' | null>(null);
 
   const record = passphraseQuery.data ?? null;
+
+  // Auto-create on first load: if the GET returned null (no active
+  // passphrase), kick off a POST so the card renders the live values
+  // immediately instead of an empty "Create passphrase" state.
+  useEffect(() => {
+    if (
+      !passphraseQuery.isLoading &&
+      !passphraseQuery.isError &&
+      record === null &&
+      !rotateMutation.isPending &&
+      !rotateMutation.isError
+    ) {
+      rotateMutation.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passphraseQuery.isLoading, passphraseQuery.isError, record]);
+
+  // Invitation URL — bare /login link the admin shares; students enter
+  // the passphrase shown above. Includes the passphrase as a query
+  // hint that the Login page may consume in the future.
+  const inviteUrl = record
+    ? `${window.location.origin}/login?passphrase=${encodeURIComponent(record.plaintext)}`
+    : '';
 
   // Live TTL countdown — re-runs whenever record changes or scopeId changes
   useEffect(() => {
@@ -97,11 +141,12 @@ export function PassphraseCard({ scopeKind, scopeId, scopeName }: PassphraseCard
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [record, scopeId]);
 
-  async function handleCopy() {
+  async function handleCopy(which: 'passphrase' | 'url') {
     if (!record) return;
-    await navigator.clipboard.writeText(record.plaintext);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const text = which === 'passphrase' ? record.plaintext : inviteUrl;
+    await navigator.clipboard.writeText(text);
+    setCopied(which);
+    setTimeout(() => setCopied(null), 2000);
   }
 
   async function handleRevoke() {
@@ -138,102 +183,115 @@ export function PassphraseCard({ scopeKind, scopeId, scopeName }: PassphraseCard
     );
   }
 
+  // Empty state while the auto-create POST is in flight (or null + about to fire).
+  if (!record) {
+    return (
+      <div style={cardStyle}>
+        <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
+          {rotateMutation.isError
+            ? `Failed to create passphrase: ${rotateMutation.error.message}`
+            : 'Generating passphrase…'}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <>
       <div style={cardStyle}>
+        {/* Row 1 — Passphrase */}
+        <div style={rowStyle}>
+          <span style={labelStyle}>Passphrase</span>
+          <code style={valueStyle}>{record.plaintext}</code>
+          <button
+            type="button"
+            onClick={() => handleCopy('passphrase')}
+            style={smBtn}
+          >
+            {copied === 'passphrase' ? 'Copied!' : 'Copy'}
+          </button>
+          <button
+            type="button"
+            onClick={() => rotateMutation.mutate()}
+            disabled={rotateMutation.isPending}
+            style={smBtn}
+          >
+            {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
+          </button>
+        </div>
+
+        {/* Row 2 — Invitation URL */}
+        <div style={{ ...rowStyle, marginTop: 8 }}>
+          <span style={labelStyle}>Invitation URL</span>
+          <code style={{ ...valueStyle, fontSize: 12, wordBreak: 'break-all' }}>{inviteUrl}</code>
+          <button
+            type="button"
+            onClick={() => handleCopy('url')}
+            style={smBtn}
+          >
+            {copied === 'url' ? 'Copied!' : 'Copy'}
+          </button>
+          <button
+            type="button"
+            onClick={() => rotateMutation.mutate()}
+            disabled={rotateMutation.isPending}
+            style={smBtn}
+          >
+            {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
+          </button>
+        </div>
+
+        {/* Footer — TTL + Revoke */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: record ? 10 : 0,
+            gap: 16,
+            marginTop: 10,
+            flexWrap: 'wrap',
           }}
         >
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Passphrase</span>
-          {!record && (
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              style={createPassphraseBtn}
-            >
-              Create passphrase
-            </button>
-          )}
-        </div>
-
-        {record && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <code
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: 15,
-                  background: '#f1f5f9',
-                  padding: '4px 10px',
-                  borderRadius: 4,
-                  userSelect: 'text',
-                  letterSpacing: '0.03em',
-                }}
-              >
-                {record.plaintext}
-              </code>
-              {record.grantLlmProxy && (
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: '2px 8px',
-                    background: '#dbeafe',
-                    color: '#1e40af',
-                    borderRadius: 999,
-                    fontWeight: 600,
-                  }}
-                >
-                  ✓ Includes LLM proxy
-                </span>
-              )}
-            </div>
-
-            <div
+          <span
+            style={{
+              fontSize: 12,
+              color: countdown === 'expired' ? '#dc2626' : '#64748b',
+            }}
+          >
+            {countdown === 'expired' ? 'Expired' : `Expires in ${countdown}`}
+          </span>
+          {record.grantLlmProxy && (
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 16,
-                marginTop: 8,
-                flexWrap: 'wrap',
+                fontSize: 11,
+                padding: '2px 8px',
+                background: '#dbeafe',
+                color: '#1e40af',
+                borderRadius: 999,
+                fontWeight: 600,
               }}
             >
-              <span
-                style={{
-                  fontSize: 12,
-                  color: countdown === 'expired' ? '#dc2626' : '#64748b',
-                }}
-              >
-                {countdown === 'expired' ? 'Expired' : `Expires in ${countdown}`}
-              </span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button type="button" onClick={handleCopy} style={smBtn}>
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-                <button type="button" onClick={() => setModalOpen(true)} style={smBtn}>
-                  Regenerate
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRevoke}
-                  disabled={revokeMutation.isPending}
-                  style={smDangerBtn}
-                >
-                  {revokeMutation.isPending ? 'Revoking…' : 'Revoke'}
-                </button>
-              </div>
-            </div>
+              ✓ Includes LLM proxy
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleRevoke}
+            disabled={revokeMutation.isPending}
+            style={smDangerBtn}
+          >
+            {revokeMutation.isPending ? 'Revoking…' : 'Revoke'}
+          </button>
+        </div>
 
-            {revokeMutation.isError && (
-              <p style={{ margin: '6px 0 0', fontSize: 12, color: '#dc2626' }}>
-                Revoke failed: {(revokeMutation.error as Error).message}
-              </p>
-            )}
-          </>
+        {revokeMutation.isError && (
+          <p style={{ margin: '6px 0 0', fontSize: 12, color: '#dc2626' }}>
+            Revoke failed: {(revokeMutation.error as Error).message}
+          </p>
+        )}
+        {rotateMutation.isError && (
+          <p style={{ margin: '6px 0 0', fontSize: 12, color: '#dc2626' }}>
+            Regenerate failed: {(rotateMutation.error as Error).message}
+          </p>
         )}
       </div>
 
@@ -261,15 +319,30 @@ const cardStyle: React.CSSProperties = {
   color: '#475569',
 };
 
-const createPassphraseBtn: React.CSSProperties = {
-  padding: '6px 12px',
+const rowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
+};
+
+const labelStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
-  background: '#2563eb',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 6,
-  cursor: 'pointer',
+  color: '#334155',
+  minWidth: 120,
+};
+
+const valueStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 15,
+  background: '#f1f5f9',
+  padding: '4px 10px',
+  borderRadius: 4,
+  userSelect: 'text',
+  letterSpacing: '0.03em',
+  flex: 1,
+  minWidth: 0,
 };
 
 const smBtn: React.CSSProperties = {
