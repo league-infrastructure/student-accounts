@@ -55,7 +55,7 @@ async function makePassphraseUser(opts: {
   await (prisma as any).login.create({
     data: {
       user_id: user.id,
-      provider: 'passphrase',
+      provider: 'username',
       provider_user_id: `test:0:${opts.username}`,
     },
   });
@@ -464,7 +464,7 @@ describe('PATCH /api/account/credentials — first-time setup (no credentials)',
     await (prisma as any).login.create({
       data: {
         user_id: user.id,
-        provider: 'passphrase',
+        provider: 'username',
         provider_user_id: `test:0:hasusernameonly`,
       },
     });
@@ -493,7 +493,7 @@ describe('PATCH /api/account/credentials — Login row creation on first-time se
     });
 
     const login = await (prisma as any).login.findFirst({
-      where: { user_id: userId, provider: 'passphrase' },
+      where: { user_id: userId, provider: 'username' },
     });
     expect(login).not.toBeNull();
     expect(login.provider_user_id).toBe(`self:${userId}:loginrowuser`);
@@ -508,7 +508,7 @@ describe('PATCH /api/account/credentials — Login row creation on first-time se
     await (prisma as any).login.create({
       data: {
         user_id: userId,
-        provider: 'passphrase',
+        provider: 'username',
         provider_user_id: `self:${userId}:dupuser`,
         provider_email: 'login-row-dup@example.com',
         provider_username: 'dupuser',
@@ -523,7 +523,7 @@ describe('PATCH /api/account/credentials — Login row creation on first-time se
     });
 
     const logins = await (prisma as any).login.findMany({
-      where: { user_id: userId, provider: 'passphrase' },
+      where: { user_id: userId, provider: 'username' },
     });
     expect(logins).toHaveLength(1);
   });
@@ -542,7 +542,7 @@ describe('PATCH /api/account/credentials — Login row creation on first-time se
     });
 
     const logins = await (prisma as any).login.findMany({
-      where: { user_id: userId, provider: 'passphrase' },
+      where: { user_id: userId, provider: 'username' },
     });
     // Only the original login row created by makePassphraseUser should exist.
     expect(logins).toHaveLength(1);

@@ -157,6 +157,10 @@ const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
   google: 'Google',
   pike13: 'Pike 13',
+  username: 'Username',
+  // Legacy alias — older Login rows may still carry provider='passphrase'
+  // until the dev DB is wiped; render them under the same label.
+  passphrase: 'Username',
 };
 
 function providerLabel(p: string): string {
@@ -565,7 +569,16 @@ function LoginsSection({ logins, role, onRemoveError, onRemove, removingId, show
               <tr key={login.id} style={styles.tr}>
                 <td style={styles.td}>{providerLabel(login.provider)}</td>
                 <td style={styles.td}>
-                  {login.providerEmail ?? login.providerUsername ?? '—'}
+                  {login.providerUsername && login.providerEmail ? (
+                    <>
+                      <div>{login.providerUsername}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {login.providerEmail}
+                      </div>
+                    </>
+                  ) : (
+                    (login.providerUsername ?? login.providerEmail ?? '—')
+                  )}
                 </td>
                 <td style={styles.td}>
                   {new Date(login.createdAt).toLocaleDateString()}

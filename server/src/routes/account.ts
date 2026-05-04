@@ -22,6 +22,7 @@ import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from
 import { adminBus } from '../services/change-bus.js';
 import { accountEventsRouter } from './account-events.js';
 import { LoginRepository } from '../services/repositories/login.repository.js';
+import { classifyEmailOwnership } from '../services/auth/email-ownership.js';
 
 export const accountRouter = Router();
 
@@ -236,34 +237,21 @@ accountRouter.patch(
       }
 
       // notificationEmail: optional. null clears it (use primary_email);
-      // string must be one of the user's owned emails.
+      // string is accepted when the address is either unused anywhere or
+      // already owned by this user. An address owned by another user
+      // is rejected.
       if (body.notificationEmail !== undefined) {
         const raw = body.notificationEmail;
         if (raw === null || raw === '') {
           update.notification_email = null;
         } else if (typeof raw === 'string') {
-          // Validate ownership: must match primary_email, a Login's
-          // provider_email, or a workspace ExternalAccount's external_id.
-          const [user, userLogins, userAccounts] = await Promise.all([
-            req.services.users.findById(userId),
-            req.services.logins.findAllByUser(userId),
-            req.services.externalAccounts.findAllByUser(userId),
-          ]);
-          const owned = new Set<string>();
-          const add = (e?: string | null) => {
-            if (e) owned.add(e.toLowerCase());
-          };
-          add(user.primary_email);
-          for (const l of userLogins) add(l.provider_email);
-          for (const a of userAccounts) {
-            if (a.type === 'workspace') add(a.external_id);
-          }
-          if (!owned.has(raw.toLowerCase())) {
+          const ownership = await classifyEmailOwnership(raw, userId);
+          if (ownership === 'other') {
             return res
-              .status(400)
-              .json({ error: 'notificationEmail must be one of your linked addresses' });
+              .status(409)
+              .json({ error: 'That email address is already in use by another account' });
           }
-          update.notification_email = raw;
+          update.notification_email = raw.trim().toLowerCase();
         } else {
           return res
             .status(400)
@@ -337,6 +325,13 @@ accountRouter.post(
           return res.status(400).json({ error: 'email must be a valid email address' });
         }
         normalizedEmail = emailStr.toLowerCase();
+        // Reject emails owned by a different user. 'free' or 'mine' are OK.
+        const ownership = await classifyEmailOwnership(normalizedEmail, userId);
+        if (ownership === 'other') {
+          return res
+            .status(409)
+            .json({ error: 'That email address is already in use by another account' });
+        }
       }
 
       // --- persist ---
@@ -421,7 +416,7 @@ accountRouter.get(
 // First-time setup path (user has NEITHER username NOR password_hash):
 //   currentPassword is NOT required. The handler detects this state from the
 //   DB and sets allowFirstTimeSetup=true. On success a passphrase Login row is
-//   created (provider='passphrase', provider_user_id='self:<userId>:<username>')
+//   created (provider='username', provider_user_id='self:<userId>:<username>')
 //   if one does not already exist.
 accountRouter.patch(
   '/account/credentials',
@@ -479,13 +474,13 @@ accountRouter.patch(
         const providerUserId = `self:${userId}:${result.username}`;
         const existing = await LoginRepository.findByProvider(
           prisma,
-          'passphrase',
+          'username',
           providerUserId,
         );
         if (!existing) {
           await LoginRepository.create(prisma, {
             user_id: userId,
-            provider: 'passphrase',
+            provider: 'username',
             provider_user_id: providerUserId,
             provider_email: dbUser.primary_email ?? null,
             provider_username: result.username,
