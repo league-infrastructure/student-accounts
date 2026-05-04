@@ -1,10 +1,10 @@
 ---
 id: '005'
 title: GroupDetailPanel move Delete to title bar and hoist PassphraseCard
-status: todo
+status: done
 use-cases:
-  - SUC-005
-  - SUC-006
+- SUC-005
+- SUC-006
 depends-on: []
 github-issue: ''
 todo: groupdetailpanel-redesign-passphrase-up-top-drop-bulk-buttons-tri-state-column-toggles.md
@@ -32,13 +32,13 @@ as a blocker comment — do not add it here (out of scope per architecture-updat
 
 ## Acceptance Criteria
 
-- [ ] The group name `<h2>` and "Delete Group" button share a single flex row with `justifyContent: 'space-between'`.
-- [ ] No separate `<div>` row below the description renders the Delete button.
-- [ ] `<PassphraseCard>` renders before the banners block OR immediately after the description — whichever produces the correct visual order: title row → description → passphrase card → banners → member table.
-- [ ] `<PassphraseCard>` does not appear after the bulk-action buttons (which still exist in this ticket — removal is ticket 006).
-- [ ] Inspection note: confirm in the commit whether `PassphraseCard` surfaces the invitation URL; note finding.
-- [ ] Existing tests that assert on Delete button position are updated (or new tests added) to confirm the button is in the title row.
-- [ ] `npm run test:client -- GroupDetailPanel` passes.
+- [x] The group name `<h2>` and "Delete Group" button share a single flex row with `justifyContent: 'space-between'`.
+- [x] No separate `<div>` row below the description renders the Delete button.
+- [x] `<PassphraseCard>` renders before the banners block OR immediately after the description — whichever produces the correct visual order: title row → description → passphrase card → banners → member table.
+- [x] `<PassphraseCard>` does not appear after the bulk-action buttons (which still exist in this ticket — removal is ticket 006).
+- [x] Inspection note: PassphraseCard does NOT surface an invitation URL. The student signup flow uses the Login page where the student enters username + passphrase; there is no pre-fillable `/signup?passphrase=<value>` URL. A follow-up ticket is needed if a copyable signup URL row should be added to PassphraseCard.
+- [x] Existing tests that assert on Delete button position are updated (or new tests added) to confirm the button is in the title row.
+- [x] `npm run test:client -- GroupDetailPanel` passes.
 
 ## Implementation Plan
 

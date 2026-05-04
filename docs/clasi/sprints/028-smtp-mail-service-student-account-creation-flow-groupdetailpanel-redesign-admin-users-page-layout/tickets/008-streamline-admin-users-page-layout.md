@@ -1,9 +1,9 @@
 ---
 id: 008
 title: Streamline admin users page layout
-status: todo
+status: done
 use-cases:
-  - SUC-009
+- SUC-009
 depends-on: []
 github-issue: ''
 todo: streamline-admin-users-page-layout.md
@@ -32,11 +32,11 @@ background color, typography weight). Action buttons should be repositioned to t
 
 ## Acceptance Criteria
 
-- [ ] Section-wrapping container `<div>` elements no longer have `border`, `borderRadius`, or `boxShadow` style properties that create a card/box appearance.
-- [ ] The user-record header block (name + email addresses) retains its existing visual treatment and remains visually distinct from the body.
-- [ ] Action buttons (add/revoke access, or their equivalents for this component) are right-aligned within their section row rather than positioned below the section content.
-- [ ] All existing functionality still works: role filter, feature filter, search, sortable columns, bulk actions, row action menu, make-admin toggle, pagination.
-- [ ] `npm run test:client -- AdminUsersPanel` passes (existing tests should not need changes unless they were asserting on specific style values).
+- [x] Section-wrapping container `<div>` elements no longer have `border`, `borderRadius`, or `boxShadow` style properties that create a card/box appearance.
+- [x] The user-record header block (name + email addresses) retains its existing visual treatment and remains visually distinct from the body.
+- [x] Action buttons (add/revoke access, or their equivalents for this component) are right-aligned within their section row rather than positioned below the section content.
+- [x] All existing functionality still works: role filter, feature filter, search, sortable columns, bulk actions, row action menu, make-admin toggle, pagination.
+- [x] `npm run test:client -- AdminUsersPanel` passes (existing tests should not need changes unless they were asserting on specific style values).
 
 ## Implementation Plan
 

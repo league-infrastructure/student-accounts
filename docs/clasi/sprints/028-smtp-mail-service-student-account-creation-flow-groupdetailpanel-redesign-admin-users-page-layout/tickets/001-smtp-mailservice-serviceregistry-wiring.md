@@ -1,10 +1,10 @@
 ---
 id: '001'
 title: SMTP MailService + ServiceRegistry wiring
-status: todo
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
+- SUC-001
+- SUC-002
 depends-on: []
 github-issue: ''
 todo: smtp-mail-service-and-account-test-email-button.md
@@ -27,16 +27,16 @@ and `isConfigured()` returns `false`.
 
 ## Acceptance Criteria
 
-- [ ] `nodemailer` and `@types/nodemailer` are added to `server/package.json`.
-- [ ] `MailService` class exists at `server/src/services/mail.service.ts`.
-- [ ] Constructor reads `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`. Optionally `SMTP_SECURE` (default `false`) and `SMTP_FROM` (default first of `ADMIN_EMAILS`, fallback `SMTP_USERNAME`).
-- [ ] `isConfigured(): boolean` returns `true` when all four required vars are set; `false` otherwise.
-- [ ] `send({ to, subject, text, html? }): Promise<{ messageId: string }>` sends via nodemailer.
-- [ ] `send()` throws `MailNotConfiguredError` (named subclass of `Error`) when `isConfigured()` is `false`.
-- [ ] Construction with missing vars does not throw; logs a single `warn`.
-- [ ] `ServiceRegistry` declares `readonly mail: MailService` and instantiates it in the private constructor.
-- [ ] Server starts cleanly with zero SMTP env vars present.
-- [ ] Unit tests pass (see Testing Plan).
+- [x] `nodemailer` and `@types/nodemailer` are added to `server/package.json`.
+- [x] `MailService` class exists at `server/src/services/mail.service.ts`.
+- [x] Constructor reads `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`. Optionally `SMTP_SECURE` (default `false`) and `SMTP_FROM` (default first of `ADMIN_EMAILS`, fallback `SMTP_USERNAME`).
+- [x] `isConfigured(): boolean` returns `true` when all four required vars are set; `false` otherwise.
+- [x] `send({ to, subject, text, html? }): Promise<{ messageId: string }>` sends via nodemailer.
+- [x] `send()` throws `MailNotConfiguredError` (named subclass of `Error`) when `isConfigured()` is `false`.
+- [x] Construction with missing vars does not throw; logs a single `warn`.
+- [x] `ServiceRegistry` declares `readonly mail: MailService` and instantiates it in the private constructor.
+- [x] Server starts cleanly with zero SMTP env vars present.
+- [x] Unit tests pass (see Testing Plan).
 
 ## Implementation Plan
 

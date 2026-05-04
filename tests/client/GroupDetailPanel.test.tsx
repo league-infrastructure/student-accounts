@@ -353,6 +353,37 @@ describe('GroupDetailPanel', () => {
     );
   });
 
+  // Sprint 028 T005: Delete button is in the title row alongside the group name h2
+  it('Delete Group button is in the same flex row as the group name heading', async () => {
+    vi.stubGlobal('fetch', buildFetchMock());
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    const heading = screen.getByRole('heading', { name: 'Alpha' });
+    const deleteBtn = screen.getByRole('button', { name: /Delete Group/i });
+
+    // Both elements should share the same parent div (the title row)
+    expect(heading.parentElement).toBe(deleteBtn.parentElement);
+    // That parent should have justifyContent: space-between
+    expect(heading.parentElement?.style.justifyContent).toBe('space-between');
+  });
+
+  // Sprint 028 T005: PassphraseCard renders before the member table
+  it('PassphraseCard renders before the member table', async () => {
+    vi.stubGlobal('fetch', buildFetchMock());
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    // PassphraseCard renders a "Passphrase" label; member table contains "Alice"
+    const passphraseLabel = screen.getByText('Passphrase');
+    const aliceCell = screen.getByText('Alice');
+
+    // Compare DOM position: passphrase label should appear before Alice in document order
+    const position = passphraseLabel.compareDocumentPosition(aliceCell);
+    // DOCUMENT_POSITION_FOLLOWING = 4, means aliceCell comes after passphraseLabel
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('League Account checkbox shows Provisioning indicator on toggle-on', async () => {
     // Make the PATCH hang briefly so we can check the in-flight state
     let resolvePatch!: () => void;

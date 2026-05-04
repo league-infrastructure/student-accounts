@@ -581,7 +581,7 @@ export default function GroupDetailPanel() {
         </div>
       ) : (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <h2
               onClick={() => {
                 setIsEditingName(true);
@@ -604,17 +604,24 @@ export default function GroupDetailPanel() {
             >
               {data.group.name}
             </h2>
+            <button onClick={deleteGroup} style={dangerSmallBtn}>
+              Delete Group
+            </button>
           </div>
           <p style={{ color: '#64748b', marginTop: 0, fontSize: 13 }}>
             {data.group.description ? `${data.group.description} · ` : ''}
             {data.users.length} member{data.users.length === 1 ? '' : 's'}
           </p>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <button onClick={deleteGroup} style={dangerSmallBtn}>
-              Delete Group
-            </button>
-          </div>
         </>
+      )}
+
+      {/* Passphrase card */}
+      {Number.isFinite(numericId) && (
+        <PassphraseCard
+          scopeKind="group"
+          scopeId={numericId}
+          scopeName={data.group.name}
+        />
       )}
 
       {banner && (
@@ -647,15 +654,6 @@ export default function GroupDetailPanel() {
         >
           {permissionError}
         </div>
-      )}
-
-      {/* Passphrase card */}
-      {Number.isFinite(numericId) && (
-        <PassphraseCard
-          scopeKind="group"
-          scopeId={numericId}
-          scopeName={data.group.name}
-        />
       )}
 
       {/* Bulk action buttons (Ticket 008) */}

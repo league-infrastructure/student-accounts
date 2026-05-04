@@ -828,7 +828,9 @@ export default function AdminUsersPanel() {
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 16px', fontSize: 20 }}>Users</h2>
+      <div style={pageHeaderStyle}>
+        <h2 style={{ margin: 0, fontSize: 20 }}>Users</h2>
+      </div>
 
       {/* Bulk error banner */}
       {bulkError && (
@@ -1082,6 +1084,13 @@ export default function AdminUsersPanel() {
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
+
+const pageHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 16,
+};
 
 const toolbarStyle: React.CSSProperties = {
   display: 'flex',
