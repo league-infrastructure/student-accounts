@@ -42,18 +42,32 @@ export const accountRouter = Router();
 accountRouter.get(
   '/account',
   requireAuth,
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     const userId: number = (req.session as any).userId;
     const { users, cohorts, logins, externalAccounts, llmProxyTokens } = req.services;
 
-    // Fetch account data in parallel.
-    const [user, userLogins, userAccounts, llmActive, oauthClientCount] = await Promise.all([
-      users.findById(userId),
-      logins.findAllByUser(userId),
-      externalAccounts.findAllByUser(userId),
-      llmProxyTokens.getActiveForUser(userId),
-      prisma.oAuthClient.count({ where: { created_by: userId, disabled_at: null } }),
-    ]);
+    // Fetch account data in parallel. If the user has been deleted out from
+    // under the session, findById throws NotFoundError — destroy the session
+    // and reply 401 so the client logs them out cleanly instead of leaking
+    // an uncaught crash up to the dev-server proxy.
+    let user, userLogins, userAccounts, llmActive, oauthClientCount;
+    try {
+      [user, userLogins, userAccounts, llmActive, oauthClientCount] = await Promise.all([
+        users.findById(userId),
+        logins.findAllByUser(userId),
+        externalAccounts.findAllByUser(userId),
+        llmProxyTokens.getActiveForUser(userId),
+        prisma.oAuthClient.count({ where: { created_by: userId, disabled_at: null } }),
+      ]);
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        return req.session.destroy(() => {
+          res.clearCookie('connect.sid');
+          res.status(401).json({ error: 'Account no longer exists' });
+        });
+      }
+      return next(err);
+    }
     const llmProxyEnabled = llmActive != null;
 
     // Resolve cohort: null when the user has not been assigned to one yet.
