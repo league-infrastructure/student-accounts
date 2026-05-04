@@ -1,5 +1,8 @@
 ---
-status: pending
+status: done
+sprint: 028
+tickets:
+- 008
 ---
 
 # Streamline admin users page layout

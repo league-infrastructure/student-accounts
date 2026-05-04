@@ -1,5 +1,8 @@
 ---
-status: pending
+status: done
+sprint: 028
+tickets:
+- '004'
 ---
 
 # Verify and finish the student-account creation flow

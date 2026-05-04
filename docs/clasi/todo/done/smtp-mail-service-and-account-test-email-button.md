@@ -1,5 +1,10 @@
 ---
-status: pending
+status: done
+sprint: 028
+tickets:
+- '001'
+- '002'
+- '003'
 ---
 
 # SMTP outbound mail + "Send test email" button on Account page
