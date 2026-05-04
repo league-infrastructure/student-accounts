@@ -199,46 +199,54 @@ export function PassphraseCard({ scopeKind, scopeId, scopeName }: PassphraseCard
   return (
     <>
       <div style={cardStyle}>
-        {/* Row 1 — Passphrase */}
-        <div style={rowStyle}>
-          <span style={labelStyle}>Passphrase</span>
-          <code style={valueStyle}>{record.plaintext}</code>
-          <button
-            type="button"
-            onClick={() => handleCopy('passphrase')}
-            style={smBtn}
-          >
-            {copied === 'passphrase' ? 'Copied!' : 'Copy'}
-          </button>
-          <button
-            type="button"
-            onClick={() => rotateMutation.mutate()}
-            disabled={rotateMutation.isPending}
-            style={smBtn}
-          >
-            {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
-          </button>
-        </div>
+        {/* Two compact panels side-by-side: passphrase on the left,
+            invitation URL on the right. Each panel sizes to its content. */}
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {/* Passphrase panel */}
+          <div style={panelStyle}>
+            <div style={labelStyle}>Passphrase</div>
+            <div style={panelRowStyle}>
+              <code style={valueStyle}>{record.plaintext}</code>
+              <button
+                type="button"
+                onClick={() => handleCopy('passphrase')}
+                style={smBtn}
+              >
+                {copied === 'passphrase' ? 'Copied!' : 'Copy'}
+              </button>
+              <button
+                type="button"
+                onClick={() => rotateMutation.mutate()}
+                disabled={rotateMutation.isPending}
+                style={smBtn}
+              >
+                {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
+              </button>
+            </div>
+          </div>
 
-        {/* Row 2 — Invitation URL */}
-        <div style={{ ...rowStyle, marginTop: 8 }}>
-          <span style={labelStyle}>Invitation URL</span>
-          <code style={{ ...valueStyle, fontSize: 12, wordBreak: 'break-all' }}>{inviteUrl}</code>
-          <button
-            type="button"
-            onClick={() => handleCopy('url')}
-            style={smBtn}
-          >
-            {copied === 'url' ? 'Copied!' : 'Copy'}
-          </button>
-          <button
-            type="button"
-            onClick={() => rotateMutation.mutate()}
-            disabled={rotateMutation.isPending}
-            style={smBtn}
-          >
-            {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
-          </button>
+          {/* Invitation URL panel */}
+          <div style={panelStyle}>
+            <div style={labelStyle}>Invitation URL</div>
+            <div style={panelRowStyle}>
+              <code style={{ ...valueStyle, fontSize: 12 }}>{inviteUrl}</code>
+              <button
+                type="button"
+                onClick={() => handleCopy('url')}
+                style={smBtn}
+              >
+                {copied === 'url' ? 'Copied!' : 'Copy'}
+              </button>
+              <button
+                type="button"
+                onClick={() => rotateMutation.mutate()}
+                disabled={rotateMutation.isPending}
+                style={smBtn}
+              >
+                {rotateMutation.isPending ? 'Rotating…' : 'Regenerate'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Footer — TTL + Revoke */}
@@ -319,30 +327,37 @@ const cardStyle: React.CSSProperties = {
   color: '#475569',
 };
 
-const rowStyle: React.CSSProperties = {
+const panelStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+};
+
+const panelRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
+  gap: 6,
   flexWrap: 'wrap',
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 13,
+  fontSize: 12,
   fontWeight: 600,
   color: '#334155',
-  minWidth: 120,
 };
 
 const valueStyle: React.CSSProperties = {
   fontFamily: 'monospace',
-  fontSize: 15,
+  fontSize: 13,
   background: '#f1f5f9',
   padding: '4px 10px',
   borderRadius: 4,
   userSelect: 'text',
   letterSpacing: '0.03em',
-  flex: 1,
-  minWidth: 0,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  maxWidth: 360,
 };
 
 const smBtn: React.CSSProperties = {
