@@ -71,10 +71,16 @@ export class MailService {
       return;
     }
 
-    // Resolve from address: SMTP_FROM > first ADMIN_EMAILS entry > SMTP_USERNAME.
+    // Resolve from address: EMAIL_FROM_ADDRESS > SMTP_FROM > first ADMIN_EMAILS
+    // entry > SMTP_USERNAME. EMAIL_FROM_NAME (when set) wraps it as
+    // `"Display Name" <address>` so recipients see a friendly sender.
     const adminEmails = process.env.ADMIN_EMAILS ?? '';
     const firstAdmin = adminEmails.split(',').map((e) => e.trim()).filter(Boolean)[0];
-    this.from = process.env.SMTP_FROM ?? firstAdmin ?? username;
+    const fromAddress =
+      process.env.EMAIL_FROM_ADDRESS ?? process.env.SMTP_FROM ?? firstAdmin ?? username;
+    const fromName = process.env.EMAIL_FROM_NAME?.trim();
+    // Quote the display name to be safe with commas / specials.
+    this.from = fromName ? `"${fromName.replace(/"/g, '\\"')}" <${fromAddress}>` : fromAddress;
 
     const secure = (process.env.SMTP_SECURE ?? 'false').toLowerCase() === 'true';
 
