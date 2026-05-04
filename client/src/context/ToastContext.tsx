@@ -1,7 +1,7 @@
 /**
  * Tiny toast system. Call showToast(message, kind?) from anywhere under
  * <ToastProvider/>. Toasts auto-dismiss after ~3s and stack in the
- * lower-left corner. No dependencies, no animations beyond a CSS fade.
+ * lower-right corner. No dependencies, no animations beyond a CSS fade.
  */
 
 import {
@@ -102,9 +102,10 @@ function kindStyle(kind: ToastKind): React.CSSProperties {
 const viewportStyle: React.CSSProperties = {
   position: 'fixed',
   bottom: 20,
-  left: 20,
+  right: 20,
   display: 'flex',
   flexDirection: 'column',
+  alignItems: 'flex-end',
   gap: 8,
   zIndex: 9999,
   pointerEvents: 'none',

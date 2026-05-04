@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PassphraseCard } from '../../components/PassphraseCard';
+import { useToast } from '../../context/ToastContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,6 +68,16 @@ const FIELD_TO_API_KEY: Record<PermField, string> = {
   allowsOauthClient: 'allows_oauth_client',
   allowsLlmProxy: 'allows_llm_proxy',
   allowsLeagueAccount: 'allows_league_account',
+};
+
+/** Friendly labels for toast messages, indexed by camelCase or snake_case. */
+const PERM_LABEL: Record<string, string> = {
+  allowsOauthClient: 'OAuth Client',
+  allowsLlmProxy: 'LLM Proxy',
+  allowsLeagueAccount: 'League Account',
+  allows_oauth_client: 'OAuth Client',
+  allows_llm_proxy: 'LLM Proxy',
+  allows_league_account: 'League Account',
 };
 
 /**
@@ -131,6 +142,7 @@ export default function GroupDetailPanel() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   const numericId = id ? parseInt(id, 10) : NaN;
 
@@ -253,6 +265,9 @@ export default function GroupDetailPanel() {
     if (isLeagueToggleOn) {
       setProvisioningIds((prev) => new Set(prev).add(userId));
     }
+    const member = data?.users.find((u) => u.id === userId);
+    const memberName = member?.displayName || member?.email || `user ${userId}`;
+    const permLabel = PERM_LABEL[field] ?? field;
     try {
       const res = await fetch(`/api/admin/users/${userId}/permissions`, {
         method: 'PATCH',
@@ -264,8 +279,14 @@ export default function GroupDetailPanel() {
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
       await load();
+      showToast(
+        `${permLabel} ${newValue ? 'enabled' : 'disabled'} for ${memberName}`,
+        'success',
+      );
     } catch (err: any) {
-      setPermissionError(err.message || 'Permission update failed');
+      const msg = err.message || 'Permission update failed';
+      setPermissionError(msg);
+      showToast(`${permLabel} update failed for ${memberName}: ${msg}`, 'error');
     } finally {
       if (isLeagueToggleOn) {
         setProvisioningIds((prev) => {
@@ -281,23 +302,46 @@ export default function GroupDetailPanel() {
     if (!data) return;
     setColumnBusy(field);
     const apiKey = FIELD_TO_API_KEY[field];
+    const permLabel = PERM_LABEL[field] ?? field;
+    const total = data.users.length;
+    let failed = 0;
     try {
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         data.users.map((u) =>
           fetch(`/api/admin/users/${u.id}/permissions`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ [apiKey]: value }),
+          }).then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status} for user ${u.id}`);
           }).catch((err) => {
             console.warn('Bulk PATCH failed for user', u.id, err);
+            throw err;
           }),
         ),
       );
+      failed = results.filter((r) => r.status === 'rejected').length;
     } finally {
       setColumnBusy(null);
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'groups', numericId, 'detail'],
       });
+      const succeeded = total - failed;
+      const verb = value ? 'enabled' : 'disabled';
+      const memberWord = succeeded === 1 ? 'member' : 'members';
+      if (failed === 0) {
+        showToast(
+          `${permLabel} ${verb} for ${succeeded} ${memberWord}`,
+          'success',
+        );
+      } else if (succeeded > 0) {
+        showToast(
+          `${permLabel} ${verb} for ${succeeded} ${memberWord}; ${failed} failed`,
+          'error',
+        );
+      } else {
+        showToast(`${permLabel} bulk update failed for all ${total} members`, 'error');
+      }
     }
   }
 
