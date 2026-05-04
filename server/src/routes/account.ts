@@ -131,6 +131,7 @@ accountRouter.get(
         allowsOauthClient: (user as any).allows_oauth_client ?? false,
         allowsLlmProxy: (user as any).allows_llm_proxy ?? false,
         allowsLeagueAccount: (user as any).allows_league_account ?? false,
+        onboarding_completed: (user as any).onboarding_completed ?? true,
       },
       logins: userLogins.map((l) => ({
         id: l.id,
