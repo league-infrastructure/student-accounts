@@ -5,12 +5,15 @@
  * time-limited passphrase tied to a Group or Cohort scope.
  *
  * Algorithm:
- *  1. Validate username shape (2–32 chars, [a-z0-9._-] after lowercase).
+ *  1. Validate inputs: username, passphrase, password, displayName, email.
  *  2. Look up the passphrase via PassphraseService.findBySignupValue.
  *  3. Check username uniqueness.
- *  4. Derive primary_email from the slug, with collision retry.
- *  5. Hash the passphrase as the password.
+ *  4. Validate email uniqueness.
+ *  5. Hash the password (not the passphrase).
  *  6. Create User + Login in a single transaction.
+ *     - User: username, password_hash, display_name=displayName, primary_email=email,
+ *       onboarding_completed=true.
+ *     - Login: provider='passphrase', provider_email=email, provider_username=username.
  *  7. Set session.
  *  8. Fail-soft side effects: workspace provisioning, LLM proxy grant,
  *     group membership.
@@ -20,7 +23,6 @@
 
 import type { Request, Response } from 'express';
 import { prisma } from '../prisma.js';
-import { displayNameToSlug } from '../../utils/email-slug.js';
 import { hashPassword } from '../../utils/password.js';
 import { adminBus } from '../change-bus.js';
 import { AuditService } from '../audit.service.js';
@@ -54,7 +56,7 @@ function validateUsername(raw: string): { valid: true; username: string } | { va
 // ---------------------------------------------------------------------------
 
 export async function handlePassphraseSignup(req: Request, res: Response): Promise<void> {
-  const { username: rawUsername, passphrase } = req.body ?? {};
+  const { username: rawUsername, passphrase, password, displayName, email } = req.body ?? {};
 
   // ------------------------------------------------------------------
   // 1. Validate inputs presence
@@ -63,6 +65,21 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
     res.status(400).json({ error: 'Username and passphrase are required' });
     return;
   }
+  if (!password || typeof password !== 'string' || !password.trim()) {
+    res.status(400).json({ error: 'Password is required' });
+    return;
+  }
+  if (!displayName || typeof displayName !== 'string' || !displayName.trim()) {
+    res.status(400).json({ error: 'Display name is required' });
+    return;
+  }
+  if (!email || typeof email !== 'string' || !email.trim()) {
+    res.status(400).json({ error: 'Email is required' });
+    return;
+  }
+
+  const normalizedDisplayName = displayName.trim();
+  const normalizedEmail = email.trim().toLowerCase();
 
   // ------------------------------------------------------------------
   // 1b. Validate username shape
@@ -95,44 +112,18 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
   }
 
   // ------------------------------------------------------------------
-  // 4. Derive primary_email with collision retry
+  // 4. Check email uniqueness
   // ------------------------------------------------------------------
-  const baseSlug = displayNameToSlug(username, 0);
-
-  let primaryEmail: string | null = null;
-  const MAX_EMAIL_ATTEMPTS = 5;
-
-  for (let attempt = 0; attempt < MAX_EMAIL_ATTEMPTS; attempt++) {
-    const slugSuffix = attempt === 0 ? '' : `-${attempt + 1}`;
-    const slug = `${baseSlug}${slugSuffix}`;
-
-    let candidate: string;
-    if (scope === 'cohort') {
-      // Load cohort to get domain info — fall back to env var
-      const cohortRow = await (prisma as any).cohort.findUnique({ where: { id: scopeId } });
-      const domain = process.env.GOOGLE_STUDENT_DOMAIN ?? 'students.local';
-      candidate = `${slug}@${domain}`;
-    } else {
-      // Group scope: use signup.local domain with group id
-      candidate = `${slug}.g${scopeId}@signup.local`;
-    }
-
-    const collision = await prisma.user.findUnique({ where: { primary_email: candidate } });
-    if (!collision) {
-      primaryEmail = candidate;
-      break;
-    }
-  }
-
-  if (!primaryEmail) {
-    res.status(409).json({ error: 'That username is already taken' });
+  const existingByEmail = await prisma.user.findUnique({ where: { primary_email: normalizedEmail } });
+  if (existingByEmail) {
+    res.status(409).json({ error: 'That email address is already registered' });
     return;
   }
 
   // ------------------------------------------------------------------
-  // 5. Hash the passphrase as password
+  // 5. Hash the password (not the passphrase)
   // ------------------------------------------------------------------
-  const hashedPassword = await hashPassword(passphrase);
+  const hashedPassword = await hashPassword(password);
 
   // ------------------------------------------------------------------
   // 6. Create User + Login in a single transaction
@@ -144,8 +135,8 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
         data: {
           username,
           password_hash: hashedPassword,
-          display_name: username,
-          primary_email: primaryEmail!,
+          display_name: normalizedDisplayName,
+          primary_email: normalizedEmail,
           role: 'student',
           approval_status: 'approved',
           is_active: true,
@@ -160,6 +151,8 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
           user_id: user.id,
           provider: 'passphrase',
           provider_user_id: `${scope}:${scopeId}:${username}`,
+          provider_email: normalizedEmail,
+          provider_username: username,
         },
       });
 

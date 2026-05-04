@@ -16,6 +16,7 @@ import { UserService } from '../../../../server/src/services/user.service.js';
 import { LoginService } from '../../../../server/src/services/login.service.js';
 import {
   signInHandler,
+  looksLikeFullName,
   _parseAdminEmails,
   _setAdminEmails,
   resolveStaffOuPath,
@@ -1447,5 +1448,197 @@ describe('signInHandler — directory_metadata enrichment (Sprint 017 T004)', ()
     expect(meta).not.toBeNull();
     expect(meta.ou_path).toBe('/League Staff/Engineering');
     expect(meta.groups).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 028 ticket 013: looksLikeFullName helper unit tests
+// ---------------------------------------------------------------------------
+
+describe('looksLikeFullName', () => {
+  it('returns true for a typical first + last name', () => {
+    expect(looksLikeFullName('Alice Smith')).toBe(true);
+  });
+
+  it('returns true for a name with multiple spaces', () => {
+    expect(looksLikeFullName('Mary Ann Jones')).toBe(true);
+  });
+
+  it('returns true for a name with leading/trailing whitespace that trims to > 3 chars with a space', () => {
+    expect(looksLikeFullName('  Bob Lee  ')).toBe(true);
+  });
+
+  it('returns false for a single-word name (no space)', () => {
+    expect(looksLikeFullName('alice')).toBe(false);
+  });
+
+  it('returns false for an empty string', () => {
+    expect(looksLikeFullName('')).toBe(false);
+  });
+
+  it('returns false for a whitespace-only string', () => {
+    expect(looksLikeFullName('   ')).toBe(false);
+  });
+
+  it('returns false for null', () => {
+    expect(looksLikeFullName(null)).toBe(false);
+  });
+
+  it('returns false for undefined', () => {
+    expect(looksLikeFullName(undefined)).toBe(false);
+  });
+
+  it('returns false for a two-character name with a space (length ≤ 3)', () => {
+    // 'A B' → trimmed = 'A B' (3 chars), not > 3
+    expect(looksLikeFullName('A B')).toBe(false);
+  });
+
+  it('returns true for a four-character name with a space (length > 3)', () => {
+    // 'Al B' → trimmed = 'Al B' (4 chars), > 3, has space
+    expect(looksLikeFullName('Al B')).toBe(true);
+  });
+
+  it('returns false for a username that looks like a GitHub handle (no space)', () => {
+    expect(looksLikeFullName('jsmith42')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 028 ticket 013: onboarding_completed set by looksLikeFullName on new
+// OAuth user creation — one test per provider
+// ---------------------------------------------------------------------------
+
+describe('signInHandler — onboarding_completed reflects full-name heuristic (T013)', () => {
+  // Google: good name → onboarding_completed = true
+  it('Google: new user with "First Last" displayName gets onboarding_completed=true', async () => {
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-t013-g-good',
+        providerEmail: 't013.google.good@example.com',
+        displayName: 'Alice Smith',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+    );
+    expect(user.onboarding_completed).toBe(true);
+  });
+
+  // Google: bad name → onboarding_completed = false
+  it('Google: new user with no/short displayName gets onboarding_completed=false', async () => {
+    const user = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-t013-g-bad',
+        providerEmail: 't013.google.bad@example.com',
+        displayName: '',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+    );
+    expect(user.onboarding_completed).toBe(false);
+  });
+
+  // GitHub: good name → onboarding_completed = true
+  it('GitHub: new user with "First Last" displayName gets onboarding_completed=true', async () => {
+    const user = await signInHandler(
+      'github',
+      {
+        providerUserId: 'github-uid-t013-good',
+        providerEmail: 't013.github.good@example.com',
+        displayName: 'Bob Johnson',
+        providerUsername: 'bobjohnson',
+      },
+      userService,
+      loginService,
+    );
+    expect(user.onboarding_completed).toBe(true);
+  });
+
+  // GitHub: bad name (username only, no space) → onboarding_completed = false
+  it('GitHub: new user with username-style displayName gets onboarding_completed=false', async () => {
+    const user = await signInHandler(
+      'github',
+      {
+        providerUserId: 'github-uid-t013-bad',
+        providerEmail: 't013.github.bad@example.com',
+        displayName: 'coderboy',
+        providerUsername: 'coderboy',
+      },
+      userService,
+      loginService,
+    );
+    expect(user.onboarding_completed).toBe(false);
+  });
+
+  // Pike 13: good name → onboarding_completed = true
+  it('Pike13: new user with "First Last" displayName gets onboarding_completed=true', async () => {
+    const user = await signInHandler(
+      'pike13',
+      {
+        providerUserId: 'pike13-uid-t013-good',
+        providerEmail: 't013.pike13.good@example.com',
+        displayName: 'Carol Davis',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+    );
+    expect(user.onboarding_completed).toBe(true);
+  });
+
+  // Pike 13: bad name → onboarding_completed = false
+  it('Pike13: new user with no displayName gets onboarding_completed=false', async () => {
+    const user = await signInHandler(
+      'pike13',
+      {
+        providerUserId: 'pike13-uid-t013-bad',
+        providerEmail: 't013.pike13.bad@example.com',
+        displayName: '',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+    );
+    expect(user.onboarding_completed).toBe(false);
+  });
+
+  // Returning user: onboarding_completed is not modified by signInHandler
+  it('returning user: onboarding_completed is preserved unchanged on sign-in', async () => {
+    // Seed a returning user with onboarding_completed = false (e.g. name was bad)
+    const existing = await makeUser({
+      primary_email: 't013.returning@example.com',
+      display_name: 'incomplete',
+      role: 'student',
+      created_via: 'social_login',
+    });
+    // Force onboarding_completed to false
+    await (prisma as any).user.update({
+      where: { id: existing.id },
+      data: { onboarding_completed: false },
+    });
+    await makeLogin(existing, {
+      provider: 'google',
+      provider_user_id: 'google-uid-t013-returning',
+      provider_email: 't013.returning@example.com',
+    });
+
+    const result = await signInHandler(
+      'google',
+      {
+        providerUserId: 'google-uid-t013-returning',
+        providerEmail: 't013.returning@example.com',
+        // Even if they now supply a good name, returning path must not change onboarding_completed
+        displayName: 'Alice Smith',
+        providerUsername: null,
+      },
+      userService,
+      loginService,
+    );
+
+    expect(result.id).toBe(existing.id);
+    expect(result.onboarding_completed).toBe(false);
   });
 });
