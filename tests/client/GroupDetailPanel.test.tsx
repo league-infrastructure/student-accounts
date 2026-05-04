@@ -17,7 +17,7 @@
  * been removed from the component. Tests for those features are deleted here.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -63,6 +63,40 @@ const GROUP_WITH_TWO = {
   ],
 };
 
+/** Fixture: all users have every permission ON. */
+const GROUP_ALL_ON = {
+  group: { id: 7, name: 'Alpha', description: null, createdAt: '2026-01-15T00:00:00Z' },
+  users: [
+    {
+      id: 11, displayName: 'Alice', email: 'alice@league', role: 'student',
+      externalAccounts: [], llmProxyToken: { status: 'active' as const },
+      allowsOauthClient: true, allowsLlmProxy: true, allowsLeagueAccount: true,
+    },
+    {
+      id: 12, displayName: 'Bob', email: 'bob@league', role: 'student',
+      externalAccounts: [], llmProxyToken: { status: 'none' as const },
+      allowsOauthClient: true, allowsLlmProxy: true, allowsLeagueAccount: true,
+    },
+  ],
+};
+
+/** Fixture: all users have every permission OFF. */
+const GROUP_ALL_OFF = {
+  group: { id: 7, name: 'Alpha', description: null, createdAt: '2026-01-15T00:00:00Z' },
+  users: [
+    {
+      id: 11, displayName: 'Alice', email: 'alice@league', role: 'student',
+      externalAccounts: [], llmProxyToken: { status: 'active' as const },
+      allowsOauthClient: false, allowsLlmProxy: false, allowsLeagueAccount: false,
+    },
+    {
+      id: 12, displayName: 'Bob', email: 'bob@league', role: 'student',
+      externalAccounts: [], llmProxyToken: { status: 'none' as const },
+      allowsOauthClient: false, allowsLlmProxy: false, allowsLeagueAccount: false,
+    },
+  ],
+};
+
 /**
  * Build a fetch mock that routes by URL.
  * - /passphrase  → 404
@@ -103,8 +137,40 @@ function renderPanel() {
   );
 }
 
+/** Render with custom group data; returns the queryClient for spy access. */
+function renderPanelWith(groupData: typeof GROUP_WITH_TWO) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+    if (url.endsWith('/passphrase')) {
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({ error: 'Not found' }) });
+    }
+    if (url.endsWith('/members') && (!opts?.method || opts.method === 'GET')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(groupData) });
+    }
+    // Default: PATCH /permissions → ok
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(
+    <MemoryRouter initialEntries={['/groups/7']}>
+      <QueryClientProvider client={client}>
+        <Routes>
+          <Route path="/groups/:id" element={<GroupDetailPanel />} />
+        </Routes>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  return { client, fetchMock };
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('GroupDetailPanel', () => {
@@ -363,6 +429,199 @@ describe('GroupDetailPanel', () => {
     resolvePatch();
     await waitFor(() =>
       expect(screen.queryByText('Provisioning…')).not.toBeInTheDocument(),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 028 T007: tri-state column toggles
+// ---------------------------------------------------------------------------
+
+describe('GroupDetailPanel — ColumnTriToggle (tri-state column headers)', () => {
+  it('shows ☑ in all three column headers when every user has all permissions on', async () => {
+    renderPanelWith(GROUP_ALL_ON);
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    // There should be three buttons with title "All on — click to turn all off"
+    const allOnButtons = screen.getAllByTitle('All on — click to turn all off');
+    expect(allOnButtons).toHaveLength(3);
+    // Each should contain ☑
+    for (const btn of allOnButtons) {
+      expect(btn.textContent).toBe('☑');
+    }
+  });
+
+  it('shows ☒ in all three column headers when every user has all permissions off', async () => {
+    renderPanelWith(GROUP_ALL_OFF);
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    // All three columns all-off → ☒
+    const allOffButtons = screen.getAllByTitle('Click to turn all on');
+    expect(allOffButtons).toHaveLength(3);
+    for (const btn of allOffButtons) {
+      expect(btn.textContent).toBe('☒');
+    }
+  });
+
+  it('shows ☐ (mixed) in OAuth header when users have mixed allowsOauthClient', async () => {
+    // GROUP_WITH_TWO: Alice.allowsOauthClient=true, Bob.allowsOauthClient=false → mixed
+    renderPanelWith(GROUP_WITH_TWO);
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    // OAuth header: mixed → ☐; title is "Click to turn all on"
+    // LLM Proxy header: Alice=true, Bob=false → mixed → ☐
+    // Lg Acct header: Alice=false, Bob=false → all-off → ☒
+    // So there are 2 mixed (☐) and 1 all-off (☒)
+    const toTurnOnBtns = screen.getAllByTitle('Click to turn all on');
+    // Should include the mixed ones (☐) and the all-off one (☒)
+    expect(toTurnOnBtns.length).toBeGreaterThanOrEqual(2);
+
+    // At least one toggle shows ☐ (mixed)
+    const mixedBtns = screen.getAllByTitle('Click to turn all on').filter((b) => b.textContent === '☐');
+    expect(mixedBtns.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('click on ☑ (all-on) toggle fires N PATCH calls with value=false', async () => {
+    const { fetchMock } = renderPanelWith(GROUP_ALL_ON);
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    // Click the OAuth column toggle (all-on → click turns all off)
+    const allOnBtns = screen.getAllByTitle('All on — click to turn all off');
+    // Click the first one (OAuth)
+    fireEvent.click(allOnBtns[0]);
+
+    await waitFor(() => {
+      const patchCalls = fetchMock.mock.calls.filter(
+        (c) =>
+          typeof c[0] === 'string' &&
+          c[0].includes('/permissions') &&
+          c[1]?.method === 'PATCH',
+      );
+      expect(patchCalls.length).toBe(GROUP_ALL_ON.users.length);
+      for (const call of patchCalls) {
+        const body = JSON.parse(call[1].body as string);
+        expect(body.allows_oauth_client).toBe(false);
+      }
+    });
+  });
+
+  it('click on ☒ (all-off) toggle fires N PATCH calls with value=true', async () => {
+    const { fetchMock } = renderPanelWith(GROUP_ALL_OFF);
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    // All three columns are all-off. Click the first one (OAuth).
+    const allOffBtns = screen.getAllByTitle('Click to turn all on');
+    // The all-off buttons show ☒; pick the one for OAuth (first in DOM order)
+    const oauthBtn = allOffBtns.find((b) => b.textContent === '☒')!;
+    fireEvent.click(oauthBtn);
+
+    await waitFor(() => {
+      const patchCalls = fetchMock.mock.calls.filter(
+        (c) =>
+          typeof c[0] === 'string' &&
+          c[0].includes('/permissions') &&
+          c[1]?.method === 'PATCH',
+      );
+      expect(patchCalls.length).toBe(GROUP_ALL_OFF.users.length);
+      for (const call of patchCalls) {
+        const body = JSON.parse(call[1].body as string);
+        expect(body.allows_oauth_client).toBe(true);
+      }
+    });
+  });
+
+  it('click on ☐ (mixed) toggle fires N PATCH calls with value=true', async () => {
+    // GROUP_WITH_TWO: OAuth is mixed (Alice=true, Bob=false)
+    const { fetchMock } = renderPanelWith(GROUP_WITH_TWO);
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    // Find the OAuth header ☐ toggle (mixed → click to turn all on)
+    const mixedBtns = screen.getAllByTitle('Click to turn all on').filter((b) => b.textContent === '☐');
+    expect(mixedBtns.length).toBeGreaterThanOrEqual(1);
+    // Click the first mixed toggle
+    fireEvent.click(mixedBtns[0]);
+
+    await waitFor(() => {
+      const patchCalls = fetchMock.mock.calls.filter(
+        (c) =>
+          typeof c[0] === 'string' &&
+          c[0].includes('/permissions') &&
+          c[1]?.method === 'PATCH',
+      );
+      expect(patchCalls.length).toBe(GROUP_WITH_TWO.users.length);
+      for (const call of patchCalls) {
+        const body = JSON.parse(call[1].body as string);
+        // The mixed columns all turn on → the clicked field value is true
+        // (we can't know which field from outside, but value must be true)
+        const values = Object.values(body) as boolean[];
+        expect(values.every((v) => v === true)).toBe(true);
+      }
+    });
+  });
+
+  it('shows "Updating..." pill in the column header while PATCHes are in-flight', async () => {
+    let resolveAll!: () => void;
+    const hangPromise = new Promise<void>((res) => { resolveAll = res; });
+
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.endsWith('/passphrase')) {
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+      }
+      if (url.endsWith('/members') && (!opts?.method || opts.method === 'GET')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(GROUP_ALL_ON) });
+      }
+      if (url.includes('/permissions') && opts?.method === 'PATCH') {
+        return hangPromise.then(() => ({ ok: true, json: () => Promise.resolve({}) }));
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <MemoryRouter initialEntries={['/groups/7']}>
+        <QueryClientProvider client={client}>
+          <Routes>
+            <Route path="/groups/:id" element={<GroupDetailPanel />} />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    // Click the OAuth toggle (all-on → will send PATCHes)
+    const allOnBtns = screen.getAllByTitle('All on — click to turn all off');
+    fireEvent.click(allOnBtns[0]);
+
+    // While in-flight, "Updating..." should be visible
+    await waitFor(() =>
+      expect(screen.getByText('Updating...')).toBeInTheDocument(),
+    );
+
+    // Resolve PATCHes
+    resolveAll();
+    await waitFor(() =>
+      expect(screen.queryByText('Updating...')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('invalidates group detail query after all PATCHes settle', async () => {
+    const { client, fetchMock } = renderPanelWith(GROUP_ALL_ON);
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+
+    const allOnBtns = screen.getAllByTitle('All on — click to turn all off');
+    fireEvent.click(allOnBtns[0]);
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: expect.arrayContaining(['admin', 'groups']),
+        }),
+      ),
     );
   });
 });

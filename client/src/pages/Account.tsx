@@ -170,6 +170,10 @@ function ProfileSection({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Send-test-email state
+  const [testEmailBusy, setTestEmailBusy] = useState(false);
+  const [testEmailStatus, setTestEmailStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+
   const displayed = profile.displayName ?? profile.primaryEmail;
 
   function startEdit() {
@@ -197,6 +201,30 @@ function ProfileSection({
       setError(err.message ?? 'Could not save');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function sendTestEmail() {
+    const to = profile.notificationEmail ?? profile.primaryEmail;
+    setTestEmailBusy(true);
+    setTestEmailStatus(null);
+    try {
+      const res = await fetch('/api/account/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to }),
+      });
+      const data = await res.json().catch(() => ({})) as { ok?: boolean; to?: string; error?: string };
+      if (res.ok) {
+        setTestEmailStatus({ ok: true, msg: `Test email sent to ${data.to ?? to}` });
+      } else {
+        setTestEmailStatus({ ok: false, msg: data.error ?? `Failed (${res.status})` });
+      }
+    } catch (err: any) {
+      setTestEmailStatus({ ok: false, msg: err.message ?? 'Network error' });
+    } finally {
+      setTestEmailBusy(false);
+      setTimeout(() => setTestEmailStatus(null), 5000);
     }
   }
 
@@ -228,10 +256,34 @@ function ProfileSection({
         </button>
       )}
       {error && <div style={styles.profileNameError} role="alert">{error}</div>}
-      <NotificationEmailPicker
-        profile={profile}
-        onChange={onChangeNotificationEmail}
-      />
+      <div style={styles.notificationEmailRow}>
+        <NotificationEmailPicker
+          profile={profile}
+          onChange={onChangeNotificationEmail}
+        />
+        <button
+          type="button"
+          onClick={() => void sendTestEmail()}
+          disabled={testEmailBusy}
+          style={testEmailBusy ? styles.sendTestButtonDisabled : styles.sendTestButton}
+          aria-label="Send test email"
+        >
+          {testEmailBusy ? 'Sending…' : 'Send test'}
+        </button>
+      </div>
+      {testEmailStatus && (
+        <span
+          data-testid="test-email-pill"
+          style={{
+            ...styles.testEmailPill,
+            color: testEmailStatus.ok ? '#065f46' : '#991b1b',
+            background: testEmailStatus.ok ? '#d1fae5' : '#fee2e2',
+            borderColor: testEmailStatus.ok ? '#6ee7b7' : '#fca5a5',
+          }}
+        >
+          {testEmailStatus.msg}
+        </span>
+      )}
       <div style={styles.profileMeta}>{subtitle}</div>
     </header>
   );
@@ -1092,5 +1144,40 @@ const styles: Record<string, React.CSSProperties> = {
   tempPasswordHint: {
     fontSize: '0.78rem',
     color: '#64748b',
+  },
+  notificationEmailRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap' as const,
+  },
+  sendTestButton: {
+    fontSize: '0.78rem',
+    padding: '2px 10px',
+    borderRadius: 5,
+    border: '1px solid #cbd5e1',
+    background: '#f8fafc',
+    color: '#475569',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  sendTestButtonDisabled: {
+    fontSize: '0.78rem',
+    padding: '2px 10px',
+    borderRadius: 5,
+    border: '1px solid #e2e8f0',
+    background: '#f1f5f9',
+    color: '#94a3b8',
+    cursor: 'not-allowed',
+    opacity: 0.7,
+    flexShrink: 0,
+  },
+  testEmailPill: {
+    display: 'inline-block',
+    fontSize: '0.78rem',
+    padding: '2px 10px',
+    borderRadius: 12,
+    border: '1px solid',
+    marginBottom: 4,
   },
 };
