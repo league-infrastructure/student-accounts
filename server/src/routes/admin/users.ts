@@ -3,6 +3,7 @@ import { prisma } from '../../services/prisma.js';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { AppError } from '../../errors.js';
 import { adminBus, userBus } from '../../services/change-bus.js';
+import { provisionUserIfNeeded } from '../../services/group.service.js';
 
 export const adminUsersRouter = Router();
 
@@ -509,6 +510,105 @@ adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
     }
     if (name === 'AnthropicAdminApiError' || name === 'ClaudeTeamApiError') {
       return res.status(502).json({ error: `Anthropic API error: ${err.message}` });
+    }
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /admin/users/:id/permissions — update per-user permission flags
+//
+// Body (all optional):
+//   { allows_oauth_client?: boolean, allows_llm_proxy?: boolean, allows_league_account?: boolean }
+//
+// Returns 200 with { allowsOauthClient, allowsLlmProxy, allowsLeagueAccount }.
+// Returns 400 if any provided field is not a boolean.
+// Returns 404 if the user does not exist.
+// ---------------------------------------------------------------------------
+
+adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid user id' });
+
+    const actorId = (req.session as any).userId as number;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    // Validate each recognised field — must be boolean when present.
+    const PERMISSION_FIELDS = ['allows_oauth_client', 'allows_llm_proxy', 'allows_league_account'] as const;
+    for (const field of PERMISSION_FIELDS) {
+      if (field in body && typeof body[field] !== 'boolean') {
+        return res.status(400).json({ error: `Field '${field}' must be a boolean` });
+      }
+    }
+
+    const patch: {
+      allows_oauth_client?: boolean;
+      allows_llm_proxy?: boolean;
+      allows_league_account?: boolean;
+    } = {};
+    for (const field of PERMISSION_FIELDS) {
+      if (field in body) {
+        (patch as any)[field] = body[field] as boolean;
+      }
+    }
+
+    const { leagueAccountFlipped, llmProxyFlipped, llmProxyUnflipped, ...permissions } =
+      await req.services.users.setPermissions(id, patch, actorId);
+
+    adminBus.notify('users');
+    userBus.notifyUser(id);
+
+    // Fire-and-soft-fail: if allows_league_account just flipped false→true,
+    // try to provision a Workspace account for the user. Failure does not
+    // affect the HTTP response or the audit event already written.
+    if (leagueAccountFlipped) {
+      void provisionUserIfNeeded(
+        prisma,
+        req.services.workspaceProvisioning,
+        id,
+        actorId,
+      );
+    }
+
+    // Fire-and-soft-fail: if allows_llm_proxy just flipped false→true,
+    // grant the user an LLM proxy token with default expiry/limit.
+    // Skip silently if the user already has an active token (ConflictError).
+    if (llmProxyFlipped) {
+      const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+      const expiresAt = new Date(Date.now() + oneYearMs);
+      const tokenLimit = 1_000_000;
+      void req.services.llmProxyTokens
+        .grant(id, { expiresAt, tokenLimit }, actorId, { llmProxyAllowed: true })
+        .then(() => userBus.notifyUser(id))
+        .catch((err: any) => {
+          // Ignore "user already has active token" — fail-soft.
+          if (err?.constructor?.name !== 'ConflictError') {
+            // eslint-disable-next-line no-console
+            console.warn('[users PATCH /:id/permissions] auto-grant LLM proxy failed', err);
+          }
+        });
+    }
+
+    // Fire-and-soft-fail: if allows_llm_proxy just flipped true→false,
+    // revoke the user's active token. Skip silently if no active token
+    // exists (NotFoundError).
+    if (llmProxyUnflipped) {
+      void req.services.llmProxyTokens
+        .revoke(id, actorId)
+        .then(() => userBus.notifyUser(id))
+        .catch((err: any) => {
+          if (err?.constructor?.name !== 'NotFoundError') {
+            // eslint-disable-next-line no-console
+            console.warn('[users PATCH /:id/permissions] auto-revoke LLM proxy failed', err);
+          }
+        });
+    }
+
+    res.json(permissions);
+  } catch (err: any) {
+    if (err instanceof AppError && err.statusCode === 404) {
+      return res.status(404).json({ error: 'User not found' });
     }
     next(err);
   }

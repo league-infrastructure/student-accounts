@@ -1,5 +1,5 @@
 /**
- * Tests for GroupDetailPanel (Sprint 012 T005, Sprint 026 T007).
+ * Tests for GroupDetailPanel (Sprint 012 T005).
  *
  * Focused on the narrow behaviours the sprint brief specifies:
  *   - Member table renders.
@@ -7,23 +7,16 @@
  *   - Remove posts a DELETE and re-fetches.
  *   - Each of the four bulk buttons hits the correct endpoint.
  *   - Suspend-all failure banner renders "name (type): reason".
- *   - (Sprint 026 T007) Permission toggles render with correct initial state.
- *   - (Sprint 026 T007) Toggling a permission fires PATCH with the right field.
- *   - (Sprint 026 T007) Error from PATCH shows inline alert.
- *   - (Sprint 026 T007) leagueAccount toggle shows "Provisioning…" while pending.
  *
  * Note (Sprint 015 T007): GroupDetailPanel now renders a PassphraseCard which
  * makes an additional GET /api/admin/groups/:id/passphrase fetch. Tests that
  * use url-agnostic sequential mocks (mockResolvedValueOnce) need the passphrase
  * fetch to be handled. The helpers below route by URL so each endpoint gets the
  * correct response regardless of call order.
- *
- * Note (Sprint 026 T007): GroupDetailPanel now also fetches GET /api/admin/groups/:id
- * (without /members) to load permission flags. The fetch mock must handle this URL.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GroupDetailPanel from '../../client/src/pages/admin/GroupDetailPanel';
@@ -32,17 +25,6 @@ import GroupDetailPanel from '../../client/src/pages/admin/GroupDetailPanel';
 function passphraseNotFound() {
   return { ok: false, status: 404, json: async () => ({ error: 'Not found' }) };
 }
-
-/** Default permission flags returned by GET /admin/groups/:id */
-const DEFAULT_PERMISSIONS = {
-  id: 7,
-  name: 'Alpha',
-  description: 'Top students',
-  createdAt: '2026-01-15T00:00:00Z',
-  allowsOauthClient: false,
-  allowsLlmProxy: true,
-  allowsLeagueAccount: false,
-};
 
 const GROUP_WITH_TWO = {
   group: {
@@ -61,6 +43,9 @@ const GROUP_WITH_TWO = {
         { type: 'workspace', status: 'active', externalId: 'alice@league' },
       ],
       llmProxyToken: { status: 'active' as const },
+      allowsOauthClient: true,
+      allowsLlmProxy: true,
+      allowsLeagueAccount: false,
     },
     {
       id: 12,
@@ -69,6 +54,9 @@ const GROUP_WITH_TWO = {
       role: 'student',
       externalAccounts: [],
       llmProxyToken: { status: 'none' as const },
+      allowsOauthClient: false,
+      allowsLlmProxy: false,
+      allowsLeagueAccount: false,
     },
   ],
 };
@@ -77,7 +65,6 @@ const GROUP_WITH_TWO = {
  * Build a fetch mock that routes by URL.
  * - /passphrase  → 404
  * - /members (GET) → GROUP_WITH_TWO
- * - /admin/groups/7 (exact, no trailing segment) → permissions object
  * Callers can override specific URL matchers via `overrides`.
  */
 function buildFetchMock(overrides: Record<string, (url: string, opts?: RequestInit) => any> = {}) {
@@ -90,10 +77,6 @@ function buildFetchMock(overrides: Record<string, (url: string, opts?: RequestIn
     }
     if (url.endsWith('/passphrase')) {
       return Promise.resolve(passphraseNotFound());
-    }
-    // Exact group endpoint (permission flags): matches /admin/groups/7 but NOT /members etc.
-    if (/\/admin\/groups\/\d+$/.test(url) && (!opts?.method || opts.method === 'GET')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(DEFAULT_PERMISSIONS) });
     }
     // Members list
     if (url.endsWith('/members') && (!opts?.method || opts.method === 'GET')) {
@@ -146,6 +129,9 @@ describe('GroupDetailPanel', () => {
           role: 'student',
           externalAccounts: [],
           llmProxyToken: { status: 'none' as const },
+          allowsOauthClient: false,
+          allowsLlmProxy: false,
+          allowsLeagueAccount: false,
         },
       ],
     };
@@ -271,182 +257,141 @@ describe('GroupDetailPanel', () => {
       ).toBe(true),
     );
   });
-});
 
-// ---------------------------------------------------------------------------
-// Sprint 026 T007: Permission toggle tests
-// ---------------------------------------------------------------------------
-
-describe('GroupDetailPanel — permission toggles', () => {
-  it('renders three toggles with correct initial state from GET /admin/groups/:id', async () => {
+  it('permission checkboxes render with current flag values from listMembers', async () => {
     vi.stubGlobal('fetch', buildFetchMock());
     renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
 
-    await waitFor(() =>
-      expect(screen.getByLabelText('OAuth Client registration')).toBeInTheDocument(),
-    );
+    // Alice: allowsOauthClient=true, allowsLlmProxy=true, allowsLeagueAccount=false
+    const aliceOauthCb = screen.getByRole('checkbox', { name: /OAuth Client for Alice/i });
+    const aliceLlmCb = screen.getByRole('checkbox', { name: /LLM Proxy for Alice/i });
+    const aliceLeagueCb = screen.getByRole('checkbox', { name: /League Account for Alice/i });
+    expect(aliceOauthCb).toBeChecked();
+    expect(aliceLlmCb).toBeChecked();
+    expect(aliceLeagueCb).not.toBeChecked();
 
-    const oauthToggle = screen.getByLabelText('OAuth Client registration') as HTMLInputElement;
-    const llmToggle = screen.getByLabelText('LLM Proxy access') as HTMLInputElement;
-    const leagueToggle = screen.getByLabelText('League Account provisioning') as HTMLInputElement;
-
-    // DEFAULT_PERMISSIONS: allowsOauthClient=false, allowsLlmProxy=true, allowsLeagueAccount=false
-    expect(oauthToggle.checked).toBe(false);
-    expect(llmToggle.checked).toBe(true);
-    expect(leagueToggle.checked).toBe(false);
+    // Bob: all false
+    const bobOauthCb = screen.getByRole('checkbox', { name: /OAuth Client for Bob/i });
+    expect(bobOauthCb).not.toBeChecked();
   });
 
-  it('caption appears for each toggle', async () => {
-    vi.stubGlobal('fetch', buildFetchMock());
-    renderPanel();
-
-    await waitFor(() =>
-      expect(screen.getByLabelText('OAuth Client registration')).toBeInTheDocument(),
-    );
-
-    const captions = screen.getAllByText('Toggling this on grants the capability to every member.');
-    expect(captions).toHaveLength(3);
-  });
-
-  it('toggling allowsOauthClient fires PATCH with { allowsOauthClient: true }', async () => {
-    const fetchMock = buildFetchMock();
-    vi.stubGlobal('fetch', fetchMock);
-    renderPanel();
-
-    await waitFor(() =>
-      expect(screen.getByLabelText('OAuth Client registration')).toBeInTheDocument(),
-    );
-
-    const oauthToggle = screen.getByLabelText('OAuth Client registration');
-    await act(async () => {
-      fireEvent.click(oauthToggle);
+  it('clicking OAuth checkbox sends PATCH with correct field and userId', async () => {
+    const fetchMock = buildFetchMock({
+      '/permissions': (_url: string, opts?: RequestInit) =>
+        opts?.method === 'PATCH'
+          ? { ok: true, json: () => Promise.resolve({ allowsOauthClient: false, allowsLlmProxy: true, allowsLeagueAccount: false }) }
+          : { ok: true, json: () => Promise.resolve({}) },
     });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    // Alice has allowsOauthClient=true; uncheck it
+    const aliceOauthCb = screen.getByRole('checkbox', { name: /OAuth Client for Alice/i });
+    fireEvent.click(aliceOauthCb);
 
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some((c) => {
-          if (typeof c[0] !== 'string') return false;
-          if (!/\/admin\/groups\/\d+$/.test(c[0])) return false;
+          if (typeof c[0] !== 'string' || !c[0].includes('/permissions')) return false;
+          if (c[0] !== '/api/admin/users/11/permissions') return false;
           if (c[1]?.method !== 'PATCH') return false;
           const body = JSON.parse(c[1].body as string);
-          return body.allowsOauthClient === true;
+          return body.allows_oauth_client === false;
         }),
       ).toBe(true),
     );
   });
 
-  it('toggling allowsLlmProxy (was true) fires PATCH with { allowsLlmProxy: false }', async () => {
-    const fetchMock = buildFetchMock();
-    vi.stubGlobal('fetch', fetchMock);
-    renderPanel();
-
-    await waitFor(() =>
-      expect(screen.getByLabelText('LLM Proxy access')).toBeInTheDocument(),
-    );
-
-    const llmToggle = screen.getByLabelText('LLM Proxy access');
-    await act(async () => {
-      fireEvent.click(llmToggle);
+  it('clicking LLM Proxy checkbox sends PATCH with allows_llm_proxy', async () => {
+    const fetchMock = buildFetchMock({
+      '/permissions': (_url: string, opts?: RequestInit) =>
+        opts?.method === 'PATCH'
+          ? { ok: true, json: () => Promise.resolve({ allowsOauthClient: false, allowsLlmProxy: true, allowsLeagueAccount: false }) }
+          : { ok: true, json: () => Promise.resolve({}) },
     });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    // Bob has allowsLlmProxy=false; check it
+    const bobLlmCb = screen.getByRole('checkbox', { name: /LLM Proxy for Bob/i });
+    fireEvent.click(bobLlmCb);
 
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some((c) => {
-          if (typeof c[0] !== 'string') return false;
-          if (!/\/admin\/groups\/\d+$/.test(c[0])) return false;
+          if (typeof c[0] !== 'string' || !c[0].includes('/permissions')) return false;
           if (c[1]?.method !== 'PATCH') return false;
           const body = JSON.parse(c[1].body as string);
-          return body.allowsLlmProxy === false;
+          return body.allows_llm_proxy === true;
         }),
       ).toBe(true),
     );
   });
 
-  it('shows inline error alert when PATCH fails', async () => {
-    const fetchMock = buildFetchMock();
-    // Override PATCH to return error
-    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
-      if (/\/admin\/groups\/\d+$/.test(url) && opts?.method === 'PATCH') {
-        return Promise.resolve({
-          ok: false,
-          status: 500,
-          json: () => Promise.resolve({ error: 'Server exploded' }),
-        });
-      }
-      if (/\/admin\/groups\/\d+$/.test(url) && (!opts?.method || opts.method === 'GET')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(DEFAULT_PERMISSIONS) });
-      }
-      if (url.endsWith('/passphrase')) {
-        return Promise.resolve(passphraseNotFound());
-      }
-      if (url.endsWith('/members') && (!opts?.method || opts.method === 'GET')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(GROUP_WITH_TWO) });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  it('permission PATCH error shows error banner', async () => {
+    const fetchMock = buildFetchMock({
+      '/permissions': (_url: string, opts?: RequestInit) =>
+        opts?.method === 'PATCH'
+          ? { ok: false, status: 400, json: () => Promise.resolve({ error: 'Permission denied' }) }
+          : { ok: true, json: () => Promise.resolve({}) },
     });
     vi.stubGlobal('fetch', fetchMock);
+
     renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
+
+    const bobOauthCb = screen.getByRole('checkbox', { name: /OAuth Client for Bob/i });
+    fireEvent.click(bobOauthCb);
 
     await waitFor(() =>
-      expect(screen.getByLabelText('OAuth Client registration')).toBeInTheDocument(),
-    );
-
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText('OAuth Client registration'));
-    });
-
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Server exploded'),
+      expect(screen.getByRole('alert')).toHaveTextContent(/Permission denied/),
     );
   });
 
-  it('league-account toggle shows Provisioning… indicator while PATCH is in-flight', async () => {
-    let resolvePatch!: (value: any) => void;
-    const patchPromise = new Promise<any>((resolve) => {
-      resolvePatch = resolve;
-    });
+  it('League Account checkbox shows Provisioning indicator on toggle-on', async () => {
+    // Make the PATCH hang briefly so we can check the in-flight state
+    let resolvePatch!: () => void;
+    const patchPromise = new Promise<void>((res) => { resolvePatch = res; });
 
-    const fetchMock = buildFetchMock();
-    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
-      if (/\/admin\/groups\/\d+$/.test(url) && opts?.method === 'PATCH') {
-        return patchPromise;
-      }
-      if (/\/admin\/groups\/\d+$/.test(url) && (!opts?.method || opts.method === 'GET')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(DEFAULT_PERMISSIONS) });
-      }
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
       if (url.endsWith('/passphrase')) {
-        return Promise.resolve(passphraseNotFound());
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({ error: 'Not found' }) });
       }
       if (url.endsWith('/members') && (!opts?.method || opts.method === 'GET')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(GROUP_WITH_TWO) });
       }
+      if (url.includes('/permissions') && opts?.method === 'PATCH') {
+        return patchPromise.then(() => ({
+          ok: true,
+          json: () => Promise.resolve({ allowsOauthClient: false, allowsLlmProxy: false, allowsLeagueAccount: true }),
+        }));
+      }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
     vi.stubGlobal('fetch', fetchMock);
+
     renderPanel();
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
 
+    // Toggle League Account on for Alice (currently false)
+    const aliceLeagueCb = screen.getByRole('checkbox', { name: /League Account for Alice/i });
+    fireEvent.click(aliceLeagueCb);
+
+    // "Provisioning…" should appear while PATCH is in-flight
     await waitFor(() =>
-      expect(screen.getByLabelText('League Account provisioning')).toBeInTheDocument(),
+      expect(screen.getByText('Provisioning…')).toBeInTheDocument(),
     );
 
-    // Click the league account toggle (starts the in-flight PATCH)
-    fireEvent.click(screen.getByLabelText('League Account provisioning'));
-
-    // Provisioning indicator should appear while PATCH is pending
+    // Resolve the PATCH
+    resolvePatch();
     await waitFor(() =>
-      expect(screen.getByLabelText('Provisioning…')).toBeInTheDocument(),
-    );
-
-    // Resolve the PATCH — indicator disappears
-    await act(async () => {
-      resolvePatch({
-        ok: true,
-        json: () => Promise.resolve({ ...DEFAULT_PERMISSIONS, allowsLeagueAccount: true }),
-      });
-    });
-
-    await waitFor(() =>
-      expect(screen.queryByLabelText('Provisioning…')).not.toBeInTheDocument(),
+      expect(screen.queryByText('Provisioning…')).not.toBeInTheDocument(),
     );
   });
 });
+

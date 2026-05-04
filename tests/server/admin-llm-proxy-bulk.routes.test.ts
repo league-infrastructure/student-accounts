@@ -61,10 +61,10 @@ function futureIso(daysAhead = 30): string {
 
 describe('POST /api/admin/groups/:id/llm-proxy/bulk-grant', () => {
   it('200 with succeeded + tokensByUser for a group with active members', async () => {
-    // allows_llm_proxy=true so members are eligible for token grants (Sprint 026 T004).
-    const group = await makeGroup({ allows_llm_proxy: true });
-    const u1 = await makeUser({ role: 'student' });
-    const u2 = await makeUser({ role: 'student' });
+    // allows_llm_proxy=true on User row so members are eligible (Sprint 027 T002).
+    const group = await makeGroup();
+    const u1 = await makeUser({ role: 'student', allows_llm_proxy: true });
+    const u2 = await makeUser({ role: 'student', allows_llm_proxy: true });
     await makeMembership(group, u1);
     await makeMembership(group, u2);
 

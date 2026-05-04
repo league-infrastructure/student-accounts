@@ -1,11 +1,14 @@
 /**
- * Integration tests for the LLM proxy grant permission gate (Sprint 026 T004).
+ * Integration tests for the LLM proxy grant permission gate (Sprint 027 T002).
+ *
+ * After Sprint 027 T001, permissions live on the User row (allows_llm_proxy).
+ * userPermissions() reads directly from the User row — no group join.
  *
  * Verifies:
- *  - Single grant returns 403 when target user has no group with allows_llm_proxy.
- *  - Single grant returns 201 when target user is in a group with allows_llm_proxy.
+ *  - Single grant returns 403 when target user has allows_llm_proxy=false.
+ *  - Single grant returns 201 when target user has allows_llm_proxy=true.
  *  - Bulk grant skips users without allows_llm_proxy and grants those with it.
- *  - Existing active tokens are NOT revoked when a group's allows_llm_proxy is toggled off.
+ *  - Existing active tokens are NOT revoked when a user's allows_llm_proxy is toggled off.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
@@ -59,11 +62,9 @@ function futureIso(daysAhead = 30): string {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/admin/users/:id/llm-proxy-token — permission gate', () => {
-  it('403 when target user has no group with allows_llm_proxy', async () => {
+  it('403 when target user has allows_llm_proxy=false', async () => {
     const target = await makeUser({ role: 'student' });
-    // Group WITHOUT the flag.
-    const group = await makeGroup({ allows_llm_proxy: false });
-    await makeMembership(group, target);
+    // allows_llm_proxy defaults to false — no extra setup needed.
 
     const res = await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
@@ -73,9 +74,8 @@ describe('POST /api/admin/users/:id/llm-proxy-token — permission gate', () => 
     expect(res.body.error).toContain('allowsLlmProxy');
   });
 
-  it('403 when target user belongs to no groups at all', async () => {
+  it('403 when target user has no explicit permission (default false)', async () => {
     const target = await makeUser({ role: 'student' });
-    // No group memberships.
 
     const res = await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
@@ -85,10 +85,8 @@ describe('POST /api/admin/users/:id/llm-proxy-token — permission gate', () => 
     expect(res.body.error).toContain('allowsLlmProxy');
   });
 
-  it('201 when target user is in a group with allows_llm_proxy=true', async () => {
-    const target = await makeUser({ role: 'student' });
-    const group = await makeGroup({ allows_llm_proxy: true });
-    await makeMembership(group, target);
+  it('201 when target user has allows_llm_proxy=true', async () => {
+    const target = await makeUser({ role: 'student', allows_llm_proxy: true });
 
     const res = await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
@@ -99,12 +97,11 @@ describe('POST /api/admin/users/:id/llm-proxy-token — permission gate', () => 
     expect(res.body.token.startsWith('llmp_')).toBe(true);
   });
 
-  it('201 via multi-group union: one group has flag, another does not', async () => {
-    const target = await makeUser({ role: 'student' });
-    const noPermGroup = await makeGroup({ allows_llm_proxy: false });
-    const permGroup = await makeGroup({ allows_llm_proxy: true });
-    await makeMembership(noPermGroup, target);
-    await makeMembership(permGroup, target);
+  it('201 when target user has allows_llm_proxy=true (group membership irrelevant)', async () => {
+    // Group membership no longer determines permission — only User row matters.
+    const target = await makeUser({ role: 'student', allows_llm_proxy: true });
+    const group = await makeGroup();
+    await makeMembership(group, target);
 
     const res = await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
@@ -122,23 +119,18 @@ describe('POST /api/admin/groups/:id/llm-proxy/bulk-grant — permission gate', 
   it('grants tokens to eligible members and skips ineligible ones', async () => {
     /**
      * Setup:
-     *   grantGroup  (allows_llm_proxy=false) — the group we bulk-grant from
-     *   permGroup   (allows_llm_proxy=true)  — grants permission
+     *   grantGroup — the group we bulk-grant from
      *
-     *   eligible:   member of grantGroup AND permGroup → llmProxy=true → gets token
-     *   ineligible: member of grantGroup only          → llmProxy=false → skipped
+     *   eligible:   member of grantGroup with allows_llm_proxy=true → gets token
+     *   ineligible: member of grantGroup with allows_llm_proxy=false (default) → skipped
      */
-    const grantGroup = await makeGroup({ allows_llm_proxy: false });
-    const permGroup = await makeGroup({ allows_llm_proxy: true });
+    const grantGroup = await makeGroup();
 
-    const eligible = await makeUser({ role: 'student' });
+    const eligible = await makeUser({ role: 'student', allows_llm_proxy: true });
     const ineligible = await makeUser({ role: 'student' });
 
     await makeMembership(grantGroup, eligible);
-    await makeMembership(permGroup, eligible);
-
     await makeMembership(grantGroup, ineligible);
-    // ineligible is NOT in permGroup — only in grantGroup which has no flag.
 
     const res = await adminAgent
       .post(`/api/admin/groups/${grantGroup.id}/llm-proxy/bulk-grant`)
@@ -163,11 +155,9 @@ describe('POST /api/admin/groups/:id/llm-proxy/bulk-grant — permission gate', 
 
 describe('allows_llm_proxy toggle — no revocation of existing tokens', () => {
   it('existing active token remains valid after allows_llm_proxy is toggled off', async () => {
-    const user = await makeUser({ role: 'student' });
-    const group = await makeGroup({ allows_llm_proxy: true });
-    await makeMembership(group, user);
+    const user = await makeUser({ role: 'student', allows_llm_proxy: true });
 
-    // Grant a token while the group has the flag.
+    // Grant a token while the user has the flag.
     const grantRes = await adminAgent
       .post(`/api/admin/users/${user.id}/llm-proxy-token`)
       .send({ expiresAt: futureIso(), tokenLimit: 100 });
@@ -175,8 +165,8 @@ describe('allows_llm_proxy toggle — no revocation of existing tokens', () => {
     const tokenId: number = grantRes.body.tokenId;
 
     // Toggle the flag off directly in the DB (simulating an admin update).
-    await (prisma as any).group.update({
-      where: { id: group.id },
+    await (prisma as any).user.update({
+      where: { id: user.id },
       data: { allows_llm_proxy: false },
     });
 
@@ -187,19 +177,17 @@ describe('allows_llm_proxy toggle — no revocation of existing tokens', () => {
   });
 
   it('new grant for the same user is 403 after allows_llm_proxy is toggled off', async () => {
-    const user = await makeUser({ role: 'student' });
-    const group = await makeGroup({ allows_llm_proxy: true });
-    await makeMembership(group, user);
+    const user = await makeUser({ role: 'student', allows_llm_proxy: true });
 
-    // Grant a token while the group has the flag.
+    // Grant a token while the user has the flag.
     await adminAgent
       .post(`/api/admin/users/${user.id}/llm-proxy-token`)
       .send({ expiresAt: futureIso(), tokenLimit: 100 })
       .expect(201);
 
     // Toggle the flag off.
-    await (prisma as any).group.update({
-      where: { id: group.id },
+    await (prisma as any).user.update({
+      where: { id: user.id },
       data: { allows_llm_proxy: false },
     });
 

@@ -33,6 +33,9 @@ interface Member {
   llmProxyToken: {
     status: 'active' | 'pending' | 'none';
   };
+  allowsOauthClient: boolean;
+  allowsLlmProxy: boolean;
+  allowsLeagueAccount: boolean;
 }
 
 interface GroupInfo {
@@ -40,12 +43,6 @@ interface GroupInfo {
   name: string;
   description: string | null;
   createdAt: string;
-}
-
-interface GroupPermissions {
-  allowsOauthClient: boolean;
-  allowsLlmProxy: boolean;
-  allowsLeagueAccount: boolean;
 }
 
 interface GroupDetail {
@@ -109,25 +106,6 @@ export default function GroupDetailPanel() {
     enabled: Number.isFinite(numericId),
   });
 
-  // Separate query for permission flags (GET /admin/groups/:id).
-  const permissionsQuery = useQuery<GroupPermissions>({
-    queryKey: ['admin', 'groups', numericId, 'permissions'],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/groups/${id}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.json();
-      return {
-        allowsOauthClient: body.allowsOauthClient ?? false,
-        allowsLlmProxy: body.allowsLlmProxy ?? false,
-        allowsLeagueAccount: body.allowsLeagueAccount ?? false,
-      };
-    },
-    enabled: Number.isFinite(numericId),
-  });
-
-  const [permPatchError, setPermPatchError] = useState<string | null>(null);
-  const [leagueAccountPending, setLeagueAccountPending] = useState(false);
-
   const data = detailQuery.data ?? null;
   const error = detailQuery.error ? (detailQuery.error as Error).message : null;
   const load = (): Promise<void> =>
@@ -152,6 +130,10 @@ export default function GroupDetailPanel() {
   const [matches, setMatches] = useState<UserMatch[]>([]);
 
   const [showGrantModal, setShowGrantModal] = useState(false);
+
+  // Per-row permission patch state
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [provisioningIds, setProvisioningIds] = useState<Set<number>>(new Set());
 
   // Live search effect
   useEffect(() => {
@@ -400,6 +382,40 @@ export default function GroupDetailPanel() {
   }
 
 
+  async function patchUserPermission(
+    userId: number,
+    field: 'allows_oauth_client' | 'allows_llm_proxy' | 'allows_league_account',
+    newValue: boolean,
+  ) {
+    setPermissionError(null);
+    const isLeagueToggleOn = field === 'allows_league_account' && newValue;
+    if (isLeagueToggleOn) {
+      setProvisioningIds((prev) => new Set(prev).add(userId));
+    }
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/permissions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: newValue }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      await load();
+    } catch (err: any) {
+      setPermissionError(err.message || 'Permission update failed');
+    } finally {
+      if (isLeagueToggleOn) {
+        setProvisioningIds((prev) => {
+          const next = new Set(prev);
+          next.delete(userId);
+          return next;
+        });
+      }
+    }
+  }
+
   async function deleteGroup() {
     if (!data) return;
     if (
@@ -451,31 +467,6 @@ export default function GroupDetailPanel() {
       setBanner({ ok: false, msg: err.message || 'Save failed' });
     } finally {
       setBusy(null);
-    }
-  }
-
-  // Sprint 026 T007: Permission toggle PATCH
-  async function patchPermission(field: keyof GroupPermissions, value: boolean) {
-    setPermPatchError(null);
-    const isLeague = field === 'allowsLeagueAccount';
-    if (isLeague) setLeagueAccountPending(true);
-    try {
-      const res = await fetch(`/api/admin/groups/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-      }
-      await queryClient.invalidateQueries({
-        queryKey: ['admin', 'groups', numericId, 'permissions'],
-      });
-    } catch (err: any) {
-      setPermPatchError(err.message || 'Permission update failed');
-    } finally {
-      if (isLeague) setLeagueAccountPending(false);
     }
   }
 
@@ -642,6 +633,22 @@ export default function GroupDetailPanel() {
         </div>
       )}
 
+      {permissionError && (
+        <div
+          role="alert"
+          style={{
+            padding: 10,
+            marginBottom: 16,
+            borderRadius: 6,
+            background: '#fee2e2',
+            color: '#991b1b',
+            fontSize: 13,
+          }}
+        >
+          {permissionError}
+        </div>
+      )}
+
       {/* Passphrase card */}
       {Number.isFinite(numericId) && (
         <PassphraseCard
@@ -649,52 +656,6 @@ export default function GroupDetailPanel() {
           scopeId={numericId}
           scopeName={data.group.name}
         />
-      )}
-
-      {/* Permission toggles (Sprint 026 T007) */}
-      {permissionsQuery.data && (
-        <div style={permSectionStyle}>
-          <h3 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 600, color: '#374151' }}>
-            Permissions
-          </h3>
-          {permPatchError && (
-            <div
-              role="alert"
-              style={{
-                padding: '6px 10px',
-                marginBottom: 8,
-                borderRadius: 4,
-                background: '#fee2e2',
-                color: '#991b1b',
-                fontSize: 13,
-              }}
-            >
-              {permPatchError}
-            </div>
-          )}
-          <PermissionToggleRow
-            label="OAuth Client registration"
-            caption="Toggling this on grants the capability to every member."
-            checked={permissionsQuery.data.allowsOauthClient}
-            disabled={busy !== null}
-            onChange={(v) => patchPermission('allowsOauthClient', v)}
-          />
-          <PermissionToggleRow
-            label="LLM Proxy access"
-            caption="Toggling this on grants the capability to every member."
-            checked={permissionsQuery.data.allowsLlmProxy}
-            disabled={busy !== null}
-            onChange={(v) => patchPermission('allowsLlmProxy', v)}
-          />
-          <PermissionToggleRow
-            label="League Account provisioning"
-            caption="Toggling this on grants the capability to every member."
-            checked={permissionsQuery.data.allowsLeagueAccount}
-            disabled={busy !== null || leagueAccountPending}
-            pending={leagueAccountPending}
-            onChange={(v) => patchPermission('allowsLeagueAccount', v)}
-          />
-        </div>
       )}
 
       {/* Bulk action buttons (Ticket 008) */}
@@ -788,16 +749,14 @@ export default function GroupDetailPanel() {
             </th>
             <th style={th}>Name</th>
             <th style={th}>Email</th>
-            <th style={th}>League</th>
-            <th style={th}>Claude</th>
-            <th style={th}>LLM Proxy</th>
+            <th style={{ ...th, textAlign: 'center' }}>OAuth</th>
+            <th style={{ ...th, textAlign: 'center' }}>LLM Proxy</th>
+            <th style={{ ...th, textAlign: 'center' }}>Lg Acct</th>
             <th style={{ ...th, width: 80, textAlign: 'center' }}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {data.users.map((m) => {
-            const ws = m.externalAccounts.find((a) => a.type === 'workspace');
-            const cl = m.externalAccounts.find((a) => a.type === 'claude');
             return (
               <tr key={m.id}>
                 <td style={{ ...td, width: 40 }}>
@@ -818,14 +777,43 @@ export default function GroupDetailPanel() {
                   </Link>
                 </td>
                 <td style={td}>{m.email}</td>
-                <td style={td}>
-                  {ws ? <StatusPill status={ws.status} /> : <em style={{ color: '#94a3b8' }}>none</em>}
+                <td style={{ ...td, textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={m.allowsOauthClient}
+                    aria-label={`OAuth Client for ${m.displayName || m.email}`}
+                    style={{ cursor: 'pointer' }}
+                    onChange={(e) =>
+                      patchUserPermission(m.id, 'allows_oauth_client', e.target.checked)
+                    }
+                  />
                 </td>
-                <td style={td}>
-                  {cl ? <StatusPill status={cl.status} /> : <em style={{ color: '#94a3b8' }}>none</em>}
+                <td style={{ ...td, textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={m.allowsLlmProxy}
+                    aria-label={`LLM Proxy for ${m.displayName || m.email}`}
+                    style={{ cursor: 'pointer' }}
+                    onChange={(e) =>
+                      patchUserPermission(m.id, 'allows_llm_proxy', e.target.checked)
+                    }
+                  />
                 </td>
-                <td style={td}>
-                  <StatusPill status={m.llmProxyToken.status} />
+                <td style={{ ...td, textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={m.allowsLeagueAccount}
+                    aria-label={`League Account for ${m.displayName || m.email}`}
+                    style={{ cursor: 'pointer' }}
+                    onChange={(e) =>
+                      patchUserPermission(m.id, 'allows_league_account', e.target.checked)
+                    }
+                  />
+                  {provisioningIds.has(m.id) && (
+                    <span style={{ fontSize: 11, color: '#64748b', marginLeft: 4 }}>
+                      Provisioning…
+                    </span>
+                  )}
                 </td>
                 <td style={{ ...td, textAlign: 'center' }}>
                   <button
@@ -871,56 +859,6 @@ export default function GroupDetailPanel() {
 // ---------------------------------------------------------------------------
 // Subcomponents + styles
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// PermissionToggleRow
-// ---------------------------------------------------------------------------
-
-interface PermissionToggleRowProps {
-  label: string;
-  caption: string;
-  checked: boolean;
-  disabled: boolean;
-  pending?: boolean;
-  onChange: (value: boolean) => void;
-}
-
-function PermissionToggleRow({
-  label,
-  caption,
-  checked,
-  disabled,
-  pending = false,
-  onChange,
-}: PermissionToggleRowProps) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={checked}
-        disabled={disabled}
-        aria-label={label}
-        onChange={(e) => onChange(e.target.checked)}
-        style={{ marginTop: 2, cursor: disabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
-      />
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-          {label}
-          {pending && (
-            <span
-              aria-label="Provisioning…"
-              style={{ marginLeft: 8, fontSize: 12, color: '#92400e', fontWeight: 400 }}
-            >
-              Provisioning…
-            </span>
-          )}
-        </div>
-        <div style={{ fontSize: 12, color: '#64748b' }}>{caption}</div>
-      </div>
-    </div>
-  );
-}
 
 function StatusPill({ status }: { status: string }) {
   const color =
@@ -993,11 +931,4 @@ const searchItemStyle: React.CSSProperties = {
   border: 'none',
   borderBottom: '1px solid #f1f5f9',
   cursor: 'pointer',
-};
-const permSectionStyle: React.CSSProperties = {
-  padding: '12px 14px',
-  marginBottom: 16,
-  border: '1px solid #e2e8f0',
-  borderRadius: 6,
-  background: '#f8fafc',
 };

@@ -144,6 +144,11 @@ model User {
   username       String?  @unique
   password_hash  String?
 
+  /** Address used for outbound mail to this user. Null = use primary_email.
+   *  Must be one of: primary_email, a provider Login's provider_email, or a
+   *  workspace ExternalAccount's external_id. Validated server-side. */
+  notification_email String?
+
   cohort            Cohort?           @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
   logins            Login[]
   external_accounts ExternalAccount[]
@@ -163,6 +168,10 @@ model User {
   oauth_authorization_codes   OAuthAuthorizationCode[]
   oauth_refresh_tokens        OAuthRefreshToken[]
   oauth_consents              OAuthConsent[]
+
+  allows_oauth_client   Boolean @default(false)
+  allows_llm_proxy      Boolean @default(false)
+  allows_league_account Boolean @default(false)
 
   @@index([role])
   @@index([cohort_id])
@@ -188,10 +197,6 @@ model Group {
   signup_passphrase_expires_at      DateTime?
   signup_passphrase_created_at      DateTime?
   signup_passphrase_created_by      Int?
-
-  allows_oauth_client   Boolean @default(false)
-  allows_llm_proxy      Boolean @default(false)
-  allows_league_account Boolean @default(false)
 
   users       UserGroup[]
 }

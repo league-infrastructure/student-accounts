@@ -1,11 +1,11 @@
 ---
-id: "008"
-title: "Manual smoke test"
-status: todo
+id: 008
+title: Manual smoke test
+status: done
 use-cases:
-  - SUC-007
+- SUC-007
 depends-on:
-  - "007"
+- '007'
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 

@@ -8,8 +8,7 @@
  *  - Group listing for a specific user.
  *  - Audit-event recording for every state-changing operation in the same
  *    transaction as the mutation (AuditService invariant).
- *  - Permission flag updates via setPermission, with leagueAccount fan-out
- *    (Sprint 026 T005).
+ *  - User permission reads via userPermissions (flags live on User row).
  *
  * Errors thrown:
  *  - ValidationError (422) — blank name.
@@ -37,15 +36,57 @@ const logger = createLogger('group-service');
 // autocomplete endpoint on single-character input.
 const MIN_SEARCH_LEN = 2;
 
-/** Names of the three boolean permission flags. */
-export type PermissionKey = 'oauthClient' | 'llmProxy' | 'leagueAccount';
+// ---------------------------------------------------------------------------
+// provisionUserIfNeeded — Sprint 027 T004
+// ---------------------------------------------------------------------------
 
-/** Maps camelCase PermissionKey to the Prisma column name. */
-const PERM_COLUMN_MAP: Record<PermissionKey, string> = {
-  oauthClient: 'allows_oauth_client',
-  llmProxy: 'allows_llm_proxy',
-  leagueAccount: 'allows_league_account',
-};
+/**
+ * Provision a Workspace account for a single user if they do not already have
+ * an active or pending workspace ExternalAccount.
+ *
+ * Fail-soft: provisioning errors are logged but not propagated. The caller
+ * receives a resolved Promise regardless of whether provisioning succeeded.
+ *
+ * @param prisma                - Prisma client (or any DbClient).
+ * @param workspaceProvisioning - WorkspaceProvisioningService instance.
+ * @param userId                - Target user primary key.
+ * @param actorId               - Admin performing the action (for audit log).
+ */
+export async function provisionUserIfNeeded(
+  prisma: any,
+  workspaceProvisioning: WorkspaceProvisioningService,
+  userId: number,
+  actorId: number,
+): Promise<void> {
+  // Skip if user already has an active/pending workspace account.
+  const existing = await ExternalAccountRepository.findActiveByUserAndType(
+    prisma,
+    userId,
+    'workspace',
+  );
+  if (existing) {
+    logger.info(
+      { userId },
+      '[provision-user-if-needed] workspace account already exists — skipping',
+    );
+    return;
+  }
+
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      await workspaceProvisioning.provision(userId, actorId, tx);
+    });
+    logger.info(
+      { userId, actorId },
+      '[provision-user-if-needed] workspace account provisioned',
+    );
+  } catch (err: any) {
+    logger.warn(
+      { userId, actorId, error: err?.message },
+      '[provision-user-if-needed] provisioning failed (fail-soft, continuing)',
+    );
+  }
+}
 
 export type GroupSummary = {
   id: number;
@@ -64,6 +105,9 @@ export type GroupDetail = {
     role: string;
     externalAccounts: Array<{ type: string; status: string; externalId: string | null }>;
     llmProxyToken?: { status: 'active' | 'pending' | 'none' };
+    allowsOauthClient: boolean;
+    allowsLlmProxy: boolean;
+    allowsLeagueAccount: boolean;
   }>;
 };
 
@@ -71,7 +115,6 @@ export class GroupService {
   constructor(
     private readonly prisma: any,
     private readonly audit: AuditService,
-    private readonly workspaceProvisioning?: WorkspaceProvisioningService,
   ) {}
 
   // --------------------------------------------------------------------
@@ -158,116 +201,6 @@ export class GroupService {
   }
 
   // --------------------------------------------------------------------
-  // setPermission (Sprint 026 T005)
-  // --------------------------------------------------------------------
-
-  /**
-   * Update one boolean permission flag on a Group. Writes an audit event
-   * (`group_permission_changed`) in the same transaction as the column update.
-   *
-   * When `perm === 'leagueAccount'` and `value === true`, fans out Workspace
-   * account provisioning for every active member who does not already have an
-   * active/pending workspace ExternalAccount. Fan-out is synchronous and
-   * fail-soft — individual provisioning failures are logged and collected but
-   * do not abort the permission update.
-   *
-   * Toggling `leagueAccount` to `false` does NOT delete or suspend existing
-   * accounts (grandfather rule).
-   *
-   * @param groupId  - The Group to update.
-   * @param perm     - Which permission flag to toggle.
-   * @param value    - The new boolean value.
-   * @param actorId  - Admin performing the action (for audit log).
-   * @returns The updated Group row.
-   */
-  async setPermission(
-    groupId: number,
-    perm: PermissionKey,
-    value: boolean,
-    actorId: number,
-  ): Promise<Group> {
-    const group = await GroupRepository.findById(this.prisma, groupId);
-    if (!group) throw new NotFoundError(`Group ${groupId} not found`);
-
-    const column = PERM_COLUMN_MAP[perm];
-    const oldValue = (group as any)[column] as boolean;
-
-    const updated = await this.prisma.$transaction(async (tx: any) => {
-      const g = await tx.group.update({
-        where: { id: groupId },
-        data: { [column]: value },
-      });
-      await this.audit.record(tx, {
-        actor_user_id: actorId,
-        action: 'group_permission_changed',
-        target_entity_type: 'Group',
-        target_entity_id: String(groupId),
-        details: { permission: perm, old: oldValue, new: value },
-      });
-      return g;
-    });
-
-    // Fan-out provisioning when leagueAccount is toggled ON.
-    if (perm === 'leagueAccount' && value === true) {
-      await this._provisionMembersWithoutWorkspace(groupId, actorId);
-    }
-
-    logger.info(
-      { groupId, perm, value, actorId },
-      '[group-service] setPermission complete',
-    );
-
-    return updated;
-  }
-
-  /**
-   * Provision Workspace accounts for all active members of the group who do
-   * not already have an active/pending workspace ExternalAccount. Fail-soft —
-   * errors per user are logged but do not propagate.
-   */
-  private async _provisionMembersWithoutWorkspace(
-    groupId: number,
-    actorId: number,
-  ): Promise<void> {
-    if (!this.workspaceProvisioning) {
-      logger.warn(
-        { groupId },
-        '[group-service] WorkspaceProvisioningService not wired — skipping fan-out',
-      );
-      return;
-    }
-
-    // Find active members without an active/pending workspace account.
-    const members = await (this.prisma as any).user.findMany({
-      where: {
-        is_active: true,
-        groups: { some: { group_id: groupId } },
-        external_accounts: {
-          none: { type: 'workspace', status: { in: ['active', 'pending'] } },
-        },
-      },
-      select: { id: true, display_name: true, primary_email: true },
-    });
-
-    for (const member of members) {
-      try {
-        await this.prisma.$transaction(async (tx: any) => {
-          await this.workspaceProvisioning!.provision(member.id, actorId, tx);
-        });
-        logger.info(
-          { userId: member.id, groupId },
-          '[group-service] fan-out: provisioned workspace for member',
-        );
-      } catch (err: any) {
-        logger.warn(
-          { userId: member.id, groupId, error: err?.message },
-          '[group-service] fan-out: provisioning failed for member (skipped)',
-        );
-      }
-    }
-  }
-
-  // --------------------------------------------------------------------
   // Delete
   // --------------------------------------------------------------------
 
@@ -346,6 +279,9 @@ export class GroupService {
         llmProxyToken: {
           status: computeProxyStatus((u as any).llm_proxy_tokens ?? []),
         },
+        allowsOauthClient: u.allows_oauth_client ?? false,
+        allowsLlmProxy: u.allows_llm_proxy ?? false,
+        allowsLeagueAccount: u.allows_league_account ?? false,
       })),
     };
   }
@@ -386,32 +322,6 @@ export class GroupService {
         details: { group_name: group.name },
       });
     });
-
-    // If the group grants League account, provision a workspace account for
-    // the new member if they don't already have one.
-    if ((group as any).allows_league_account && this.workspaceProvisioning) {
-      const existingWs = await ExternalAccountRepository.findActiveByUserAndType(
-        this.prisma,
-        userId,
-        'workspace',
-      );
-      if (!existingWs) {
-        try {
-          await this.prisma.$transaction(async (tx: any) => {
-            await this.workspaceProvisioning!.provision(userId, actorId, tx);
-          });
-          logger.info(
-            { userId, groupId },
-            '[group-service] addMember: provisioned workspace for new member',
-          );
-        } catch (err: any) {
-          logger.warn(
-            { userId, groupId, error: err?.message },
-            '[group-service] addMember: workspace provisioning failed (skipped)',
-          );
-        }
-      }
-    }
   }
 
   async removeMember(
@@ -482,36 +392,29 @@ export class GroupService {
   // --------------------------------------------------------------------
 
   /**
-   * Compute the effective permissions for a user by taking the additive
-   * union across all groups the user belongs to.
+   * Return the effective permissions for a user by reading the three
+   * boolean columns directly from the User row.
    *
-   * Multi-group rule: a user gets a permission if ANY of their groups has
-   * the corresponding flag set to `true`. A user with no groups gets all
-   * three `false`.
-   *
-   * Sprint 026 T002.
+   * Sprint 027 T002: permission flags moved from Group to User.
+   * A non-existent userId returns all false (findUnique returns null).
    */
   async userPermissions(userId: number): Promise<{
     oauthClient: boolean;
     llmProxy: boolean;
     leagueAccount: boolean;
   }> {
-    const memberships = await (this.prisma as any).userGroup.findMany({
-      where: { user_id: userId },
-      include: {
-        group: {
-          select: {
-            allows_oauth_client: true,
-            allows_llm_proxy: true,
-            allows_league_account: true,
-          },
-        },
+    const user = await (this.prisma as any).user.findUnique({
+      where: { id: userId },
+      select: {
+        allows_oauth_client: true,
+        allows_llm_proxy: true,
+        allows_league_account: true,
       },
     });
     return {
-      oauthClient: memberships.some((m: any) => m.group.allows_oauth_client),
-      llmProxy: memberships.some((m: any) => m.group.allows_llm_proxy),
-      leagueAccount: memberships.some((m: any) => m.group.allows_league_account),
+      oauthClient: user?.allows_oauth_client ?? false,
+      llmProxy: user?.allows_llm_proxy ?? false,
+      leagueAccount: user?.allows_league_account ?? false,
     };
   }
 }
