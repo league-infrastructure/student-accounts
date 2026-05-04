@@ -291,16 +291,22 @@ describe('POST /api/auth/login — end-to-end signup then login', () => {
     // Step 1: Sign up
     const signupRes = await request(app)
       .post('/api/auth/passphrase-signup')
-      .send({ username: 'bob', passphrase: 'login-e2e-phrase' });
+      .send({
+        username: 'bob',
+        passphrase: 'login-e2e-phrase',
+        password: 'e2e-secure-password',
+        displayName: 'Bob E2E',
+        email: 'bob-e2e@test.example.com',
+      });
 
     expect(signupRes.status).toBe(200);
     expect(signupRes.body.username).toBe('bob');
 
-    // The passphrase becomes the password_hash — log in with it
+    // Log in with the password (not the passphrase)
     const loginAgent = request.agent(app);
     const loginRes = await loginAgent
       .post('/api/auth/login')
-      .send({ username: 'bob', password: 'login-e2e-phrase' });
+      .send({ username: 'bob', password: 'e2e-secure-password' });
 
     expect(loginRes.status).toBe(200);
     expect(loginRes.body.username).toBe('bob');
