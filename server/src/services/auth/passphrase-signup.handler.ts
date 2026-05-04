@@ -13,7 +13,7 @@
  *  6. Create User + Login in a single transaction.
  *     - User: username, password_hash, display_name=displayName, primary_email=email,
  *       onboarding_completed=true.
- *     - Login: provider='passphrase', provider_email=email, provider_username=username.
+ *     - Login: provider='username', provider_email=email, provider_username=username.
  *  7. Set session.
  *  8. Fail-soft side effects: workspace provisioning, LLM proxy grant,
  *     group membership.
@@ -23,6 +23,7 @@
 
 import type { Request, Response } from 'express';
 import { prisma } from '../prisma.js';
+import { classifyEmailOwnership } from './email-ownership.js';
 import { hashPassword } from '../../utils/password.js';
 import { adminBus } from '../change-bus.js';
 import { AuditService } from '../audit.service.js';
@@ -112,11 +113,12 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
   }
 
   // ------------------------------------------------------------------
-  // 4. Check email uniqueness
+  // 4. Check email uniqueness across all users / logins / external accts.
+  //    Signup has no current user yet, so any presence is 'other'.
   // ------------------------------------------------------------------
-  const existingByEmail = await prisma.user.findUnique({ where: { primary_email: normalizedEmail } });
-  if (existingByEmail) {
-    res.status(409).json({ error: 'That email address is already registered' });
+  const ownership = await classifyEmailOwnership(normalizedEmail, null);
+  if (ownership !== 'free') {
+    res.status(409).json({ error: 'That email address is already in use' });
     return;
   }
 
@@ -149,7 +151,7 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
       await tx.login.create({
         data: {
           user_id: user.id,
-          provider: 'passphrase',
+          provider: 'username',
           provider_user_id: `${scope}:${scopeId}:${username}`,
           provider_email: normalizedEmail,
           provider_username: username,

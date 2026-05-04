@@ -147,7 +147,7 @@ describe('POST /api/auth/passphrase-signup — cohort happy path', () => {
     expect(user.primary_email).toBe('alice-happy-cohort@test.example.com');
 
     // Verify login row
-    const login = await (prisma as any).login.findFirst({ where: { user_id: user.id, provider: 'passphrase' } });
+    const login = await (prisma as any).login.findFirst({ where: { user_id: user.id, provider: 'username' } });
     expect(login).toBeDefined();
     expect(login.provider_user_id).toBe(`cohort:${cohort.id}:alice`);
 
