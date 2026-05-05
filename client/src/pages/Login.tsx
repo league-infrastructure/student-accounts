@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { isSafeNext } from './login/isSafeNext';
 
@@ -184,6 +184,13 @@ export default function Login() {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-sm text-slate-500">
+          Need an account?{' '}
+          <Link to="/signup" className="text-indigo-600 hover:underline">
+            Sign up
+          </Link>
+        </p>
 
         {/* OAuth buttons for staff and admins. Always shown — if a
             provider isn't configured, the server returns 501 with a

@@ -12,8 +12,7 @@ export default function Signup() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const passphrase = searchParams.get('passphrase') ?? '';
-
+  const [passphrase, setPassphrase] = useState(searchParams.get('passphrase') ?? '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -71,6 +70,22 @@ export default function Signup() {
         <h1 className="text-xl font-semibold text-slate-800 mb-6">Create account</h1>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="signup-passphrase" className={labelClass}>
+              Passphrase
+            </label>
+            <input
+              id="signup-passphrase"
+              type="text"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              autoComplete="off"
+              required
+              className={inputClass}
+            />
+            <p className="text-xs text-slate-500">The phrase your instructor gave you</p>
+          </div>
+
           <div className="flex flex-col gap-1">
             <label htmlFor="signup-username" className={labelClass}>
               Username

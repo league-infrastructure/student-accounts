@@ -47,18 +47,21 @@ function renderSignup(search = '') {
   );
 }
 
-/** Fill in all four form fields and submit. */
+/** Fill in all five form fields and submit. */
 async function fillAndSubmit({
+  passphrase = 'testphrase',
   username = 'alice',
   password = 'secret123',
   displayName = 'Alice Smith',
   email = 'alice@example.com',
 }: {
+  passphrase?: string;
   username?: string;
   password?: string;
   displayName?: string;
   email?: string;
 } = {}) {
+  fireEvent.change(screen.getByLabelText(/passphrase/i), { target: { value: passphrase } });
   fireEvent.change(screen.getByLabelText(/username/i), { target: { value: username } });
   fireEvent.change(screen.getByLabelText(/password/i), { target: { value: password } });
   fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: displayName } });
@@ -85,13 +88,34 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Signup page — rendering', () => {
-  it('renders all four form fields', () => {
+  it('renders all five form fields including Passphrase', () => {
     renderSignup();
 
+    expect(screen.getByLabelText(/passphrase/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/full name/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+  });
+
+  it('renders the passphrase field empty by default (no URL param)', () => {
+    renderSignup();
+
+    expect(screen.getByLabelText(/passphrase/i)).toHaveValue('');
+  });
+
+  it('pre-fills the passphrase field from the ?passphrase= URL param', () => {
+    renderSignup('?passphrase=myinstructorphrase');
+
+    expect(screen.getByLabelText(/passphrase/i)).toHaveValue('myinstructorphrase');
+  });
+
+  it('allows the user to edit the pre-filled passphrase value', () => {
+    renderSignup('?passphrase=original');
+
+    const field = screen.getByLabelText(/passphrase/i);
+    fireEvent.change(field, { target: { value: 'edited' } });
+    expect(field).toHaveValue('edited');
   });
 
   it('renders a "Sign in" link to /login', () => {
@@ -241,7 +265,7 @@ describe('Signup page — form submission', () => {
     });
   });
 
-  it('uses empty string for passphrase when ?passphrase= is absent', async () => {
+  it('POSTs whatever the user typed in the passphrase field', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -249,13 +273,13 @@ describe('Signup page — form submission', () => {
     }));
     (globalThis as any).fetch = fetchMock;
 
-    // No passphrase param in URL
+    // No passphrase in URL; user types one manually
     renderSignup();
-    await fillAndSubmit();
+    await fillAndSubmit({ passphrase: 'manualphrase' });
 
     await waitFor(() => {
       const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-      expect(body.passphrase).toBe('');
+      expect(body.passphrase).toBe('manualphrase');
     });
   });
 });

@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import Login from '../../../client/src/pages/Login';
 
@@ -68,6 +68,16 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe('Login page — rendering', () => {
+  it('renders a "Sign up" link to /signup', () => {
+    renderLogin();
+
+    const link = screen.getByRole('link', { name: /sign up/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute('href', '/signup');
+  });
+});
 
 describe('Login page — invitation URL (?passphrase=)', () => {
   it('redirects to /signup?passphrase=<value> when /api/auth/me returns 401', async () => {
