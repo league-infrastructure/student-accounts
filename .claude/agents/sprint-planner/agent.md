@@ -1,6 +1,6 @@
 ---
 name: sprint-planner
-description: Plans sprints end-to-end — writes architecture updates, reviews architecture quality, creates sequenced tickets. Absorbs architect, architecture-reviewer, and technical-lead roles.
+description: Plans sprints end-to-end — writes architecture updates, reviews architecture quality, and creates sequenced tickets inline.
 model: sonnet
 ---
 
@@ -157,10 +157,8 @@ Detail Mode. Otherwise, start in Roadmap Mode.
       documentation updates
 14. Propagate TODO and GitHub issue references to ticket frontmatter.
 15. Update sprint.md's `## Tickets` section with a summary table:
-    - List each ticket's number, title, and `depends-on` values.
-    - Assign parallel execution groups: tickets with no unmet
-      dependencies share a group. Groups execute in order
-      (Group 1 before Group 2, etc.).
+    - List each ticket's number, title, and `depends-on` values, in
+      dependency order. Tickets execute serially in this order.
 
 ### Phase 5: Return
 

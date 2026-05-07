@@ -1,0 +1,59 @@
+# docker-stack.yaml — Swarm stack for prod (apps.jointheleague.org).
+# Deploy via: docker stack deploy -c docker-stack.yaml --with-registry-auth student-accounts
+# scripts/deploy.sh prod up handles this for you (and syncs swarm secrets first).
+#
+# Caddy: an external caddy-docker-proxy on the host watches the Swarm API and
+# routes apps.jointheleague.org → this service. Service-level Caddy labels MUST
+# go under deploy.labels in Swarm — service `labels:` are container labels and
+# are ignored by caddy-docker-proxy.
+
+services:
+  web:
+    image: "${IMAGE_REPO:-ghcr.io/league-infrastructure/student-accounts}:${IMAGE_TAG:-latest}"
+    environment:
+      NODE_ENV: production
+      PORT: "5201"
+      DATABASE_URL: "file:/app/data/app.db"
+      SESSION_SECRET_FILE: /run/secrets/SESSION_SECRET
+    secrets:
+      - SESSION_SECRET
+    volumes:
+      - type: bind
+        source: /var/lib/student-accounts/data
+        target: /app/data
+    deploy:
+      replicas: 1
+      placement:
+        # SQLite on a bind mount can't move between nodes; pin to manager.
+        constraints: [node.role == manager]
+      update_config:
+        order: stop-first
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+      labels:
+        caddy: apps.jointheleague.org
+        caddy.reverse_proxy: "{{upstreams 5201}}"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5201/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - caddy
+
+secrets:
+  SESSION_SECRET:
+    external: true
+    name: student-accounts_SESSION_SECRET
+
+networks:
+  caddy:
+    external: true
+    name: caddy

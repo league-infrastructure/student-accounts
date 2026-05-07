@@ -1,0 +1,21 @@
+# config/deploy.config.yaml — project-level deploy settings.
+# Read by scripts/deploy.sh. Commit this file. Do NOT put secrets here.
+
+project: student-accounts
+default_backend: compose
+
+environments:
+  dev:
+    backend: compose
+    context: ""                  # blank = current docker context (default/orbstack)
+    compose_files:
+      - docker-compose.yaml
+      - docker-compose.dev.yaml
+
+  prod:
+    backend: swarm
+    context: apps                # ssh://root@apps.jointheleague.org
+    stack: student-accounts
+    stack_file: docker-stack.yaml
+    swarm_secrets:
+      - SESSION_SECRET

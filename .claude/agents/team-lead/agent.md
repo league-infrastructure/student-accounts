@@ -85,10 +85,9 @@ through the SE process, and there is no open sprint.
 4. **Stakeholder review.** Present the plan. Record:
    `record_gate_result(sprint_id, "stakeholder_approval", "passed")`.
 5. **Acquire execution lock.** Call `acquire_execution_lock(sprint_id)`.
-6. **Execute tickets.** Invoke the `execute-sprint` skill. This creates
-   Tasks from tickets and spawns programmer teammates in worktrees for
-   parallel execution. Or fall back to serial: invoke the programmer
-   agent via Agent tool for each ticket in dependency order.
+6. **Execute tickets.** Invoke the `execute-sprint` skill, which
+   dispatches programmer agents one at a time in dependency order on
+   the sprint branch.
 7. **Validate.** Invoke the `sprint-review` skill. If it fails, address
    the issues and re-validate.
 8. **Close.** Invoke the `close-sprint` skill.
