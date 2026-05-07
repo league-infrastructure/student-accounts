@@ -1,11 +1,21 @@
 {
   "name": "docker-nodeapp",
-  "version": "0.20260504.11",
+  "version": "0.20260505.1",
   "private": true,
   "scripts": {
     "dev": "./scripts/dev.sh",
     "test:server": "cd server && npx vitest run",
-    "test:client": "cd client && npx vitest run"
+    "test:client": "cd client && npx vitest run",
+    "build:image": "./scripts/build_image.sh",
+    "deploy:dev": "./scripts/deploy.sh dev up",
+    "deploy:prod": "./scripts/deploy.sh prod up",
+    "logs:dev": "./scripts/deploy.sh dev logs",
+    "logs:prod": "./scripts/deploy.sh prod logs",
+    "down:dev": "./scripts/deploy.sh dev down",
+    "down:prod": "./scripts/deploy.sh prod down",
+    "ps:dev": "./scripts/deploy.sh dev ps",
+    "ps:prod": "./scripts/deploy.sh prod ps",
+    "secrets-sync:prod": "./scripts/deploy.sh prod secrets-sync"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

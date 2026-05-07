@@ -1,0 +1,28 @@
+# docker-compose.yaml — base shape used by the dev deployment.
+# Pulls a pre-built image from GHCR; production prod uses docker-stack.yaml (Swarm).
+#
+# $VARS come from --env-file (loaded by scripts/config-load.sh from dotconfig).
+# DATABASE_URL is overridden here so it points inside the container regardless
+# of what dotconfig provides for host-side dev.
+
+services:
+  web:
+    image: "${IMAGE_REPO:-ghcr.io/league-infrastructure/student-accounts}:${IMAGE_TAG:-latest}"
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-/dev/null}
+    environment:
+      NODE_ENV: production
+      PORT: "5201"
+      DATABASE_URL: "file:/app/data/app.db"
+    volumes:
+      - app-data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5201/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  app-data:

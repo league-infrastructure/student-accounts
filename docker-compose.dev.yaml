@@ -1,0 +1,10 @@
+# docker-compose.dev.yaml — dev overlay for local smoke-testing the prod image.
+# Default Docker context (orbstack/local). Publishes 5201 to the host so you
+# can hit http://localhost:5201/.
+#
+# This is NOT the developer hot-reload flow — that's still scripts/dev.sh.
+
+services:
+  web:
+    ports:
+      - "5201:5201"

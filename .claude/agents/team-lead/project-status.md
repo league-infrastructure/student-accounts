@@ -10,7 +10,7 @@ stands and what should happen next.
 
 ## Agent Used
 
-**project-manager** (or can be invoked standalone)
+**team-lead** (or can be invoked standalone)
 
 ## Process
 

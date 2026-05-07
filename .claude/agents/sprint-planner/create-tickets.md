@@ -6,12 +6,12 @@ description: Breaks a sprint architecture into sequenced, numbered implementatio
 # Create Tickets Skill
 
 This skill breaks a sprint's architecture document (especially the Sprint
-Changes section) into actionable implementation tickets using the
-technical-lead agent.
+Changes section) into actionable implementation tickets. The sprint-planner
+handles ticket creation inline.
 
 ## Agent Used
 
-**technical-lead**
+**sprint-planner**
 
 ## Inputs
 
