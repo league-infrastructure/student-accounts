@@ -7,7 +7,16 @@
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import AccountLlmProxyCard from '../../client/src/pages/account/AccountLlmProxyCard';
+
+function renderWithClient(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 const originalFetch = globalThis.fetch;
 
@@ -42,7 +51,7 @@ describe('AccountLlmProxyCard — disabled state', () => {
       }),
     ) as any;
 
-    render(<AccountLlmProxyCard />);
+    renderWithClient(<AccountLlmProxyCard />);
     await waitFor(() => {
       expect(screen.getByText(/not enabled/i)).toBeTruthy();
     });
@@ -65,7 +74,7 @@ describe('AccountLlmProxyCard — enabled state', () => {
       }),
     ) as any;
 
-    render(<AccountLlmProxyCard />);
+    renderWithClient(<AccountLlmProxyCard />);
     await waitFor(() => {
       expect(screen.getByTestId('llm-proxy-endpoint')).toBeTruthy();
     });
@@ -89,7 +98,7 @@ describe('AccountLlmProxyCard — enabled state', () => {
       }),
     ) as any;
 
-    render(<AccountLlmProxyCard />);
+    renderWithClient(<AccountLlmProxyCard />);
     await waitFor(() => {
       expect(screen.getByTestId('llm-proxy-endpoint')).toBeTruthy();
     });
