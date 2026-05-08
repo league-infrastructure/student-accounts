@@ -50,7 +50,9 @@ const sessionConfig: session.SessionOptions = {
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.SESSION_COOKIE_SECURE
+      ? process.env.SESSION_COOKIE_SECURE === '1' || process.env.SESSION_COOKIE_SECURE === 'true'
+      : process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     httpOnly: true,
   },
@@ -99,22 +101,6 @@ app.use('/v1', v1DirectoryRouter);
 
 // MCP endpoint — token-based auth, separate from session auth
 app.post('/api/mcp', mcpTokenAuth, createMcpHandler());
-
-// ---------------------------------------------------------------------------
-// Stub landing routes (content provided by Sprint 003)
-// ---------------------------------------------------------------------------
-
-// GET /account — student account page placeholder.
-// Returns 200 with placeholder text. Sprint 003 replaces this with the real UI.
-app.get('/account', (_req: express.Request, res: express.Response) => {
-  res.status(200).send('Account page — coming in Sprint 003');
-});
-
-// GET /staff — staff directory placeholder.
-// Returns 200 with placeholder text. Sprint 003 replaces this with the real UI.
-app.get('/staff', (_req: express.Request, res: express.Response) => {
-  res.status(200).send('Staff directory — coming in Sprint 003');
-});
 
 app.use(errorHandler);
 

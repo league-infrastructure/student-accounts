@@ -97,7 +97,7 @@ oauthClientsRouter.post('/oauth-clients', async (req: Request, res: Response, ne
 
 oauthClientsRouter.patch('/oauth-clients/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
 
     const actor = actorContext(req);
@@ -141,7 +141,7 @@ oauthClientsRouter.patch('/oauth-clients/:id', async (req: Request, res: Respons
 
 oauthClientsRouter.post('/oauth-clients/:id/rotate-secret', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
 
     const actor = actorContext(req);
@@ -160,7 +160,7 @@ oauthClientsRouter.post('/oauth-clients/:id/rotate-secret', async (req: Request,
 
 oauthClientsRouter.delete('/oauth-clients/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
 
     const actor = actorContext(req);

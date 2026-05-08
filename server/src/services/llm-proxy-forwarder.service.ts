@@ -26,7 +26,7 @@
  *    has gone.
  */
 
-import type { Request, Response } from 'express';
+import type { Request, Response as ExpressResponse } from 'express';
 import { AppError } from '../errors.js';
 import { createLogger } from './logger.js';
 
@@ -173,7 +173,7 @@ export class LlmProxyForwarderService {
    */
   async forwardMessages(
     req: Request,
-    res: Response,
+    res: ExpressResponse,
     opts: ForwardOptions,
   ): Promise<void> {
     if (!this.apiKey) {
@@ -287,7 +287,7 @@ export class LlmProxyForwarderService {
 
   private async pipeJson(
     upstream: Response,
-    res: Response,
+    res: ExpressResponse,
     opts: ForwardOptions,
   ): Promise<void> {
     const text = await upstream.text();
@@ -332,7 +332,7 @@ export class LlmProxyForwarderService {
 
   private async pipeStreaming(
     upstream: Response,
-    res: Response,
+    res: ExpressResponse,
     opts: ForwardOptions,
   ): Promise<void> {
     // Upstream might fail with a non-2xx before any SSE bytes land. In

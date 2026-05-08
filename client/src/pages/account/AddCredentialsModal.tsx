@@ -10,7 +10,7 @@
  * ['account'] query and the new passphrase Login row appears automatically.
  */
 
-import { useState, FormEvent, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 
 interface AddCredentialsModalProps {
   open: boolean;

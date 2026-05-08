@@ -1,7 +1,7 @@
 ---
 id: '010'
 title: 'Server: widen passphrase-signup body and create proper Login row'
-status: in-progress
+status: done
 use-cases: []
 depends-on: []
 github-issue: ''

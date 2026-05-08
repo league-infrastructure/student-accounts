@@ -41,6 +41,11 @@ LABEL org.opencontainers.image.licenses="UNLICENSED"
 
 WORKDIR /app
 
+# OpenSSL for Prisma's query engine (slim image lacks it)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system --gid 1001 app \
  && useradd --system --uid 1001 --gid app --shell /sbin/nologin app \
  && mkdir -p /app/data \
@@ -52,6 +57,7 @@ ENV PORT=5201
 COPY --from=builder --chown=app:app /build/server/dist ./dist
 COPY --from=builder --chown=app:app /build/server/node_modules ./node_modules
 COPY --from=builder --chown=app:app /build/server/prisma ./prisma
+COPY --from=builder --chown=app:app /build/server/prisma.config.ts ./prisma.config.ts
 COPY --from=builder --chown=app:app /build/server/public ./public
 COPY --from=builder --chown=app:app /build/server/package.json ./package.json
 COPY --chown=app:app docker/entrypoint.sh /usr/local/bin/entrypoint.sh

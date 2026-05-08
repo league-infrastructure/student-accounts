@@ -9,7 +9,7 @@
  * per-section after completion. Errors are shown in a banner per section.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Types

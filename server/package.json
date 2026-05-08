@@ -1,11 +1,11 @@
 {
   "name": "docker-nodeapp-server",
-  "version": "0.20260504.2",
+  "version": "0.20260507.2",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc && node scripts/fix-esm-imports.mjs",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
     "prisma:generate": "prisma generate",

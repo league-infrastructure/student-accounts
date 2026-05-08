@@ -27,7 +27,7 @@
  */
 
 import { createLogger } from '../logger.js';
-import type { PrismaClient } from '../generated/prisma/client.js';
+import type { PrismaClient } from '../../generated/prisma/client.js';
 import type { AuditAction } from '../audit.service.js';
 import { AuditService } from '../audit.service.js';
 import { ExternalAccountRepository } from '../repositories/external-account.repository.js';

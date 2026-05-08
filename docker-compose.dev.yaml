@@ -7,4 +7,10 @@
 services:
   web:
     ports:
-      - "5201:5201"
+      - "5173:5201"
+    environment:
+      # Local smoke-test runs over plain HTTP; secure cookies would be dropped.
+      SESSION_COOKIE_SECURE: "0"
+    env_file:
+      - path: .deploy/.env.dev
+        required: false

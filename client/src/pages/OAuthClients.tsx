@@ -18,7 +18,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
-import { hasAdminAccess } from '../lib/roles';
 import { SecretShownOnceModal } from '../components/SecretShownOnceModal';
 
 // ---------------------------------------------------------------------------
@@ -133,7 +132,6 @@ function ScopeCheckboxGroup({ selected, onChange, disabled, visibleScopes }: Sco
 
 export default function OAuthClients() {
   const { user } = useAuth();
-  const isAdmin = hasAdminAccess(user?.role);
   const queryClient = useQueryClient();
 
   // Derive role-based policy.

@@ -7,10 +7,9 @@
 
 services:
   web:
-    image: "${IMAGE_REPO:-ghcr.io/league-infrastructure/student-accounts}:${IMAGE_TAG:-latest}"
+    # IMAGE_TAG is exported by scripts/_lib.sh from package.json — pinned per deploy.
+    image: "${IMAGE_REPO:-ghcr.io/league-infrastructure/student-accounts}:${IMAGE_TAG:?IMAGE_TAG not set — run via scripts/up.sh}"
     restart: unless-stopped
-    env_file:
-      - ${ENV_FILE:-/dev/null}
     environment:
       NODE_ENV: production
       PORT: "5201"
