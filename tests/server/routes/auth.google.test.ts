@@ -343,17 +343,6 @@ describe('GET /api/auth/google/callback — OAuth error', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// GET /account — stub landing route
-// ---------------------------------------------------------------------------
-
-describe('GET /account', () => {
-  it('returns 200 with placeholder text', async () => {
-    const res = await request(app).get('/account');
-    expect(res.status).toBe(200);
-    expect(res.text).toMatch(/account/i);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // mergeScan: called for new users
@@ -578,18 +567,6 @@ describe('GET /api/auth/google/callback — @jointheleague.org staff OU (UC-003)
     expect(user).not.toBeNull();
     expect(user.role).toBe('student');
     expect(user.approval_status).toBe('pending');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// GET /staff — stub landing route
-// ---------------------------------------------------------------------------
-
-describe('GET /staff', () => {
-  it('returns 200 with placeholder text', async () => {
-    const res = await request(app).get('/staff');
-    expect(res.status).toBe(200);
-    expect(res.text).toMatch(/staff/i);
   });
 });
 
