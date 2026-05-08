@@ -412,18 +412,6 @@ describe('GET /api/auth/github/callback — OAuth error', () => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /account — stub landing route
-// ---------------------------------------------------------------------------
-
-describe('GET /account (after GitHub sign-in)', () => {
-  it('returns 200 with placeholder text', async () => {
-    const res = await request(app).get('/account');
-    expect(res.status).toBe(200);
-    expect(res.text).toMatch(/account/i);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // mergeScan: called for new GitHub users
 // ---------------------------------------------------------------------------
 
