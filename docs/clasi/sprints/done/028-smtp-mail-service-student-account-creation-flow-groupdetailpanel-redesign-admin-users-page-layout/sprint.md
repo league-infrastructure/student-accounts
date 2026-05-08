@@ -1,18 +1,19 @@
 ---
-id: "028"
-title: "SMTP mail service - student account creation flow - GroupDetailPanel redesign - admin users page layout"
-status: planning
+id: 028
+title: SMTP mail service - student account creation flow - GroupDetailPanel redesign
+  - admin users page layout
+status: done
 branch: sprint/028-smtp-mail-service-student-account-creation-flow-groupdetailpanel-redesign-admin-users-page-layout
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
-  - SUC-006
-  - SUC-007
-  - SUC-008
-  - SUC-009
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
+- SUC-006
+- SUC-007
+- SUC-008
+- SUC-009
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
 
