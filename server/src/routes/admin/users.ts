@@ -31,7 +31,7 @@ adminUsersRouter.get('/users/:id', async (req, res, next) => {
       cohort: user.cohort ? { id: user.cohort.id, name: user.cohort.name } : null,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
-      logins: user.logins.map((l) => ({
+      logins: user.logins.map((l: any) => ({
         id: l.id,
         provider: l.provider,
         providerUserId: l.provider_user_id,
@@ -39,7 +39,7 @@ adminUsersRouter.get('/users/:id', async (req, res, next) => {
         providerUsername: l.provider_username ?? null,
         createdAt: l.created_at,
       })),
-      externalAccounts: user.external_accounts.map((a) => ({
+      externalAccounts: user.external_accounts.map((a: any) => ({
         id: a.id,
         type: a.type,
         status: a.status,
@@ -202,7 +202,7 @@ adminUsersRouter.delete('/users/:id', async (req, res, next) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     let removedMemberships = 0;
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // Drop the user from every Group they belong to. Soft-deleted users
       // shouldn't count toward member rosters or receive any group-driven
       // permissions/provisioning. (UserGroup.user_id is onDelete: Cascade,
@@ -304,13 +304,13 @@ adminUsersRouter.get('/pending-users', async (_req, res, next) => {
       },
     });
     res.json(
-      users.map((u) => ({
+      users.map((u: any) => ({
         id: u.id,
         email: u.primary_email,
         displayName: u.display_name,
         createdAt: u.created_at,
         cohort: u.cohort ? { id: u.cohort.id, name: u.cohort.name } : null,
-        logins: u.logins.map((l) => ({
+        logins: u.logins.map((l: any) => ({
           provider: l.provider,
           email: l.provider_email,
           username: l.provider_username,
@@ -358,7 +358,7 @@ adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
       return res.status(409).json({ error: 'User is already approved' });
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.user.update({ where: { id }, data: { approval_status: 'approved' } });
       await tx.auditEvent.create({
         data: {
@@ -450,7 +450,7 @@ adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.user.update({
         where: { id },
         data: { is_active: false, approval_status: newStatus },

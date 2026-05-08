@@ -16,6 +16,6 @@ docs
 tests
 data
 config/local
-config/files/*.json
+# config/files/*.json — keep in image; GOOGLE_CRED_FILE points here at runtime
 **/*.log
 **/.DS_Store

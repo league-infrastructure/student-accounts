@@ -1,21 +1,21 @@
 {
   "name": "docker-nodeapp",
-  "version": "0.20260505.1",
+  "version": "0.20260507.4",
   "private": true,
   "scripts": {
     "dev": "./scripts/dev.sh",
     "test:server": "cd server && npx vitest run",
     "test:client": "cd client && npx vitest run",
-    "build:image": "./scripts/build_image.sh",
-    "deploy:dev": "./scripts/deploy.sh dev up",
-    "deploy:prod": "./scripts/deploy.sh prod up",
-    "logs:dev": "./scripts/deploy.sh dev logs",
-    "logs:prod": "./scripts/deploy.sh prod logs",
-    "down:dev": "./scripts/deploy.sh dev down",
-    "down:prod": "./scripts/deploy.sh prod down",
-    "ps:dev": "./scripts/deploy.sh dev ps",
-    "ps:prod": "./scripts/deploy.sh prod ps",
-    "secrets-sync:prod": "./scripts/deploy.sh prod secrets-sync"
+    "build:image": "./scripts/build.sh",
+    "deploy:dev": "./scripts/up.sh dev",
+    "deploy:prod": "./scripts/up.sh prod",
+    "logs:dev": "./scripts/logs.sh dev",
+    "logs:prod": "./scripts/logs.sh prod",
+    "down:dev": "./scripts/down.sh dev",
+    "down:prod": "./scripts/down.sh prod",
+    "ps:dev": "./scripts/ps.sh dev",
+    "ps:prod": "./scripts/ps.sh prod",
+    "secrets-sync:prod": "./scripts/secrets-sync.sh prod"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

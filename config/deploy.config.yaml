@@ -14,8 +14,8 @@ environments:
 
   prod:
     backend: swarm
-    context: apps                # ssh://root@apps.jointheleague.org
+    context: swarm1              # ssh://root@swarm1.dojtl.net (caddy overlay net already up)
     stack: student-accounts
     stack_file: docker-stack.yaml
-    swarm_secrets:
-      - SESSION_SECRET
+    # All secrets ride along in env_file via dotconfig; no separate swarm secrets.
+    swarm_secrets: []

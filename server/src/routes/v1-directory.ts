@@ -81,7 +81,7 @@ v1DirectoryRouter.get('/users', async (req: Request, res: Response, next: NextFu
 
 v1DirectoryRouter.get('/users/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) {
       return res.status(400).json({ error: 'Invalid user id' });
     }

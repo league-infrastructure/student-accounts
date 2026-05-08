@@ -9,22 +9,25 @@
 
 services:
   web:
-    image: "${IMAGE_REPO:-ghcr.io/league-infrastructure/student-accounts}:${IMAGE_TAG:-latest}"
+    # IMAGE_TAG is exported by scripts/_lib.sh from package.json — pinned per deploy.
+    image: "${IMAGE_REPO:-ghcr.io/league-infrastructure/student-accounts}:${IMAGE_TAG:?IMAGE_TAG not set — run via scripts/up.sh}"
+    # Swarm `stack deploy` ignores env_file. scripts/up.sh pre-renders this file
+    # with `docker compose config` (which DOES inline env_file → environment),
+    # then pipes the rendered YAML into `stack deploy`.
+    env_file:
+      - path: .deploy/.env.prod
+        required: false
     environment:
+      # Overrides whatever the env_file says — these must be container-shape values.
       NODE_ENV: production
       PORT: "5201"
       DATABASE_URL: "file:/app/data/app.db"
-      SESSION_SECRET_FILE: /run/secrets/SESSION_SECRET
-    secrets:
-      - SESSION_SECRET
     volumes:
-      - type: bind
-        source: /var/lib/student-accounts/data
-        target: /app/data
+      - app-data:/app/data
     deploy:
       replicas: 1
       placement:
-        # SQLite on a bind mount can't move between nodes; pin to manager.
+        # SQLite is single-writer; pin to one node so the volume always lands there.
         constraints: [node.role == manager]
       update_config:
         order: stop-first
@@ -37,7 +40,7 @@ services:
           cpus: '1.0'
           memory: 512M
       labels:
-        caddy: apps.jointheleague.org
+        caddy: student-accounts.jtlapp.net
         caddy.reverse_proxy: "{{upstreams 5201}}"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5201/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -48,10 +51,8 @@ services:
     networks:
       - caddy
 
-secrets:
-  SESSION_SECRET:
-    external: true
-    name: student-accounts_SESSION_SECRET
+volumes:
+  app-data:
 
 networks:
   caddy:

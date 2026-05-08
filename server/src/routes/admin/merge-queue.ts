@@ -52,7 +52,7 @@ adminMergeQueueRouter.get(
   '/merge-queue/:id',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(String(req.params.id), 10);
       if (isNaN(id)) {
         res.status(400).json({ error: 'Invalid suggestion id' });
         return;
@@ -79,7 +79,7 @@ adminMergeQueueRouter.post(
   '/merge-queue/:id/approve',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(String(req.params.id), 10);
       if (isNaN(id)) {
         res.status(400).json({ error: 'Invalid suggestion id' });
         return;
@@ -125,7 +125,7 @@ adminMergeQueueRouter.post(
   '/merge-queue/:id/reject',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(String(req.params.id), 10);
       if (isNaN(id)) {
         res.status(400).json({ error: 'Invalid suggestion id' });
         return;
@@ -156,7 +156,7 @@ adminMergeQueueRouter.post(
   '/merge-queue/:id/defer',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(String(req.params.id), 10);
       if (isNaN(id)) {
         res.status(400).json({ error: 'Invalid suggestion id' });
         return;

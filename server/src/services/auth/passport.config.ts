@@ -50,6 +50,17 @@ function buildAdminDirectoryClient(): GoogleWorkspaceAdminClient {
   const serviceAccountFile = resolveCredentialsFileEnvVar();
   const delegatedUser = process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '';
 
+  console.log(
+    '[passport.config] Google Admin Directory credential resolution:',
+    JSON.stringify({
+      GOOGLE_CRED_FILE: process.env.GOOGLE_CRED_FILE ?? null,
+      GOOGLE_SERVICE_ACCOUNT_JSON_set: !!serviceAccountJson,
+      GOOGLE_SERVICE_ACCOUNT_JSON_length: serviceAccountJson.length,
+      GOOGLE_ADMIN_DELEGATED_USER_EMAIL: delegatedUser || null,
+      pathChosen: serviceAccountFile ? 'file' : serviceAccountJson ? 'inline' : 'none',
+    }),
+  );
+
   if (!serviceAccountJson && !serviceAccountFile) {
     console.warn(
       '[passport.config] Google Admin Directory client: ' +

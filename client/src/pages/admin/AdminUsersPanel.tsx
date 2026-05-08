@@ -130,29 +130,6 @@ function accountsSortKey(u: AdminUser): string {
   return `${String(9 - accts.length).padStart(2, '0')}-${accts.join(',')}`;
 }
 
-function userEmails(u: AdminUser): string[] {
-  // Primary email first, then unique provider_email values from Logins
-  // that are not the same as the primary. Typically: primary + workspace
-  // email (e.g., student@students.jointheleague.org) for students who
-  // have a League workspace account.
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const add = (e?: string | null) => {
-    if (!e) return;
-    const norm = e.toLowerCase();
-    if (seen.has(norm)) return;
-    seen.add(norm);
-    out.push(e);
-  };
-  add(u.email);
-  for (const p of u.providers ?? []) add(p.email ?? null);
-  // Workspace external_id is the League email
-  for (const a of u.externalAccounts ?? []) {
-    if (a.type === 'workspace' && a.externalId) add(a.externalId);
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -586,7 +563,7 @@ export default function AdminUsersPanel() {
   const [mutationError, setMutationError] = useState('');
   const [roleError, setRoleError] = useState('');
   const error = mutationError || roleError || (queryError ? (queryError as Error).message : '');
-  const [impersonating, setImpersonating] = useState<number | null>(null);
+  const [, setImpersonating] = useState<number | null>(null);
 
   // Role-toggle mutation (make-admin / remove-admin)
   const roleMutation = useMutation<void, Error, { id: number; role: 'admin' | 'staff' }>({

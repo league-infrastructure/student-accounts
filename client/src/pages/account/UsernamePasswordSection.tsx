@@ -14,7 +14,7 @@
  *   409 — "Username already taken"
  */
 
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 
 interface UsernamePasswordSectionProps {
   username: string | null;

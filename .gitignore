@@ -47,5 +47,9 @@ data/
 .env.*
 !.env.example
 
+# deploy.sh — assembled env files for compose runs
+.deploy/
+
 # Per-deployment env files (contain secrets from dotconfig)
 docker/.*.env
+goog_cred.txt

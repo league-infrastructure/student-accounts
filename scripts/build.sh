@@ -12,7 +12,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
-PUSH_LATEST="${PUSH_LATEST:-1}"
+PUSH_LATEST="${PUSH_LATEST:-0}"
 BUILDER_NAME="${BUILDER_NAME:-student-accounts-multiarch}"
 DRY_RUN=0
 
