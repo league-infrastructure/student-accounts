@@ -120,10 +120,25 @@ export class ServiceRegistry {
     // Build a Google Workspace Admin client if not provided. The client
     // constructor defers credential errors to first use, so missing env vars
     // do not prevent registry construction (fail-secure RD-001).
+    //
+    // Credential resolution order (first non-empty wins):
+    //   1. GOOGLE_CRED_FILE — file path (local dev)
+    //   2. GOOGLE_SERVICE_ACCOUNT_JSON — full JSON string
+    //   3. GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+    //      — individual fields assembled into minimal JSON (production secrets)
+    const saClientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL ?? '';
+    // Env vars store the PEM key with literal \n sequences; convert to real
+    // newlines so OpenSSL can parse the key (google-auth-library no longer
+    // does this normalisation itself as of its 2025 rewrite).
+    const saPrivateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY ?? '').replace(/\\n/g, '\n');
+    const saJsonFromFields =
+      saClientEmail && saPrivateKey
+        ? JSON.stringify({ client_email: saClientEmail, private_key: saPrivateKey })
+        : '';
     const wsClient: GoogleWorkspaceAdminClient =
       googleClient ??
       new GoogleWorkspaceAdminClientImpl(
-        process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '',
+        process.env.GOOGLE_SERVICE_ACCOUNT_JSON || saJsonFromFields,
         process.env.GOOGLE_ADMIN_DELEGATED_USER_EMAIL ?? '',
         process.env.GOOGLE_CRED_FILE ?? '',
       );
