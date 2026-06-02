@@ -15,6 +15,7 @@ adminEnvRouter.get('/env', async (req, res) => {
   }
 
   res.json({
+    version: process.env.APP_VERSION || 'dev',
     node: process.version,
     uptime: Math.floor(process.uptime()),
     memory: {

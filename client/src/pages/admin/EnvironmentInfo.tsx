@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 interface EnvData {
+  version: string;
   node: string;
   uptime: number;
   memory: { rss: number; heapUsed: number; heapTotal: number };
@@ -62,6 +63,7 @@ export default function EnvironmentInfo() {
         <h3>Runtime</h3>
         <table>
           <tbody>
+            <tr><td><strong>Version</strong></td><td style={{ paddingLeft: 16 }}>{data.version}</td></tr>
             <tr><td><strong>Node.js</strong></td><td style={{ paddingLeft: 16 }}>{data.node}</td></tr>
             <tr><td><strong>Uptime</strong></td><td style={{ paddingLeft: 16 }}>{formatUptime(data.uptime)}</td></tr>
             <tr><td><strong>Deployment</strong></td><td style={{ paddingLeft: 16 }}>{data.deployment}</td></tr>

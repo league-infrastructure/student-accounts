@@ -22,6 +22,7 @@ services:
       NODE_ENV: production
       PORT: "5201"
       DATABASE_URL: "file:/app/data/app.db"
+      APP_VERSION: "${IMAGE_TAG}"
     volumes:
       - app-data:/app/data
     deploy:
