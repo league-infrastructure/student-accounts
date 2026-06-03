@@ -32,13 +32,36 @@ export class BackupService {
   private s3: S3Client | null;
   private bucket: string;
   private s3Prefix: string;
+  private s3DisabledReason: string | null;
 
-  constructor(prisma: any) {
+  // opts.s3Client allows tests to inject a fake Spaces client; production code
+  // calls `new BackupService(prisma)` and the client is built from env.
+  constructor(prisma: any, opts: { s3Client?: S3Client | null } = {}) {
     this.prisma = prisma;
     this.backupDir = process.env.BACKUP_DIR || path.resolve(process.cwd(), 'data/backups');
-    this.s3 = buildS3Client();
+    this.s3 = opts.s3Client !== undefined ? opts.s3Client : buildS3Client();
     this.bucket = process.env.DO_SPACES_BUCKET || '';
     this.s3Prefix = `${process.env.APP_SLUG || 'app'}/backups/`;
+    this.s3DisabledReason = this.computeS3DisabledReason();
+    if (this.s3DisabledReason) {
+      // Surface the misconfiguration loudly at startup so missing Spaces
+      // credentials don't fail silently — the historical root cause of
+      // "backups aren't uploading to S3".
+      console.warn(
+        `[backup] DigitalOcean Spaces ${this.s3DisabledReason} — backups will be stored locally only and NOT uploaded to S3.`
+      );
+    }
+  }
+
+  /** Human-readable reason S3 uploads are disabled, or null when fully configured. */
+  private computeS3DisabledReason(): string | null {
+    if (this.s3 && this.bucket) return null;
+    const missing: string[] = [];
+    if (!process.env.DO_SPACES_ENDPOINT) missing.push('DO_SPACES_ENDPOINT');
+    if (!process.env.DO_SPACES_KEY) missing.push('DO_SPACES_KEY');
+    if (!process.env.DO_SPACES_SECRET) missing.push('DO_SPACES_SECRET');
+    if (!this.bucket) missing.push('DO_SPACES_BUCKET');
+    return missing.length ? `not configured (missing: ${missing.join(', ')})` : 'not configured';
   }
 
   private async ensureDir() {
@@ -73,7 +96,7 @@ export class BackupService {
     }));
   }
 
-  async createBackup(): Promise<{ filename: string; timestamp: string; size: number; s3: boolean }> {
+  async createBackup(): Promise<{ filename: string; timestamp: string; size: number; s3: boolean; s3Error: string | null }> {
     await this.ensureDir();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `backup-${timestamp}.db`;
@@ -84,17 +107,22 @@ export class BackupService {
     const stats = await fs.stat(filepath);
 
     let s3Ok = false;
+    // Default to the config reason (null when configured); overwritten below
+    // with an upload error if a configured upload then fails.
+    let s3Error: string | null = this.s3DisabledReason;
     if (this.s3Configured) {
       try {
         const body = await fs.readFile(filepath);
         await this.uploadToS3(filename, body);
         s3Ok = true;
-      } catch (err) {
-        console.error('S3 upload failed:', err);
+        s3Error = null;
+      } catch (err: any) {
+        s3Error = `upload failed: ${err?.message || String(err)}`;
+        console.error('[backup] S3 upload failed:', err);
       }
     }
 
-    return { filename, timestamp: new Date().toISOString(), size: stats.size, s3: s3Ok };
+    return { filename, timestamp: new Date().toISOString(), size: stats.size, s3: s3Ok, s3Error };
   }
 
   async listBackups(): Promise<Array<{ filename: string; size: number; created: string; s3: boolean }>> {

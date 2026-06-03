@@ -61,7 +61,11 @@ export default function ImportExport() {
         return;
       }
       const result = await res.json();
-      const s3Note = result.s3 ? ' (uploaded to S3)' : result.s3 === false ? ' (S3 upload failed)' : '';
+      const s3Note = result.s3
+        ? ' (uploaded to S3)'
+        : result.s3Error
+          ? ` — NOT uploaded to S3: ${result.s3Error}`
+          : '';
       setStatus(`Backup created: ${result.filename}${s3Note}`);
       await loadBackups();
     } catch {
