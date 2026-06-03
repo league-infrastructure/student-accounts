@@ -196,10 +196,14 @@ describe('GET /api/admin/users/:id/llm-proxy-token', () => {
       `/api/admin/users/${target.id}/llm-proxy-token`,
     );
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ enabled: false });
+    expect(res.body.enabled).toBe(false);
+    // The proxy base URL is returned even when disabled so the admin UI can
+    // render setup instructions consistently.
+    expect(typeof res.body.endpoint).toBe('string');
+    expect(res.body.endpoint).toContain('/proxy');
   });
 
-  it('returns the active shape without plaintext or hash', async () => {
+  it('returns the active shape with the full plaintext key and endpoint', async () => {
     const target = await makeEligibleUser({ role: 'student' });
     await adminAgent
       .post(`/api/admin/users/${target.id}/llm-proxy-token`)
@@ -213,7 +217,11 @@ describe('GET /api/admin/users/:id/llm-proxy-token', () => {
     expect(res.body.tokenLimit).toBe(500_000);
     expect(res.body.tokensUsed).toBe(0);
     expect(res.body.requestCount).toBe(0);
-    expect(res.body).not.toHaveProperty('token');
+    // Admins intentionally see the whole plaintext key for setup instructions.
+    expect(typeof res.body.token).toBe('string');
+    expect(res.body.token.startsWith('llmp_')).toBe(true);
+    expect(res.body.endpoint).toContain('/proxy');
+    // The hash is still never exposed.
     expect(res.body).not.toHaveProperty('tokenHash');
     expect(res.body).not.toHaveProperty('token_hash');
   });

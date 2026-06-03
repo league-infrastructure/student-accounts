@@ -30,6 +30,10 @@ interface StatusResponse {
   grantedAt?: string;
   grantedBy?: number | null;
   revokedAt?: string | null;
+  /** Proxy base URL (ANTHROPIC_BASE_URL), derived from request origin. */
+  endpoint?: string;
+  /** Full plaintext bearer token. Admins see the whole key, by design. */
+  token?: string | null;
 }
 
 interface Props {
@@ -133,39 +137,47 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
       {!status ? (
         <div style={{ fontSize: 13, color: '#64748b' }}>Loading…</div>
       ) : status.enabled ? (
-        <>
-          <Row k="Status" v={<Pill status="enabled" />} />
-          <Row
-            k="Usage"
-            v={
-              <span>
-                {status.tokensUsed?.toLocaleString() ?? 0} /{' '}
-                {status.tokenLimit?.toLocaleString() ?? 0} tokens
-                <span style={{ color: '#64748b', marginLeft: 6 }}>
-                  ({status.requestCount ?? 0} requests)
+        <div style={splitStyle}>
+          {/* Left half — status / usage / expiry / grant + revoke action */}
+          <div style={splitColStyle}>
+            <Row k="Status" v={<Pill status="enabled" />} />
+            <Row
+              k="Usage"
+              v={
+                <span>
+                  {status.tokensUsed?.toLocaleString() ?? 0} /{' '}
+                  {status.tokenLimit?.toLocaleString() ?? 0} tokens
+                  <span style={{ color: '#64748b', marginLeft: 6 }}>
+                    ({status.requestCount ?? 0} requests)
+                  </span>
                 </span>
-              </span>
-            }
-          />
-          <Row
-            k="Expires"
-            v={status.expiresAt ? new Date(status.expiresAt).toLocaleString() : '—'}
-          />
-          <Row
-            k="Granted"
-            v={status.grantedAt ? new Date(status.grantedAt).toLocaleString() : '—'}
-          />
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button
-              type="button"
-              onClick={submitRevoke}
-              disabled={busy}
-              style={smallButtonStyle('danger', busy)}
-            >
-              Revoke access
-            </button>
+              }
+            />
+            <Row
+              k="Expires"
+              v={status.expiresAt ? new Date(status.expiresAt).toLocaleString() : '—'}
+            />
+            <Row
+              k="Granted"
+              v={status.grantedAt ? new Date(status.grantedAt).toLocaleString() : '—'}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={submitRevoke}
+                disabled={busy}
+                style={smallButtonStyle('danger', busy)}
+              >
+                Revoke access
+              </button>
+            </div>
           </div>
-        </>
+
+          {/* Right half — setup instructions and the full key */}
+          <div style={splitColStyle}>
+            <SetupPanel endpoint={status.endpoint} token={status.token} />
+          </div>
+        </div>
       ) : showGrantForm ? (
         <>
           <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
@@ -245,6 +257,77 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
     <div style={{ display: 'flex', gap: 8, fontSize: 13, marginBottom: 4 }}>
       <div style={{ color: '#64748b', minWidth: 100 }}>{k}</div>
       <div style={{ color: '#0f172a' }}>{v}</div>
+    </div>
+  );
+}
+
+/**
+ * SetupPanel — the right-hand half of the enabled card. Shows the proxy URL,
+ * the full plaintext key, and copy-paste setup snippets. Admins deliberately
+ * see the whole key here so they can hand it back to a student.
+ */
+function SetupPanel({
+  endpoint,
+  token,
+}: {
+  endpoint?: string;
+  token?: string | null;
+}) {
+  // Fall back to the current origin if the server didn't supply an endpoint
+  // (the proxy always lives at <origin>/proxy).
+  const base = endpoint ?? `${window.location.origin}/proxy`;
+  const key = token ?? '(key unavailable — granted before plaintext storage)';
+
+  const copy = (text: string) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+  };
+
+  const snippet = `# Claude Code
+export ANTHROPIC_BASE_URL="${base}"
+export ANTHROPIC_API_KEY="${key}"
+# Allowed models: Sonnet or Haiku
+export ANTHROPIC_MODEL="claude-sonnet-4-6"
+export ANTHROPIC_SMALL_FAST_MODEL="claude-haiku-4-5-20251001"
+claude`;
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>
+        SETUP INSTRUCTIONS
+      </div>
+
+      <Row
+        k="Proxy URL"
+        v={
+          <span>
+            <code style={inlineCodeStyle}>{base}</code>{' '}
+            <button type="button" onClick={() => copy(base)} style={copyBtnStyle}>
+              Copy
+            </button>
+          </span>
+        }
+      />
+      <Row
+        k="Key"
+        v={
+          <span>
+            <code style={{ ...inlineCodeStyle, wordBreak: 'break-all' }}>{key}</code>{' '}
+            {token && (
+              <button type="button" onClick={() => copy(token)} style={copyBtnStyle}>
+                Copy
+              </button>
+            )}
+          </span>
+        }
+      />
+
+      <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, margin: '12px 0 6px' }}>
+        Environment variables
+      </div>
+      <pre style={snippetStyle}>{snippet}</pre>
+      <button type="button" onClick={() => copy(snippet)} style={copyBtnStyle}>
+        Copy snippet
+      </button>
     </div>
   );
 }
@@ -345,4 +428,46 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #cbd5e1',
   borderRadius: 6,
   background: '#fff',
+};
+
+// Two-column split for the enabled view: status on the left, setup on the right.
+const splitStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+  gap: 20,
+  alignItems: 'start',
+};
+
+const splitColStyle: React.CSSProperties = {
+  minWidth: 0,
+};
+
+const inlineCodeStyle: React.CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 12,
+  padding: '2px 6px',
+  background: '#f1f5f9',
+  borderRadius: 4,
+  userSelect: 'all',
+};
+
+const copyBtnStyle: React.CSSProperties = {
+  fontSize: 12,
+  padding: '2px 8px',
+  border: '1px solid #cbd5e1',
+  borderRadius: 4,
+  background: '#f8fafc',
+  cursor: 'pointer',
+};
+
+const snippetStyle: React.CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 12,
+  background: '#0f172a',
+  color: '#e2e8f0',
+  padding: '10px 12px',
+  borderRadius: 6,
+  overflowX: 'auto',
+  margin: '0 0 8px',
+  whiteSpace: 'pre',
 };

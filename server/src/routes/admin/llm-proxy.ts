@@ -96,11 +96,30 @@ adminLlmProxyRouter.get(
       const user = await UserRepository.findByIdIncludingInactive(prisma, userId);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
+      // Derive the proxy endpoint from the request origin, mirroring the
+      // student-facing /account/llm-proxy route so the admin sees the exact
+      // ANTHROPIC_BASE_URL the student would use. Base is returned without
+      // /v1 because the Anthropic SDK appends /v1/messages itself.
+      const forwardedProto = req.header('x-forwarded-proto');
+      const scheme = forwardedProto
+        ? forwardedProto.split(',')[0].trim()
+        : (req as any).secure
+          ? 'https'
+          : 'http';
+      const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
+      const endpoint = `${scheme}://${host}/proxy`;
+
       const active = await req.services.llmProxyTokens.getActiveForUser(userId);
       if (!active) {
-        return res.json({ enabled: false });
+        return res.json({ enabled: false, endpoint });
       }
-      return res.json(renderActive(active as any));
+      // Admins intentionally see the full plaintext key here so they can read
+      // setup instructions and the working token back to a student.
+      return res.json({
+        ...renderActive(active as any),
+        endpoint,
+        token: (active as any).token_plaintext ?? null,
+      });
     } catch (err) {
       handleError(err, res, next);
     }
