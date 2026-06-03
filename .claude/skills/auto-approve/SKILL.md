@@ -1,1 +1,1 @@
-/Users/eric/proj/league/infrastructure/student-accounts/.agents/skills/auto-approve/SKILL.md
+/Volumes/Proj/proj/league-projects/infrastructure/student-accounts/.agents/skills/auto-approve/SKILL.md
