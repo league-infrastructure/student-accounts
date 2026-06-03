@@ -1,27 +1,29 @@
 # Docker Node Application Template
 
-A Node.js web application template with Express, React, Prisma, and SQLite. Clone it, run the install script, and start building.
+A Node.js web application template with Express, React, Prisma, and SQLite. Install dependencies, generate the dev `.env`, and start building.
 
 The default home page is a counter demo: two named counters (`alpha` and `beta`) that any logged-in user can increment. Log in with `user` / `pass` (USER role) or `admin` / `admin` (ADMIN role) — no OAuth setup required.
 
 ## Getting Started
 
 ```bash
-# 1. Clone the template
-git clone <your-repo-url> my-app
-cd my-app
+# 1. Install dependencies (server and client are separate packages)
+( cd server && npm install )
+( cd client && npm install )
 
-# 2. Run the install script
-./scripts/install.sh
+# 2. Generate the root .env from config/dev/ (decrypts secrets via dotconfig)
+scripts/config-load.sh dev > .env
 
-# 3. Start the dev server
+# 3. Start the dev server (runs prisma generate + db push, then server + client)
 npm run dev
 ```
 
-That's it. The app starts with SQLite — no Docker, no database setup required.
+The app starts with SQLite — no Docker, no database setup required. `npm run dev`
+(→ `scripts/dev.sh`) sources the root `.env`, so step 2 must run first or Prisma
+fails with "datasource.url property is required".
 
 - Frontend: http://localhost:5173
-- Backend API: http://localhost:3000/api
+- Backend API: http://localhost:5201/api
 
 ## Stack
 
@@ -37,11 +39,12 @@ That's it. The app starts with SQLite — no Docker, no database setup required.
 
 ```bash
 npm run dev              # SQLite mode (default, no Docker needed)
-npm run dev:postgres     # PostgreSQL mode (requires Docker)
-npm run dev:docker       # Full stack in Docker
+npm run deploy:dev       # Full stack in Docker (scripts/up.sh dev)
 ```
 
-To switch to PostgreSQL, edit `DATABASE_URL` in your `.env`:
+To switch to PostgreSQL, set `DATABASE_URL` to a `postgresql://` URL in
+`config/dev/public.env` and regenerate `.env` (step 2 above). `scripts/dev.sh`
+detects the postgres URL and runs `prisma migrate deploy` instead of `db push`:
 ```
 DATABASE_URL=postgresql://app:devpassword@localhost:5433/app
 ```
@@ -51,7 +54,6 @@ DATABASE_URL=postgresql://app:devpassword@localhost:5433/app
 ```bash
 npm run test:server   # Backend API (Vitest)
 npm run test:client   # Frontend components (Vitest)
-npm run test:e2e      # End-to-end (Playwright)
 ```
 
 ## Documentation

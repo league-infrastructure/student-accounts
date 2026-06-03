@@ -28,7 +28,7 @@ if command -v dotconfig >/dev/null 2>&1 && [[ -d "config/$ENV_NAME" ]]; then
   if [[ -d "config/local/${USER:-}" ]]; then
     EXTRA+=(-l "$USER")
   fi
-  dotconfig load -d "$ENV_NAME" "${EXTRA[@]}" --stdout --no-export
+  dotconfig load -d "$ENV_NAME" ${EXTRA[@]+"${EXTRA[@]}"} --stdout --no-export
   exit 0
 fi
 
