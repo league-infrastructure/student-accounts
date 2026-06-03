@@ -110,6 +110,19 @@ describe('GET /proxy/v1/health', () => {
   });
 });
 
+describe('GET /proxy — base-URL info', () => {
+  it('returns JSON describing the proxy (not the SPA HTML)', async () => {
+    const res = await request(app).get('/proxy');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.service).toBe('llm-proxy');
+    // base is the value students set as ANTHROPIC_BASE_URL; messages appends /v1.
+    expect(res.body.base).toMatch(/\/proxy$/);
+    expect(res.body.messages).toMatch(/\/proxy\/v1\/messages$/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // POST /proxy/v1/messages — auth
 // ---------------------------------------------------------------------------

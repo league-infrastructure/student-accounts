@@ -152,4 +152,8 @@ fi
 "${BUILD_CMD[@]}"
 
 echo "Pushed ${IMAGE_REPO}:${IMAGE_TAG}"
-[[ "${PUSH_LATEST}" == "1" ]] && echo "Pushed ${IMAGE_REPO}:latest"
+# Note: this must not be the script's final command — under `set -e` a false
+# `[[ ]]` test would make the script exit 1 despite a successful push.
+if [[ "${PUSH_LATEST}" == "1" ]]; then
+  echo "Pushed ${IMAGE_REPO}:latest"
+fi

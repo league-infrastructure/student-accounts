@@ -91,6 +91,32 @@ app.use('/api', staffDirectoryRouter);
 // <origin>/proxy and append /v1/messages themselves. See Sprint 013.
 app.use('/proxy/v1', llmProxyRouter);
 
+// GET /proxy — self-documenting info for the advertised base URL. Without
+// this, a bare GET to the base (the value of ANTHROPIC_BASE_URL) falls through
+// to the SPA catch-all and returns index.html, which looks broken when someone
+// probes the endpoint. The actual API lives at /proxy/v1/messages — clients
+// (Claude Code, the Anthropic SDK) append /v1/messages to this base themselves.
+app.get('/proxy', (req: express.Request, res: express.Response) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  const forwardedProto = req.header('x-forwarded-proto');
+  const scheme = forwardedProto
+    ? forwardedProto.split(',')[0].trim()
+    : req.secure
+      ? 'https'
+      : 'http';
+  const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
+  const base = `${scheme}://${host}/proxy`;
+  res.json({
+    ok: true,
+    service: 'llm-proxy',
+    base,
+    anthropicBaseUrl: base,
+    messages: `${base}/v1/messages`,
+    health: `${base}/v1/health`,
+    note: 'Set ANTHROPIC_BASE_URL to "base"; the Anthropic SDK / Claude Code append /v1/messages. Requires a bearer token (x-api-key).',
+  });
+});
+
 // OAuth provider — mounted at /oauth (NOT /api/oauth) per architecture-update.md.
 // External clients use standard OAuth endpoints without the /api prefix.
 app.use('/oauth', oauthRouter);
