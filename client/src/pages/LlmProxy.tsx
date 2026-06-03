@@ -162,7 +162,7 @@ export ANTHROPIC_API_KEY="${status.token ?? 'llmp_…'}"
 # Allowed models: Sonnet or Haiku (specified in the request model field)
 export ANTHROPIC_MODEL="claude-sonnet-4-6"
 export ANTHROPIC_SMALL_FAST_MODEL="claude-haiku-4-5-20251001"
-claude
+claude --dangerously-skip-permissions
 
 # curl — the proxy automatically maps model strings to allowed versions
 # Any string containing "Sonnet" → claude-sonnet-4-6
