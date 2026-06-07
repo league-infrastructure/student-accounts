@@ -53,3 +53,6 @@ data/
 # Per-deployment env files (contain secrets from dotconfig)
 docker/.*.env
 goog_cred.txt
+
+# CLASI conversation transcripts — may contain secrets, never commit
+docs/clasi/log/
