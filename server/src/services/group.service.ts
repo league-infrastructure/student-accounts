@@ -73,9 +73,7 @@ export async function provisionUserIfNeeded(
   }
 
   try {
-    await prisma.$transaction(async (tx: any) => {
-      await workspaceProvisioning.provision(userId, actorId, tx);
-    });
+    await workspaceProvisioning.provision(userId, actorId);
     logger.info(
       { userId, actorId },
       '[provision-user-if-needed] workspace account provisioned',

@@ -2,22 +2,23 @@
  * ClaudeProvisioningService — executes Claude Team seat provisioning.
  *
  * This service is the sole entry point for Claude seat provisioning: it
- * validates preconditions, calls the Claude Team Admin API to invite the
- * member, persists the ExternalAccount row, and emits the audit event. All
- * database writes occur inside the caller-supplied transaction.
+ * validates preconditions, calls the Anthropic Admin API to invite the
+ * member, persists the ExternalAccount row, and emits the audit event.
  *
- * The caller owns the transaction boundary. This service does NOT open its
- * own prisma.$transaction.
+ * Transaction boundary: the external Anthropic API call runs OUTSIDE any
+ * SQLite transaction. Only the final ExternalAccount + audit writes are
+ * wrapped in a short internal $transaction. This prevents the SQLite write
+ * lock from being held during network I/O, which caused P2028 timeouts.
  *
  * Hard gate: the user must have an active workspace ExternalAccount. The
  * workspace account's external_id holds the League Workspace email address,
- * which is passed to ClaudeTeamAdminClient.inviteMember.
+ * which is passed to AnthropicAdminClient.inviteToOrg.
  *
  * Dependency injection:
- *  - claudeTeamClient      — ClaudeTeamAdminClient (real or fake)
- *  - externalAccountRepo   — ExternalAccountRepository (writes inside tx)
+ *  - claudeTeamClient      — AnthropicAdminClient (real or fake)
+ *  - externalAccountRepo   — ExternalAccountRepository
  *  - auditService          — AuditService
- *  - userRepo              — UserRepository (reads inside tx)
+ *  - userRepo              — UserRepository
  *
  * Errors thrown:
  *  - UnprocessableError (422) — precondition failures (user not found, no active
@@ -35,7 +36,8 @@ import type { AuditService } from './audit.service.js';
 import type { AnthropicAdminClient } from './anthropic/anthropic-admin.client.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import { UserRepository } from './repositories/user.repository.js';
-import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
+import type { ExternalAccount } from '../generated/prisma/client.js';
+import { prisma as defaultPrisma } from './prisma.js';
 
 const logger = createLogger('claude-provisioning');
 
@@ -50,14 +52,12 @@ export class ClaudeProvisioningService {
   /**
    * Provision a Claude Team seat for the given user.
    *
-   * All database writes are performed inside the provided transaction client.
-   * The caller is responsible for opening and committing (or rolling back) the
-   * transaction. If the Claude Team API call fails, no ExternalAccount row is
-   * written — the caller's transaction will roll back naturally if desired.
+   * External API call (Anthropic) runs BEFORE any database transaction so
+   * the SQLite write lock is never held during network I/O. Only the final
+   * ExternalAccount + audit writes are wrapped in a short internal $transaction.
    *
    * @param userId  - The student whose Claude seat is being provisioned.
    * @param actorId - The admin performing the provisioning action.
-   * @param tx      - The caller's Prisma transaction client.
    * @returns The newly created ExternalAccount row.
    *
    * @throws UnprocessableError if the user is not found or has no active
@@ -70,25 +70,16 @@ export class ClaudeProvisioningService {
   async provision(
     userId: number,
     actorId: number,
-    tx: Prisma.TransactionClient,
   ): Promise<ExternalAccount> {
-    // --- 1. Fetch user ---
-    const user = await this.userRepo.findById(tx, userId);
+    // --- 1. Pre-flight reads (outside transaction — no lock held) ---
+    const user = await this.userRepo.findById(defaultPrisma, userId);
     if (!user) {
       throw new UnprocessableError(`User ${userId} not found`);
     }
 
     // --- 2. Resolve the League email to invite ---
-    //
-    // Preferred source: an active workspace ExternalAccount whose external_id
-    // holds the League Workspace email. Workspace sync (Sprint 006) does NOT
-    // create ExternalAccount rows — only User rows — so for Google-imported
-    // students we fall back to User.primary_email when it's on a
-    // jointheleague.org domain (including subdomains like
-    // @students.jointheleague.org). That email is, by construction, the
-    // user's Google Workspace account.
     const workspaceAccount = await this.externalAccountRepo.findActiveByUserAndType(
-      tx,
+      defaultPrisma,
       userId,
       'workspace',
     );
@@ -111,7 +102,7 @@ export class ClaudeProvisioningService {
 
     // --- 3. Check no active/pending claude ExternalAccount exists ---
     const existingClaude = await this.externalAccountRepo.findActiveByUserAndType(
-      tx,
+      defaultPrisma,
       userId,
       'claude',
     );
@@ -126,7 +117,7 @@ export class ClaudeProvisioningService {
       '[claude-provisioning] Calling AnthropicAdminClient.inviteToOrg',
     );
 
-    // --- 4. Call Anthropic Admin API (may throw; caller's tx rolls back) ---
+    // --- 4. External: Anthropic Admin API (outside transaction) ---
     const member = await this.claudeTeamClient.inviteToOrg({ email: workspaceEmail });
 
     logger.info(
@@ -134,29 +125,28 @@ export class ClaudeProvisioningService {
       '[claude-provisioning] Claude Team member invited successfully',
     );
 
-    // --- 5. Persist ExternalAccount inside the caller's transaction ---
-    // The invite creates a pending seat — status transitions to active once the
-    // invitee accepts (reconciled by AnthropicSyncService.reconcile).
-    const newAccount = await this.externalAccountRepo.create(tx, {
-      user_id: userId,
-      type: 'claude',
-      status: 'pending',
-      external_id: member.id,
-      status_changed_at: new Date(),
-    });
-
-    // --- 6. Record audit event inside the caller's transaction ---
-    await this.auditService.record(tx, {
-      actor_user_id: actorId,
-      action: 'provision_claude',
-      target_user_id: userId,
-      target_entity_type: 'ExternalAccount',
-      target_entity_id: String(newAccount.id),
-      details: {
-        workspaceEmail,
-        claudeMemberId: member.id,
-        claudeMemberStatus: member.status,
-      },
+    // --- 5. Short transaction for DB writes only ---
+    const newAccount = await defaultPrisma.$transaction(async (tx: any) => {
+      const account = await this.externalAccountRepo.create(tx, {
+        user_id: userId,
+        type: 'claude',
+        status: 'pending',
+        external_id: member.id,
+        status_changed_at: new Date(),
+      });
+      await this.auditService.record(tx, {
+        actor_user_id: actorId,
+        action: 'provision_claude',
+        target_user_id: userId,
+        target_entity_type: 'ExternalAccount',
+        target_entity_id: String(account.id),
+        details: {
+          workspaceEmail,
+          claudeMemberId: member.id,
+          claudeMemberStatus: member.status,
+        },
+      });
+      return account;
     });
 
     logger.info(

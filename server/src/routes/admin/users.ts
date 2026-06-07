@@ -380,9 +380,7 @@ adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
 
     if (provisionWorkspace) {
       try {
-        await prisma.$transaction(async (tx: any) => {
-          await req.services.workspaceProvisioning.provision(id, actorId, tx);
-        });
+        await req.services.workspaceProvisioning.provision(id, actorId);
         response.workspace = { provisioned: true };
       } catch (err: any) {
         response.workspace = {
@@ -479,8 +477,7 @@ adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
 
 // ---------------------------------------------------------------------------
 // POST /admin/users/:id/provision-claude
-// Calls ClaudeProvisioningService.provision(userId, actorId, tx) inside a
-// prisma.$transaction. Returns 201 with the new ExternalAccount on success.
+// Returns 201 with the new ExternalAccount on success.
 // Returns 404 if the user does not exist.
 // Returns 409 if the user already has an active claude ExternalAccount.
 // Returns 422 if the user has no active workspace ExternalAccount.
@@ -494,9 +491,7 @@ adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
     }
     const actorId = (req.session as any).userId as number;
 
-    const account = await (prisma as any).$transaction(async (tx: any) => {
-      return req.services.claudeProvisioning.provision(userId, actorId, tx);
-    });
+    const account = await req.services.claudeProvisioning.provision(userId, actorId);
 
     adminBus.notify('users');
     userBus.notifyUser(userId);

@@ -16,7 +16,6 @@
  */
 
 import { Router } from 'express';
-import { prisma } from '../../services/prisma.js';
 import { AppError } from '../../errors.js';
 import { WorkspaceApiError } from '../../services/google-workspace/google-workspace-admin.client.js';
 
@@ -24,12 +23,10 @@ export const adminProvisionWorkspaceRouter = Router();
 
 // ---------------------------------------------------------------------------
 // POST /admin/users/:id/provision-workspace
-// Calls WorkspaceProvisioningService.provision(userId, actorId, tx) inside a
-// prisma.$transaction. Returns 201 with the new ExternalAccount on success.
+// Returns 201 with the new ExternalAccount on success.
 // Returns 404 if the user does not exist.
 // Returns 409 if the user already has an active/pending workspace ExternalAccount.
 // Returns 422 if the user is not role=student.
-// Returns 422 if the user has no cohort assigned.
 // Returns 502 on Google Workspace API error.
 // ---------------------------------------------------------------------------
 
@@ -41,9 +38,7 @@ adminProvisionWorkspaceRouter.post('/users/:id/provision-workspace', async (req,
     }
     const actorId = (req.session as any).userId as number;
 
-    const account = await (prisma as any).$transaction(async (tx: any) => {
-      return req.services.workspaceProvisioning.provision(userId, actorId, tx);
-    });
+    const account = await req.services.workspaceProvisioning.provision(userId, actorId);
 
     return res.status(201).json({
       id: account.id,

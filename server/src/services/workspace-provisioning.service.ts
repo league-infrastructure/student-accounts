@@ -4,17 +4,20 @@
  * This service is the sole entry point for UC-005: it validates preconditions,
  * calls the Google Workspace Admin SDK to create the user, persists the
  * ExternalAccount row, calls the Pike13 write-back stub, sends a welcome email,
- * and emits the audit event. All database writes occur inside the
- * caller-supplied transaction.
+ * and emits the audit event.
  *
- * The caller owns the transaction boundary. This service does NOT open its
- * own prisma.$transaction.
+ * Transaction boundary: external API calls (Google, Pike13, mail) happen
+ * OUTSIDE any SQLite transaction. Only the final DB writes (ExternalAccount
+ * row + audit event) are wrapped in a short internal $transaction. This
+ * prevents the SQLite write lock from being held during network I/O, which
+ * caused P2028 "Unable to start a transaction in the given time" errors that
+ * blocked concurrent sign-ins.
  *
  * Dependency injection:
  *  - googleClient       — GoogleWorkspaceAdminClient (real or fake)
- *  - externalAccountRepo — ExternalAccountRepository (writes inside tx)
+ *  - externalAccountRepo — ExternalAccountRepository
  *  - auditService       — AuditService
- *  - userRepo           — UserRepository (reads inside tx)
+ *  - userRepo           — UserRepository
  *  - mailService        — MailService (sends welcome email after provisioning)
  *
  * Environment variables consumed:
@@ -39,8 +42,9 @@ import { ExternalAccountRepository } from './repositories/external-account.repos
 import { UserRepository } from './repositories/user.repository.js';
 import { displayNameToSlug, splitDisplayName } from '../utils/email-slug.js';
 import * as pike13Writeback from './pike13/pike13-writeback.service.js';
-import type { ExternalAccount, Prisma } from '../generated/prisma/client.js';
+import type { ExternalAccount } from '../generated/prisma/client.js';
 import type { MailService } from './mail.service.js';
+import { prisma as defaultPrisma } from './prisma.js';
 
 const logger = createLogger('workspace-provisioning');
 
@@ -56,15 +60,14 @@ export class WorkspaceProvisioningService {
   /**
    * Provision a League Workspace account for the given user.
    *
-   * All database writes are performed inside the provided transaction client.
-   * The caller is responsible for opening and committing (or rolling back) the
-   * transaction. If the Google Admin SDK call fails, no ExternalAccount row is
-   * written — the caller's transaction will roll back naturally if desired.
+   * External API calls (Google Admin SDK, Pike13, mail) run BEFORE any
+   * database transaction so the SQLite write lock is never held during
+   * network I/O. Only the final ExternalAccount + audit writes are wrapped
+   * in a short internal $transaction.
    *
    * @param userId  - The student whose Workspace account is being created.
    * @param actorId - The admin performing the provisioning action.
-   * @param tx      - The caller's Prisma transaction client.
-   * @returns The newly created ExternalAccount row.
+   * @returns The newly created (or reactivated) ExternalAccount row.
    *
    * @throws UnprocessableError if the user is not a student, or if required
    *         environment variables (GOOGLE_STUDENT_DOMAIN,
@@ -77,10 +80,9 @@ export class WorkspaceProvisioningService {
   async provision(
     userId: number,
     actorId: number,
-    tx: Prisma.TransactionClient,
   ): Promise<ExternalAccount> {
-    // --- 1. Fetch user ---
-    const user = await this.userRepo.findById(tx, userId);
+    // --- 1. Pre-flight reads (outside transaction — no lock held) ---
+    const user = await this.userRepo.findById(defaultPrisma, userId);
     if (!user) {
       throw new UnprocessableError(`User ${userId} not found`);
     }
@@ -93,17 +95,15 @@ export class WorkspaceProvisioningService {
     }
 
     // --- 3. Check for existing active/pending workspace account ---
-    const existing = await this.externalAccountRepo.findActiveByUserAndType(tx, userId, 'workspace');
+    const existing = await this.externalAccountRepo.findActiveByUserAndType(defaultPrisma, userId, 'workspace');
     if (existing) {
       throw new ConflictError(
         `User ${userId} already has an active or pending workspace ExternalAccount (id=${existing.id})`,
       );
     }
 
-    // --- 3b. If the user previously had a League account that was later
-    //         suspended/removed, reactivate it instead of trying to create
-    //         a fresh Google user with the same primary email.
-    const prior = await (tx as any).externalAccount.findFirst({
+    // --- 3b. Check for a prior suspended/removed account to reactivate ---
+    const prior = await (defaultPrisma as any).externalAccount.findFirst({
       where: {
         user_id: userId,
         type: 'workspace',
@@ -111,6 +111,7 @@ export class WorkspaceProvisioningService {
       },
       orderBy: { status_changed_at: 'desc' },
     });
+
     if (prior?.external_id) {
       const priorEmail: string = prior.external_id;
       logger.info(
@@ -118,24 +119,21 @@ export class WorkspaceProvisioningService {
         '[workspace-provisioning] Prior suspended/removed workspace found — reactivating.',
       );
 
+      // External call outside transaction
       await this.googleClient.unsuspendUser(priorEmail);
 
-      const reactivated = await this.externalAccountRepo.updateStatus(
-        tx,
-        prior.id,
-        'active',
-      );
-
-      await this.auditService.record(tx, {
-        actor_user_id: actorId,
-        action: 'reactivate_workspace',
-        target_user_id: userId,
-        target_entity_type: 'ExternalAccount',
-        target_entity_id: String(prior.id),
-        details: {
-          email: priorEmail,
-          previous_status: prior.status,
-        },
+      // Short transaction for DB writes only
+      const reactivated = await defaultPrisma.$transaction(async (tx: any) => {
+        const result = await this.externalAccountRepo.updateStatus(tx, prior.id, 'active');
+        await this.auditService.record(tx, {
+          actor_user_id: actorId,
+          action: 'reactivate_workspace',
+          target_user_id: userId,
+          target_entity_type: 'ExternalAccount',
+          target_entity_id: String(prior.id),
+          details: { email: priorEmail, previous_status: prior.status },
+        });
+        return result;
       });
 
       return reactivated;
@@ -159,7 +157,6 @@ export class WorkspaceProvisioningService {
 
     const slug = displayNameToSlug(user.display_name, user.id);
     const workspaceEmail = `${slug}@${studentDomain}`;
-
     const { givenName, familyName } = splitDisplayName(user.display_name);
 
     logger.info(
@@ -167,13 +164,7 @@ export class WorkspaceProvisioningService {
       '[workspace-provisioning] Calling GoogleWorkspaceAdminClient.createUser',
     );
 
-    // --- 5. Call Google Admin SDK (may throw; caller's tx rolls back) ---
-    //
-    // Pass the student's own primary_email as recoveryEmail so Google's
-    // welcome/password email lands in an inbox they can actually read.
-    // (They can't read the League inbox yet — it's the account being
-    // created.) We skip this when primary_email is itself a League
-    // address, which would just loop back.
+    // --- 5. External: Google Admin SDK (outside transaction) ---
     const leagueDomainRx = /@([a-z0-9-]+\.)?jointheleague\.org$/i;
     const recoveryEmail =
       user.primary_email && !leagueDomainRx.test(user.primary_email)
@@ -196,37 +187,34 @@ export class WorkspaceProvisioningService {
       '[workspace-provisioning] Google Workspace user created successfully',
     );
 
-    // --- 6. Persist ExternalAccount inside the caller's transaction ---
-    //
-    // By convention, `external_id` on workspace rows is the user's League
-    // email — not the Google numeric user ID. The delete job, lifecycle
-    // service, and claude-provisioning all read it as an email.
-    const newAccount = await this.externalAccountRepo.create(tx, {
-      user_id: userId,
-      type: 'workspace',
-      status: 'active',
-      external_id: createdUser.primaryEmail,
-      status_changed_at: new Date(),
-    });
-
-    // --- 7. Call Pike13 write-back (updates League email field in Pike13) ---
+    // --- 6. External: Pike13 write-back (outside transaction) ---
     await pike13Writeback.leagueEmail(userId, workspaceEmail);
 
-    // --- 8. Record audit event inside the caller's transaction ---
-    await this.auditService.record(tx, {
-      actor_user_id: actorId,
-      action: 'provision_workspace',
-      target_user_id: userId,
-      target_entity_type: 'ExternalAccount',
-      target_entity_id: String(newAccount.id),
-      details: {
-        email: workspaceEmail,
-        googleUserId: createdUser.id,
-        ouPath: '/Students',
-      },
+    // --- 7. Short transaction for DB writes only ---
+    const newAccount = await defaultPrisma.$transaction(async (tx: any) => {
+      const account = await this.externalAccountRepo.create(tx, {
+        user_id: userId,
+        type: 'workspace',
+        status: 'active',
+        external_id: createdUser.primaryEmail,
+        status_changed_at: new Date(),
+      });
+      await this.auditService.record(tx, {
+        actor_user_id: actorId,
+        action: 'provision_workspace',
+        target_user_id: userId,
+        target_entity_type: 'ExternalAccount',
+        target_entity_id: String(account.id),
+        details: {
+          email: workspaceEmail,
+          googleUserId: createdUser.id,
+          ouPath: '/Students',
+        },
+      });
+      return account;
     });
 
-    // --- 9. Send welcome email (fail-soft) ---
+    // --- 8. Send welcome email (fail-soft, outside transaction) ---
     const notifEmail = (user as any).notification_email ?? user.primary_email;
     if (notifEmail) {
       try {

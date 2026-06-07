@@ -90,9 +90,7 @@ export class BulkGroupService {
 
     for (const u of users) {
       try {
-        await (this.prisma as any).$transaction(async (tx: any) => {
-          await provisioner.provision(u.id, actorId, tx);
-        });
+        await provisioner.provision(u.id, actorId);
         succeeded.push(u.id);
       } catch (err: any) {
         failed.push({

@@ -195,9 +195,7 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
   let workspaceResult: { provisioned: boolean; error?: string } | undefined;
   if (scope === 'cohort') {
     try {
-      await prisma.$transaction(async (tx: any) => {
-        await (req as any).services.workspaceProvisioning.provision(newUser.id, newUser.id, tx);
-      });
+      await (req as any).services.workspaceProvisioning.provision(newUser.id, newUser.id);
       workspaceResult = { provisioned: true };
     } catch (err: any) {
       workspaceResult = { provisioned: false, error: err?.message ?? 'Workspace provisioning failed' };
