@@ -137,7 +137,7 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <label htmlFor="login-username" className={labelClass}>
-              Username
+              Username or email
             </label>
             <input
               id="login-username"

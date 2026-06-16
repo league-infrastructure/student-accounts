@@ -23,10 +23,12 @@ async function cleanDb(): Promise<void> {
   await (prisma as any).auditEvent.deleteMany();
   await (prisma as any).llmProxyToken.deleteMany();
   await (prisma as any).userGroup.deleteMany();
+  await (prisma as any).group.deleteMany();
   await (prisma as any).provisioningRequest.deleteMany();
   await (prisma as any).externalAccount.deleteMany();
   await (prisma as any).login.deleteMany();
   await (prisma as any).user.deleteMany();
+  await (prisma as any).cohort.deleteMany();
 }
 
 // ---------------------------------------------------------------------------
@@ -316,5 +318,172 @@ describe('POST /api/auth/login — end-to-end signup then login', () => {
     const meRes = await loginAgent.get('/api/auth/me');
     expect(meRes.status).toBe(200);
     expect(meRes.body.id).toBe(signupRes.body.id);
+  });
+});
+
+// ===========================================================================
+// Group passphrase used as a login password (membership-scoped)
+// ===========================================================================
+
+describe('POST /api/auth/login — group passphrase as password', () => {
+  const future = () => new Date(Date.now() + 3_600_000);
+  const past = () => new Date(Date.now() - 1_000);
+
+  async function makeGroupMember(opts: {
+    username: string;
+    email: string;
+    passphrase: string;
+    expiresAt: Date;
+    member: boolean;
+    passwordHash?: string | null;
+  }) {
+    const group = await (prisma as any).group.create({
+      data: {
+        name: `Class-${opts.username}`,
+        signup_passphrase: opts.passphrase,
+        signup_passphrase_grant_llm_proxy: false,
+        signup_passphrase_expires_at: opts.expiresAt,
+        signup_passphrase_created_at: new Date(),
+        signup_passphrase_created_by: null,
+      },
+    });
+    const user = await (prisma as any).user.create({
+      data: {
+        username: opts.username,
+        password_hash: opts.passwordHash ?? null,
+        display_name: opts.username,
+        primary_email: opts.email,
+        role: 'student',
+        is_active: true,
+        created_via: 'admin_created',
+      },
+    });
+    if (opts.member) {
+      await (prisma as any).userGroup.create({
+        data: { user_id: user.id, group_id: group.id },
+      });
+    }
+    return { group, user };
+  }
+
+  it('lets a group member sign in using the active group passphrase', async () => {
+    const { user } = await makeGroupMember({
+      username: 'g-member',
+      email: 'g-member@example.com',
+      passphrase: 'orange-pencil-cloud',
+      expiresAt: future(),
+      member: true,
+      passwordHash: await hashPassword('their-real-password'),
+    });
+
+    const agent = request.agent(app);
+    const res = await agent
+      .post('/api/auth/login')
+      .send({ username: 'g-member', password: 'orange-pencil-cloud' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(user.id);
+    const meRes = await agent.get('/api/auth/me');
+    expect(meRes.status).toBe(200);
+  });
+
+  it('rejects the passphrase for a non-member (401)', async () => {
+    await makeGroupMember({
+      username: 'non-member',
+      email: 'non-member@example.com',
+      passphrase: 'silver-kite-meadow',
+      expiresAt: future(),
+      member: false,
+      passwordHash: await hashPassword('real-pw'),
+    });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'non-member', password: 'silver-kite-meadow' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Invalid username or password');
+  });
+
+  it('rejects an EXPIRED passphrase even for a member (401)', async () => {
+    await makeGroupMember({
+      username: 'expired-member',
+      email: 'expired@example.com',
+      passphrase: 'frozen-lake-stone',
+      expiresAt: past(),
+      member: true,
+      passwordHash: await hashPassword('real-pw'),
+    });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'expired-member', password: 'frozen-lake-stone' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Invalid username or password');
+  });
+
+  it('lets a member with no password sign in via the passphrase', async () => {
+    const { user } = await makeGroupMember({
+      username: 'oauth-member',
+      email: 'oauth-member@example.com',
+      passphrase: 'golden-river-fox',
+      expiresAt: future(),
+      member: true,
+      passwordHash: null,
+    });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'oauth-member', password: 'golden-river-fox' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(user.id);
+  });
+
+  it('still accepts the real password when a passphrase also exists', async () => {
+    const { user } = await makeGroupMember({
+      username: 'both-creds',
+      email: 'both@example.com',
+      passphrase: 'maple-window-tide',
+      expiresAt: future(),
+      member: true,
+      passwordHash: await hashPassword('the-real-one'),
+    });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'both-creds', password: 'the-real-one' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(user.id);
+  });
+});
+
+// ===========================================================================
+// Identifier may be the primary email
+// ===========================================================================
+
+describe('POST /api/auth/login — login by email', () => {
+  it('logs in when the identifier is the primary email', async () => {
+    const passwordHash = await hashPassword('email-login-pw');
+    const user = await (prisma as any).user.create({
+      data: {
+        username: 'emailuser',
+        password_hash: passwordHash,
+        display_name: 'Email User',
+        primary_email: 'email-login@example.com',
+        role: 'student',
+        is_active: true,
+        created_via: 'admin_created',
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'email-login@example.com', password: 'email-login-pw' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(user.id);
   });
 });
