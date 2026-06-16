@@ -27,7 +27,7 @@
 
 import { randomBytes, createHash } from 'node:crypto';
 
-import { AppError, ConflictError, ForbiddenError, NotFoundError } from '../errors.js';
+import { AppError, ConflictError, NotFoundError } from '../errors.js';
 import { createLogger } from './logger.js';
 import type { AuditService } from './audit.service.js';
 import { LlmProxyTokenRepository } from './repositories/llm-proxy-token.repository.js';
@@ -82,14 +82,15 @@ export type GrantParams = {
 
 export type GrantOptions = {
   /** Origin of the grant — feeds the audit event `details` blob. */
-  scope?: 'single' | 'cohort' | 'group';
+  scope?: 'single' | 'cohort' | 'group' | 'reconcile';
   scopeId?: number | null;
   /**
-   * Whether the target user has at least one group with `allowsLlmProxy`.
-   * When explicitly `false`, `grant` throws ForbiddenError (403).
-   * When `undefined` (default), the check is skipped (backwards-compatible).
-   *
-   * Sprint 026 T004.
+   * @deprecated No longer enforced. The Sprint 026 T004 permission gate
+   * (refuse to grant unless the user was "allowed") was removed — admins may
+   * grant LLM proxy to any user. `allows_llm_proxy` is now kept in lockstep
+   * with token existence by `grant`/`revoke` themselves, so it is the single
+   * source of truth rather than a precondition. Retained only so existing
+   * callers keep compiling; the value is ignored.
    */
   llmProxyAllowed?: boolean;
 };
@@ -126,16 +127,10 @@ export class LlmProxyTokenService {
   async grant(
     userId: number,
     params: GrantParams,
-    actorId: number,
+    actorId: number | null,
     opts: GrantOptions = {},
     tx?: any,
   ): Promise<GrantResult> {
-    if (opts.llmProxyAllowed === false) {
-      throw new ForbiddenError(
-        'The target user has no group granting LLM proxy access (allowsLlmProxy).',
-      );
-    }
-
     const db = tx ?? this.prisma;
     const existing = await LlmProxyTokenRepository.findActiveForUser(
       db,
@@ -159,6 +154,14 @@ export class LlmProxyTokenService {
         expires_at: params.expiresAt,
         token_limit: params.tokenLimit,
         granted_by: actorId,
+      });
+      // Single source of truth: the user's `allows_llm_proxy` flag is kept in
+      // lockstep with token existence, in the same transaction as the token
+      // write. This is what makes the admin group view (reads the flag) and
+      // the per-user / users-page views (read token state) always agree.
+      await txClient.user.update({
+        where: { id: userId },
+        data: { allows_llm_proxy: true },
       });
       await this.audit.record(txClient, {
         actor_user_id: actorId,
@@ -185,7 +188,7 @@ export class LlmProxyTokenService {
   // Revoke
   // --------------------------------------------------------------------
 
-  async revoke(userId: number, actorId: number): Promise<void> {
+  async revoke(userId: number, actorId: number | null): Promise<void> {
     const active = await LlmProxyTokenRepository.findActiveForUser(
       this.prisma,
       userId,
@@ -199,6 +202,13 @@ export class LlmProxyTokenService {
     const now = new Date();
     await this.prisma.$transaction(async (tx: any) => {
       await LlmProxyTokenRepository.setRevokedAt(tx, active.id, now);
+      // Single source of truth: clear the permission flag in the same
+      // transaction as the revoke, so no view can show the user as still
+      // having LLM access after the token is gone.
+      await tx.user.update({
+        where: { id: userId },
+        data: { allows_llm_proxy: false },
+      });
       await this.audit.record(tx, {
         actor_user_id: actorId,
         action: 'revoke_llm_proxy_token',
@@ -208,6 +218,70 @@ export class LlmProxyTokenService {
         details: { revokedAt: now.toISOString() },
       });
     });
+  }
+
+  // --------------------------------------------------------------------
+  // Reconcile (self-healing)
+  // --------------------------------------------------------------------
+
+  /**
+   * Converge `allows_llm_proxy` with actual token state so the two can never
+   * disagree. Invoked once at server startup (idempotent — already-consistent
+   * users are untouched):
+   *
+   *   - flag `true` but no active token → grant a token (preserve access for
+   *     students whose access was only ever recorded as the permission flag).
+   *   - active token but flag `false`   → set the flag (so every view agrees).
+   *
+   * Never removes access. Returns a summary for startup logging.
+   */
+  async reconcileAccessFlags(): Promise<{ tokensGranted: number; flagsSet: number }> {
+    const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+    const DEFAULT_TOKEN_LIMIT = 1_000_000;
+    let tokensGranted = 0;
+    let flagsSet = 0;
+
+    // (1) Allowed but missing a live token → mint one so the credential exists.
+    const allowed: Array<{ id: number }> = await this.prisma.user.findMany({
+      where: { allows_llm_proxy: true },
+      select: { id: true },
+    });
+    for (const u of allowed) {
+      const active = await LlmProxyTokenRepository.findActiveForUser(this.prisma, u.id);
+      if (!active) {
+        await this.grant(
+          u.id,
+          { expiresAt: new Date(Date.now() + ONE_YEAR_MS), tokenLimit: DEFAULT_TOKEN_LIMIT },
+          null,
+          { scope: 'reconcile' },
+        );
+        tokensGranted += 1;
+      }
+    }
+
+    // (2) Has a live token but the flag is cleared → set it. updateMany with the
+    // flag-false guard keeps this idempotent and returns 0 when already set.
+    const now = new Date();
+    const withTokens: Array<{ user_id: number }> = await this.prisma.llmProxyToken.findMany({
+      where: { revoked_at: null, expires_at: { gt: now } },
+      select: { user_id: true },
+      distinct: ['user_id'],
+    });
+    for (const t of withTokens) {
+      const updated = await this.prisma.user.updateMany({
+        where: { id: t.user_id, allows_llm_proxy: false },
+        data: { allows_llm_proxy: true },
+      });
+      flagsSet += updated.count;
+    }
+
+    if (tokensGranted > 0 || flagsSet > 0) {
+      logger.info(
+        { tokensGranted, flagsSet },
+        '[llm-proxy reconcile] converged allows_llm_proxy with token state',
+      );
+    }
+    return { tokensGranted, flagsSet };
   }
 
   // --------------------------------------------------------------------

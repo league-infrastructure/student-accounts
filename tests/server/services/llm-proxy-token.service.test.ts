@@ -197,6 +197,90 @@ describe('LlmProxyTokenService.revoke', () => {
 });
 
 // ---------------------------------------------------------------------------
+// allows_llm_proxy single source of truth
+//
+// grant/revoke keep the user's permission flag in lockstep with token
+// existence (so the admin group view and per-user views can never disagree),
+// and reconcileAccessFlags() self-heals any pre-existing drift at startup.
+// ---------------------------------------------------------------------------
+
+describe('LlmProxyTokenService — allows_llm_proxy sync', () => {
+  it('grant sets allows_llm_proxy = true on the user', async () => {
+    const actor = await makeUser({ role: 'admin' });
+    const target = await makeUser({ role: 'student' });
+    await service.grant(
+      target.id,
+      { expiresAt: futureDate(), tokenLimit: 1000 },
+      actor.id,
+    );
+    const reloaded = await (prisma as any).user.findUnique({ where: { id: target.id } });
+    expect(reloaded.allows_llm_proxy).toBe(true);
+  });
+
+  it('revoke sets allows_llm_proxy = false on the user', async () => {
+    const actor = await makeUser({ role: 'admin' });
+    const target = await makeUser({ role: 'student' });
+    await service.grant(
+      target.id,
+      { expiresAt: futureDate(), tokenLimit: 1000 },
+      actor.id,
+    );
+    await service.revoke(target.id, actor.id);
+    const reloaded = await (prisma as any).user.findUnique({ where: { id: target.id } });
+    expect(reloaded.allows_llm_proxy).toBe(false);
+  });
+});
+
+describe('LlmProxyTokenService.reconcileAccessFlags', () => {
+  it('grants a token to a flag-true user who has none', async () => {
+    const target = await makeUser({ role: 'student' });
+    await (prisma as any).user.update({
+      where: { id: target.id },
+      data: { allows_llm_proxy: true },
+    });
+
+    const summary = await service.reconcileAccessFlags();
+
+    expect(summary.tokensGranted).toBe(1);
+    const active = await service.getActiveForUser(target.id);
+    expect(active).not.toBeNull();
+  });
+
+  it('sets the flag for a user who has a live token but flag=false', async () => {
+    const actor = await makeUser({ role: 'admin' });
+    const target = await makeUser({ role: 'student' });
+    await service.grant(
+      target.id,
+      { expiresAt: futureDate(), tokenLimit: 1000 },
+      actor.id,
+    );
+    // Simulate legacy drift: token present, flag cleared out-of-band.
+    await (prisma as any).user.update({
+      where: { id: target.id },
+      data: { allows_llm_proxy: false },
+    });
+
+    const summary = await service.reconcileAccessFlags();
+
+    expect(summary.flagsSet).toBe(1);
+    const reloaded = await (prisma as any).user.findUnique({ where: { id: target.id } });
+    expect(reloaded.allows_llm_proxy).toBe(true);
+  });
+
+  it('is idempotent — a second run changes nothing', async () => {
+    const target = await makeUser({ role: 'student' });
+    await (prisma as any).user.update({
+      where: { id: target.id },
+      data: { allows_llm_proxy: true },
+    });
+    await service.reconcileAccessFlags();
+    const summary = await service.reconcileAccessFlags();
+    expect(summary.tokensGranted).toBe(0);
+    expect(summary.flagsSet).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validate
 // ---------------------------------------------------------------------------
 

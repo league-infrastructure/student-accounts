@@ -32,6 +32,21 @@ initPrisma().then(() => initConfigCache()).then(async () => {
 
   registry.scheduler.startTicking();
 
+  // Self-heal LLM proxy access: converge each user's allows_llm_proxy flag
+  // with their actual token state so the admin group view and per-user views
+  // can never disagree. Idempotent and non-fatal — a failure here must not
+  // stop the server from starting.
+  try {
+    const summary = await registry.llmProxyTokens.reconcileAccessFlags();
+    if (summary.tokensGranted || summary.flagsSet) {
+      console.log(
+        `LLM proxy reconcile: granted ${summary.tokensGranted} token(s), set ${summary.flagsSet} flag(s)`,
+      );
+    }
+  } catch (err) {
+    console.error('LLM proxy reconcile failed (non-fatal):', err);
+  }
+
   app.listen(port, '0.0.0.0', () => {
     console.log(`Server listening on http://localhost:${port}`);
   });

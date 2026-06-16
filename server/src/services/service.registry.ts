@@ -238,11 +238,10 @@ export class ServiceRegistry {
     // LlmProxyForwarderService — Sprint 013 T003.
     this.llmProxyForwarder = new LlmProxyForwarderService();
 
-    // BulkLlmProxyService — Sprint 013 T007 / Sprint 026 T004 (groups wired for permission gate).
+    // BulkLlmProxyService — Sprint 013 T007.
     this.bulkLlmProxy = new BulkLlmProxyService(
       defaultPrisma,
       this.llmProxyTokens,
-      this.groups,
     );
 
     // PassphraseService — Sprint 015 T003.
