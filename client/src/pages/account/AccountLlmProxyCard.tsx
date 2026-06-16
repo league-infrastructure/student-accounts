@@ -11,6 +11,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import LlmProxyUsage from '../../components/LlmProxyUsage';
 
 interface LlmProxyStatus {
   enabled: boolean;
@@ -147,25 +148,7 @@ export default function AccountLlmProxyCard() {
           re-grant your access.
         </p>
       )}
-      <pre style={styles.snippet}>
-{`# Claude Code
-export ANTHROPIC_BASE_URL="${status.endpoint}"
-export ANTHROPIC_API_KEY="${status.token ?? 'llmp_…'}"
-# Allowed models: Sonnet or Haiku (specified in the request model field)
-export ANTHROPIC_MODEL="claude-sonnet-4-6"
-export ANTHROPIC_SMALL_FAST_MODEL="claude-haiku-4-5-20251001"
-claude --dangerously-skip-permissions
-
-# curl — the proxy automatically maps model strings to allowed versions
-# Any string containing "Sonnet" → claude-sonnet-4-6
-# Any string containing "Haiku" → claude-haiku-4-5-20251001
-curl -X POST "${status.endpoint}/v1/messages" \\
-  -H "x-api-key: ${status.token ?? 'llmp_…'}" \\
-  -H "anthropic-version: 2023-06-01" \\
-  -H "content-type: application/json" \\
-  -d '{"model":"claude-sonnet-4-6","max_tokens":1024,
-       "messages":[{"role":"user","content":"hi"}]}'`}
-      </pre>
+      <LlmProxyUsage endpoint={status.endpoint} token={status.token ?? 'llmp_…'} />
     </section>
   );
 }
