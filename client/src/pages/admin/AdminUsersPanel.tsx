@@ -12,10 +12,12 @@
  *
  * Filter UI (search bar on the first line, lozenge bars on the second):
  *   - Role lozenge bar (radio): All | Staff | Admin | Student.
- *   - Feature lozenge bar (radio): Google | Pike 13 | GitHub | League |
- *     LLM | Recent. League = has a @jointheleague.org account, LLM = has
- *     LLM proxy access, Recent = joined within the last two days. Radio,
- *     so one feature filter is active at a time.
+ *   - Feature lozenge bar: Google | Pike 13 | GitHub | League | LLM |
+ *     Recent. League = has a @jointheleague.org account, LLM = has LLM
+ *     proxy access, Recent = joined within the last two days. One feature
+ *     filter is active at a time, and each pill is tri-state: click once
+ *     for purple (has it) → again for red "!Label" (does NOT have it) →
+ *     again to clear. "All" is a plain reset and never negates.
  *
  * Bulk actions: Delete (existing), Suspend accounts, Revoke LLM Proxy.
  *
@@ -180,9 +182,16 @@ function featurePredicate(u: AdminUser, feature: Exclude<FeatureFilter, 'all'>):
   }
 }
 
-function applyFeatureFilter(users: AdminUser[], feature: FeatureFilter): AdminUser[] {
+function applyFeatureFilter(
+  users: AdminUser[],
+  feature: FeatureFilter,
+  negated: boolean,
+): AdminUser[] {
   if (feature === 'all') return users;
-  return users.filter((u) => featurePredicate(u, feature));
+  return users.filter((u) => {
+    const has = featurePredicate(u, feature);
+    return negated ? !has : has;
+  });
 }
 
 function applySearch(users: AdminUser[], search: string): AdminUser[] {
@@ -358,7 +367,9 @@ function RoleLozengeBar({ value, onChange }: RoleLozengeBarProps) {
 
 interface FeatureLozengeBarProps {
   value: FeatureFilter;
-  onChange: (v: FeatureFilter) => void;
+  /** Whether the active feature filter is negated (show users WITHOUT it). */
+  negated: boolean;
+  onChange: (value: FeatureFilter, negated: boolean) => void;
 }
 
 const FEATURE_OPTIONS: { label: string; value: FeatureFilter }[] = [
@@ -371,20 +382,47 @@ const FEATURE_OPTIONS: { label: string; value: FeatureFilter }[] = [
   { label: 'Recent', value: 'recent' },
 ];
 
-function FeatureLozengeBar({ value, onChange }: FeatureLozengeBarProps) {
+function FeatureLozengeBar({ value, negated, onChange }: FeatureLozengeBarProps) {
   return (
     <div style={lozengeBarStyle} role="group" aria-label="Feature filter">
-      {FEATURE_OPTIONS.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          aria-pressed={value === opt.value}
-          onClick={() => onChange(opt.value)}
-          style={lozengePillStyle(value === opt.value, 'feature')}
-        >
-          {opt.label}
-        </button>
-      ))}
+      {FEATURE_OPTIONS.map((opt) => {
+        const isAll = opt.value === 'all';
+        const selected = value === opt.value;
+        // "All" is a plain reset and never negates. Every other pill cycles
+        // off → positive (purple) → negated (red, "!Label") → off.
+        const state: 'off' | 'positive' | 'negated' = !selected
+          ? 'off'
+          : negated && !isAll
+            ? 'negated'
+            : 'positive';
+
+        function handleClick() {
+          if (isAll) {
+            onChange('all', false);
+          } else if (!selected) {
+            onChange(opt.value, false); // off / other pill → positive
+          } else if (!negated) {
+            onChange(opt.value, true); // positive → negated
+          } else {
+            onChange('all', false); // negated → off
+          }
+        }
+
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            aria-pressed={selected}
+            title={
+              state === 'negated' ? `Showing users without ${opt.label}` : undefined
+            }
+            onClick={handleClick}
+            style={featurePillStyle(state)}
+          >
+            {state === 'negated' ? `!${opt.label}` : opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -669,6 +707,8 @@ export default function AdminUsersPanel() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [featureFilter, setFeatureFilter] = useState<FeatureFilter>('all');
+  // When true, the active feature filter is negated (show users WITHOUT it).
+  const [featureNegated, setFeatureNegated] = useState(false);
   // Default sort puts the most recently joined users first so newcomers
   // are immediately visible; rows created in the last 24h are also
   // highlighted in the table below.
@@ -754,10 +794,14 @@ export default function AdminUsersPanel() {
   const filtered = useMemo(
     () =>
       applySearch(
-        applyFeatureFilter(applyRoleFilter(users, roleFilter), featureFilter),
+        applyFeatureFilter(
+          applyRoleFilter(users, roleFilter),
+          featureFilter,
+          featureNegated,
+        ),
         search,
       ),
-    [users, roleFilter, featureFilter, search],
+    [users, roleFilter, featureFilter, featureNegated, search],
   );
   const visible = useMemo(
     () => sortUsers(filtered, sortCol, sortDir),
@@ -942,7 +986,14 @@ export default function AdminUsersPanel() {
       <div style={toolbarStyle}>
         <RoleLozengeBar value={roleFilter} onChange={setRoleFilter} />
         <div style={lozengeDividerStyle} aria-hidden="true" />
-        <FeatureLozengeBar value={featureFilter} onChange={setFeatureFilter} />
+        <FeatureLozengeBar
+          value={featureFilter}
+          negated={featureNegated}
+          onChange={(v, n) => {
+            setFeatureFilter(v);
+            setFeatureNegated(n);
+          }}
+        />
       </div>
 
       <table style={tableStyle}>
@@ -1176,6 +1227,23 @@ function lozengePillStyle(active: boolean, color: LozengeColor): React.CSSProper
     cursor: 'pointer',
     background: active ? palette.bg : '#f8fafc',
     color: active ? palette.active : '#475569',
+    transition: 'all 0.1s',
+  };
+}
+
+// Feature pills are tri-state: off → positive (purple) → negated (red) → off.
+// The negated state reuses the pill shape but in red to read as "exclude".
+function featurePillStyle(state: 'off' | 'positive' | 'negated'): React.CSSProperties {
+  if (state !== 'negated') return lozengePillStyle(state === 'positive', 'feature');
+  return {
+    padding: '4px 12px',
+    fontSize: 12,
+    fontWeight: 700,
+    border: '2px solid #dc2626',
+    borderRadius: 999,
+    cursor: 'pointer',
+    background: '#fef2f2',
+    color: '#dc2626',
     transition: 'all 0.1s',
   };
 }
