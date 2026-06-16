@@ -436,6 +436,10 @@ export default function AppLayout() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    document.title = appName;
+  }, [appName]);
+
   // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
