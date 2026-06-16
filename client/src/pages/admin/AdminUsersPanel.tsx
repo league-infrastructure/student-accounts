@@ -6,10 +6,16 @@
  * Impersonate, and — for rows whose role is STAFF or ADMIN — toggle admin
  * access ("Make admin" / "Remove admin").
  *
- * Filter UI:
+ * The LLM and League columns are read-only presence indicators (green ✓ when
+ * the user has LLM proxy access / a @jointheleague.org account). They are set
+ * by clicking into the user's detail page, not toggled here.
+ *
+ * Filter UI (search bar on the first line, lozenge bars on the second):
  *   - Role lozenge bar (radio): All | Staff | Admin | Student.
- *   - Feature lozenge bar (radio): Google | Pike 13 | GitHub.
- *     Multiple active = intersection.
+ *   - Feature lozenge bar (radio): Google | Pike 13 | GitHub | League |
+ *     LLM | Recent. League = has a @jointheleague.org account, LLM = has
+ *     LLM proxy access, Recent = joined within the last two days. Radio,
+ *     so one feature filter is active at a time.
  *
  * Bulk actions: Delete (existing), Suspend accounts, Revoke LLM Proxy.
  *
@@ -75,7 +81,18 @@ interface BulkRevokeResult {
 
 type RoleFilter = 'all' | 'staff' | 'admin' | 'student';
 
-type FeatureFilter = 'all' | 'google' | 'pike13' | 'github';
+type FeatureFilter =
+  | 'all'
+  | 'google'
+  | 'pike13'
+  | 'github'
+  | 'league'
+  | 'llm'
+  | 'recent';
+
+// "Recent" filter window: users created within this many hours. The row
+// highlight (NEW_USER_BG) uses the 24h default; the filter uses two days.
+const RECENT_FILTER_HOURS = 48;
 
 // ---------------------------------------------------------------------------
 // Sort types
@@ -154,6 +171,12 @@ function featurePredicate(u: AdminUser, feature: Exclude<FeatureFilter, 'all'>):
       return u.externalAccountTypes.includes('pike13');
     case 'github':
       return u.providers.some((p) => p.provider === 'github');
+    case 'league':
+      return leagueEmails(u).length > 0;
+    case 'llm':
+      return u.llmProxyEnabled === true;
+    case 'recent':
+      return isRecent(u.createdAt, RECENT_FILTER_HOURS);
   }
 }
 
@@ -277,6 +300,28 @@ function AccountIcon({ kind }: { kind: AccountKind }) {
   );
 }
 
+/** Static presence indicator for the LLM and League columns: a green ✓ when
+ *  the user has the thing, a muted dash when they don't. These are read-only
+ *  here — click into the user's detail page to actually grant/revoke. */
+function CheckMark({ on, label }: { on: boolean; label: string }) {
+  if (!on) {
+    return (
+      <span aria-label={`No ${label}`} style={{ color: '#cbd5e1' }}>
+        —
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-label={`Has ${label}`}
+      title={`Has ${label}`}
+      style={{ color: '#16a34a', fontWeight: 700, fontSize: 16 }}
+    >
+      ✓
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Lozenge bar components
 // ---------------------------------------------------------------------------
@@ -321,6 +366,9 @@ const FEATURE_OPTIONS: { label: string; value: FeatureFilter }[] = [
   { label: 'Google', value: 'google' },
   { label: 'Pike 13', value: 'pike13' },
   { label: 'GitHub', value: 'github' },
+  { label: 'League', value: 'league' },
+  { label: 'LLM', value: 'llm' },
+  { label: 'Recent', value: 'recent' },
 ];
 
 function FeatureLozengeBar({ value, onChange }: FeatureLozengeBarProps) {
@@ -878,8 +926,8 @@ export default function AdminUsersPanel() {
         </div>
       )}
 
-      {/* Toolbar: search + role + feature lozenges, one line, wraps as needed */}
-      <div style={toolbarStyle}>
+      {/* Search bar — first line. */}
+      <div style={searchRowStyle}>
         <input
           type="search"
           value={search}
@@ -888,6 +936,10 @@ export default function AdminUsersPanel() {
           style={searchInputStyle}
           aria-label="Search users"
         />
+      </div>
+
+      {/* Filter lozenges — second line, directly below the search bar. */}
+      <div style={toolbarStyle}>
         <RoleLozengeBar value={roleFilter} onChange={setRoleFilter} />
         <div style={lozengeDividerStyle} aria-hidden="true" />
         <FeatureLozengeBar value={featureFilter} onChange={setFeatureFilter} />
@@ -919,6 +971,18 @@ export default function AdminUsersPanel() {
             <SortableTh col="accounts" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Accounts
             </SortableTh>
+            <th
+              style={{ ...thStyle, textAlign: 'center', width: 56 }}
+              title="Has LLM proxy access"
+            >
+              LLM
+            </th>
+            <th
+              style={{ ...thStyle, textAlign: 'center', width: 70 }}
+              title="Has a League (@jointheleague.org) account"
+            >
+              League
+            </th>
             <SortableTh col="joined" activeCol={sortCol} dir={sortDir} onSort={handleSort}>
               Joined
             </SortableTh>
@@ -1001,6 +1065,12 @@ export default function AdminUsersPanel() {
                     ))}
                   </div>
                 </td>
+                <td style={{ ...tdStyle, textAlign: 'center', width: 56 }}>
+                  <CheckMark on={user.llmProxyEnabled === true} label="LLM access" />
+                </td>
+                <td style={{ ...tdStyle, textAlign: 'center', width: 70 }}>
+                  <CheckMark on={leagueEmails(user).length > 0} label="League account" />
+                </td>
                 <td style={tdStyle}>
                   {new Date(user.createdAt).toLocaleDateString()}
                 </td>
@@ -1067,6 +1137,11 @@ const pageHeaderStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   marginBottom: 16,
+};
+
+const searchRowStyle: React.CSSProperties = {
+  display: 'flex',
+  marginBottom: 8,
 };
 
 const toolbarStyle: React.CSSProperties = {
