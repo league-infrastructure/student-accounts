@@ -1,14 +1,14 @@
 ---
 id: '001'
 title: Re-point LLM proxy at OpenRouter with League model tiers
-status: planning-docs
+status: done
 branch: sprint/001-re-point-llm-proxy-at-openrouter-with-league-model-tiers
 use-cases:
-  - SUC-001
-  - SUC-002
-  - SUC-003
-  - SUC-004
-  - SUC-005
+- SUC-001
+- SUC-002
+- SUC-003
+- SUC-004
+- SUC-005
 issues: []
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
