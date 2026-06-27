@@ -23,8 +23,14 @@ export const CONFIG_KEYS: ConfigKeyMeta[] = [
   { key: 'GITHUB_TOKEN', group: 'GitHub API', label: 'Personal Access Token', isSecret: true, requiresRestart: false },
   { key: 'GITHUB_STORAGE_REPO', group: 'GitHub API', label: 'Storage Repo (owner/repo)', isSecret: false, requiresRestart: false },
   // AI Services
-  { key: 'ANTHROPIC_API_KEY', group: 'AI Services', label: 'Claude API Key', isSecret: true, requiresRestart: false },
+  { key: 'ANTHROPIC_API_KEY', group: 'AI Services', label: 'Claude Admin API Key', isSecret: true, requiresRestart: false },
   { key: 'OPENAI_API_KEY', group: 'AI Services', label: 'OpenAI API Key', isSecret: true, requiresRestart: false },
+  // LLM Proxy (OpenRouter)
+  { key: 'OPENROUTER_API_KEY', group: 'LLM Proxy', label: 'OpenRouter API Key', isSecret: true, requiresRestart: false },
+  { key: 'LLM_PROXY_BASE_URL', group: 'LLM Proxy', label: 'Base URL', isSecret: false, requiresRestart: false },
+  { key: 'LLM_PROXY_MODEL_LARGE', group: 'LLM Proxy', label: 'Large Model', isSecret: false, requiresRestart: false },
+  { key: 'LLM_PROXY_MODEL_MEDIUM', group: 'LLM Proxy', label: 'Medium Model', isSecret: false, requiresRestart: false },
+  { key: 'LLM_PROXY_MODEL_SMALL', group: 'LLM Proxy', label: 'Small Model', isSecret: false, requiresRestart: false },
 ];
 
 const CONFIG_KEY_SET = new Set(CONFIG_KEYS.map((k) => k.key));

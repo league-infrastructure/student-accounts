@@ -1,25 +1,28 @@
 /**
- * HaikuClient — Anthropic SDK wrapper for merge similarity evaluation.
- * Sprint 007, T002.
+ * HaikuClient — OpenRouter fetch wrapper for merge similarity evaluation.
+ * Sprint 007, T002. Switched to OpenRouter in Sprint 001 (ticket 005).
  *
  * Evaluates whether two UserSnapshot objects likely represent the same person.
  * Constructs a structured comparison prompt requesting a JSON response with
- * `confidence` (float 0–1) and `rationale` (string), calls the
- * `claude-haiku-4-5` model, and parses the response.
+ * `confidence` (float 0–1) and `rationale` (string), POSTs to OpenRouter's
+ * chat completions endpoint, and parses the response.
  *
  * Exports:
  *  - UserSnapshot            — snapshot of user fields used for comparison
  *  - HaikuSimilarityResult   — result shape: { confidence, rationale }
- *  - HaikuApiError           — thrown when the Anthropic SDK throws or returns non-2xx
+ *  - HaikuApiError           — thrown when fetch throws or API returns non-2xx
  *  - HaikuParseError         — thrown when the response body cannot be parsed
  *  - HaikuClient             — interface for evaluating user similarity
- *  - HaikuClientImpl         — real implementation wrapping @anthropic-ai/sdk
+ *  - HaikuClientImpl         — real implementation using fetch (OpenAI Chat Completions format)
  *
  * Environment variables:
- *  - ANTHROPIC_API_KEY — API key for the Anthropic API (required for real calls)
+ *  - OPENROUTER_API_KEY    — API key for OpenRouter (preferred)
+ *  - LLM_PROXY_BASE_URL    — base URL for the chat completions endpoint
+ *                            (default: 'https://openrouter.ai/api/v1/chat/completions')
+ *  - LLM_PROXY_MODEL_SMALL — model to use for merge evaluation
+ *                            (default: 'deepseek/deepseek-v3.2')
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('haiku-client');
@@ -28,8 +31,9 @@ const logger = createLogger('haiku-client');
 // Model constant
 // ---------------------------------------------------------------------------
 
-/** The Claude Haiku 4.5 model ID used for merge similarity evaluation. */
-const HAIKU_MODEL = 'claude-haiku-4-5';
+/** The model used for merge similarity evaluation, read from env at call time. */
+const MERGE_EVAL_MODEL =
+  process.env.LLM_PROXY_MODEL_SMALL ?? 'deepseek/deepseek-v3.2';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -74,7 +78,7 @@ export interface HaikuSimilarityResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Thrown when the Anthropic SDK throws or the API returns a non-2xx status.
+ * Thrown when fetch throws (network error) or the API returns a non-2xx status.
  */
 export class HaikuApiError extends Error {
   readonly cause?: unknown;
@@ -111,10 +115,10 @@ export class HaikuParseError extends Error {
 // ---------------------------------------------------------------------------
 
 /**
- * Abstraction over the Haiku similarity evaluation call.
+ * Abstraction over the merge similarity evaluation call.
  *
  * Implementations:
- *  - HaikuClientImpl  — real, uses @anthropic-ai/sdk
+ *  - HaikuClientImpl  — real, uses fetch against OpenRouter
  *  - FakeHaikuClient  — test double in tests/server/helpers/
  */
 export interface HaikuClient {
@@ -124,7 +128,7 @@ export interface HaikuClient {
    * @param userA - Snapshot of the first user.
    * @param userB - Snapshot of the second user.
    * @returns A similarity result with confidence in [0.0, 1.0] and rationale.
-   * @throws HaikuApiError  when the Anthropic SDK throws or the API errors.
+   * @throws HaikuApiError  when fetch throws or the API returns a non-2xx status.
    * @throws HaikuParseError when the model's response is not valid JSON or
    *                          is missing the expected `confidence`/`rationale` fields.
    */
@@ -136,24 +140,22 @@ export interface HaikuClient {
 // ---------------------------------------------------------------------------
 
 /**
- * Real implementation of HaikuClient using the Anthropic SDK.
+ * Real implementation of HaikuClient using fetch against the OpenRouter
+ * chat completions endpoint (OpenAI Chat Completions format).
  *
  * The constructor accepts an `apiKey` parameter so the API key can be
- * injected (typically from `process.env.ANTHROPIC_API_KEY`). This also
- * makes the class straightforward to instantiate in tests that stub the SDK.
- *
- * Prompt caching is not used for this sprint — the candidate pool is small
- * and the system prompt fits within the non-cached budget comfortably.
+ * injected (typically from `process.env.OPENROUTER_API_KEY`). This also
+ * makes the class straightforward to instantiate in tests that stub fetch.
  */
 export class HaikuClientImpl implements HaikuClient {
-  private readonly anthropic: Anthropic;
+  private readonly apiKey: string;
 
   constructor(apiKey: string) {
-    this.anthropic = new Anthropic({ apiKey });
+    this.apiKey = apiKey;
   }
 
   /**
-   * Build the system prompt instructing Haiku to respond with JSON only.
+   * Build the system prompt instructing the model to respond with JSON only.
    */
   private buildSystemPrompt(): string {
     return [
@@ -252,51 +254,84 @@ export class HaikuClientImpl implements HaikuClient {
   async evaluate(userA: UserSnapshot, userB: UserSnapshot): Promise<HaikuSimilarityResult> {
     logger.info(
       { userAId: userA.id, userBId: userB.id },
-      '[haiku-client] evaluate: requesting similarity evaluation from Haiku.',
+      '[haiku-client] evaluate: requesting similarity evaluation from OpenRouter.',
     );
 
-    let message: Anthropic.Message;
+    const baseUrl =
+      process.env.LLM_PROXY_BASE_URL ?? 'https://openrouter.ai/api/v1/chat/completions';
+
+    const body = {
+      model: MERGE_EVAL_MODEL,
+      max_tokens: 256,
+      messages: [
+        { role: 'system', content: this.buildSystemPrompt() },
+        { role: 'user', content: this.buildUserMessage(userA, userB) },
+      ],
+    };
+
+    let response: Response;
 
     try {
-      message = await this.anthropic.messages.create({
-        model: HAIKU_MODEL,
-        max_tokens: 256,
-        system: this.buildSystemPrompt(),
-        messages: [
-          {
-            role: 'user',
-            content: this.buildUserMessage(userA, userB),
-          },
-        ],
+      response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
       });
     } catch (err) {
       logger.error(
         { userAId: userA.id, userBId: userB.id, err },
-        '[haiku-client] Anthropic SDK threw during evaluate.',
+        '[haiku-client] fetch threw during evaluate (network error).',
       );
       throw new HaikuApiError(
-        `Anthropic API error during similarity evaluation: ${String(err)}`,
+        `OpenRouter network error during similarity evaluation: ${String(err)}`,
         err,
       );
     }
 
-    // Extract the first text block from the response
-    const textBlock = message.content.find(
-      (block): block is Anthropic.TextBlock => block.type === 'text',
-    );
-
-    if (!textBlock) {
+    if (!response.ok) {
+      const responseText = await response.text().catch(() => '(unreadable)');
       logger.error(
-        { userAId: userA.id, userBId: userB.id, content: message.content },
-        '[haiku-client] Haiku response contained no text block.',
+        { userAId: userA.id, userBId: userB.id, status: response.status, responseText },
+        '[haiku-client] OpenRouter returned non-2xx status.',
       );
-      throw new HaikuParseError(
-        'Haiku response contained no text block',
-        JSON.stringify(message.content),
+      throw new HaikuApiError(
+        `OpenRouter API error during similarity evaluation: HTTP ${response.status} — ${responseText}`,
       );
     }
 
-    const result = this.parseResponse(textBlock.text);
+    let data: { choices: Array<{ message: { content: string } }> };
+
+    try {
+      data = (await response.json()) as typeof data;
+    } catch (err) {
+      logger.error(
+        { userAId: userA.id, userBId: userB.id, err },
+        '[haiku-client] Failed to parse OpenRouter response as JSON.',
+      );
+      throw new HaikuParseError(
+        `Failed to parse OpenRouter response as JSON: ${String(err)}`,
+        '',
+        err,
+      );
+    }
+
+    const content = data?.choices?.[0]?.message?.content;
+
+    if (typeof content !== 'string') {
+      logger.error(
+        { userAId: userA.id, userBId: userB.id, data },
+        '[haiku-client] OpenRouter response missing choices[0].message.content.',
+      );
+      throw new HaikuParseError(
+        'OpenRouter response missing choices[0].message.content',
+        JSON.stringify(data),
+      );
+    }
+
+    const result = this.parseResponse(content);
 
     logger.info(
       { userAId: userA.id, userBId: userB.id, confidence: result.confidence },

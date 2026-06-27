@@ -28,7 +28,9 @@ let _haiku: HaikuClientImpl | undefined;
 
 function getHaiku(): HaikuClientImpl {
   if (!_haiku) {
-    _haiku = new HaikuClientImpl(process.env.ANTHROPIC_API_KEY ?? '');
+    _haiku = new HaikuClientImpl(
+      process.env.OPENROUTER_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? '',
+    );
   }
   return _haiku;
 }

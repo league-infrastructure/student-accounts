@@ -1,17 +1,19 @@
 /**
  * Unit tests for HaikuClientImpl and FakeHaikuClient.
- * Sprint 007, T002.
+ * Sprint 007, T002. Updated Sprint 001, ticket 005: mocks switched from
+ * Anthropic SDK to fetch (OpenAI Chat Completions format).
  *
  * Covers:
  *  - HaikuApiError and HaikuParseError: correct name, message, properties
- *  - HaikuClientImpl.evaluate: successful evaluation from a mocked Anthropic SDK response
- *  - HaikuClientImpl.evaluate: throws HaikuApiError when the Anthropic SDK throws
+ *  - HaikuClientImpl.evaluate: successful evaluation from a mocked fetch response
+ *  - HaikuClientImpl.evaluate: throws HaikuApiError when fetch throws (network error)
+ *  - HaikuClientImpl.evaluate: throws HaikuApiError when the API returns non-2xx
  *  - HaikuClientImpl.evaluate: throws HaikuParseError when response text is not valid JSON
  *  - HaikuClientImpl.evaluate: throws HaikuParseError when JSON is missing the confidence field
  *  - FakeHaikuClient: records calls, returns defaults, supports configure/configureError/reset
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   HaikuClientImpl,
   HaikuApiError,
@@ -45,28 +47,65 @@ const userB: UserSnapshot = {
 };
 
 // ---------------------------------------------------------------------------
-// Helpers — build a mock Anthropic SDK response
+// Helpers — build a mock OpenRouter (OpenAI Chat Completions) fetch response
 // ---------------------------------------------------------------------------
 
 /**
- * Build a minimal mock Anthropic messages response carrying the given text.
+ * Build a minimal mock OpenAI Chat Completions response carrying the given text.
  */
-function mockAnthropicResponse(text: string): object {
+function mockOpenRouterResponse(text: string): object {
   return {
-    id: 'msg_test',
-    type: 'message',
-    role: 'assistant',
-    content: [{ type: 'text', text }],
-    model: 'claude-haiku-4-5',
-    stop_reason: 'end_turn',
-    stop_sequence: null,
+    id: 'chatcmpl_test',
+    object: 'chat.completion',
+    created: 1700000000,
+    model: 'deepseek/deepseek-v3.2',
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: text,
+        },
+        finish_reason: 'stop',
+      },
+    ],
     usage: {
-      input_tokens: 100,
-      output_tokens: 50,
-      cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 0,
+      prompt_tokens: 100,
+      completion_tokens: 50,
+      total_tokens: 150,
     },
   };
+}
+
+/**
+ * Create a mock fetch that resolves to a 200 response with the given JSON body.
+ */
+function mockFetchOk(responseBody: object): ReturnType<typeof vi.fn> {
+  return vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: vi.fn().mockResolvedValue(responseBody),
+    text: vi.fn().mockResolvedValue(JSON.stringify(responseBody)),
+  } as unknown as Response);
+}
+
+/**
+ * Create a mock fetch that resolves to a non-2xx response.
+ */
+function mockFetchError(status: number, body: string): ReturnType<typeof vi.fn> {
+  return vi.fn().mockResolvedValue({
+    ok: false,
+    status,
+    json: vi.fn().mockRejectedValue(new Error('not json')),
+    text: vi.fn().mockResolvedValue(body),
+  } as unknown as Response);
+}
+
+/**
+ * Create a mock fetch that rejects with a network error.
+ */
+function mockFetchNetworkError(err: Error): ReturnType<typeof vi.fn> {
+  return vi.fn().mockRejectedValue(err);
 }
 
 // ---------------------------------------------------------------------------
@@ -123,60 +162,71 @@ describe('HaikuParseError', () => {
 // ---------------------------------------------------------------------------
 
 describe('HaikuClientImpl.evaluate — success', () => {
-  it('returns { confidence, rationale } from a valid Haiku response', async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns { confidence, rationale } from a valid OpenRouter response', async () => {
     const validResponse = JSON.stringify({
       confidence: 0.85,
       rationale: 'Same name and cohort, different email domains.',
     });
 
-    // Inject a mock Anthropic instance directly to avoid hitting the real SDK
-    const mockCreate = vi.fn().mockResolvedValue(mockAnthropicResponse(validResponse));
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+    vi.stubGlobal('fetch', mockFetchOk(mockOpenRouterResponse(validResponse)));
 
+    const client = new HaikuClientImpl('test-key');
     const result = await client.evaluate(userA, userB);
     expect(result.confidence).toBe(0.85);
     expect(result.rationale).toBe('Same name and cohort, different email domains.');
-    expect(mockCreate).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it('clamps confidence > 1.0 to 1.0', async () => {
     const overflowResponse = JSON.stringify({ confidence: 1.5, rationale: 'Overflow test.' });
-    const mockCreate = vi.fn().mockResolvedValue(mockAnthropicResponse(overflowResponse));
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+    vi.stubGlobal('fetch', mockFetchOk(mockOpenRouterResponse(overflowResponse)));
 
+    const client = new HaikuClientImpl('test-key');
     const result = await client.evaluate(userA, userB);
     expect(result.confidence).toBe(1.0);
   });
 
   it('clamps confidence < 0.0 to 0.0', async () => {
     const underflowResponse = JSON.stringify({ confidence: -0.3, rationale: 'Underflow test.' });
-    const mockCreate = vi.fn().mockResolvedValue(mockAnthropicResponse(underflowResponse));
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+    vi.stubGlobal('fetch', mockFetchOk(mockOpenRouterResponse(underflowResponse)));
 
+    const client = new HaikuClientImpl('test-key');
     const result = await client.evaluate(userA, userB);
     expect(result.confidence).toBe(0.0);
   });
 
-  it('includes both users fields in the messages.create call', async () => {
+  it('sends fetch POST with correct URL, headers, and body', async () => {
     const validResponse = JSON.stringify({ confidence: 0.7, rationale: 'Similar.' });
-    const mockCreate = vi.fn().mockResolvedValue(mockAnthropicResponse(validResponse));
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+    const mockFn = mockFetchOk(mockOpenRouterResponse(validResponse));
+    vi.stubGlobal('fetch', mockFn);
 
+    const client = new HaikuClientImpl('test-key');
     await client.evaluate(userA, userB);
 
-    const callArgs = mockCreate.mock.calls[0][0];
-    expect(callArgs.model).toBe('claude-haiku-4-5');
-    expect(callArgs.max_tokens).toBe(256);
-    // The user message should contain both users' names
-    const userMessage = callArgs.messages[0].content as string;
+    expect(mockFn).toHaveBeenCalledOnce();
+    const [url, init] = mockFn.mock.calls[0] as [string, RequestInit];
+    // URL should be the default OpenRouter endpoint
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer test-key');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+
+    const parsedBody = JSON.parse(init.body as string) as {
+      max_tokens: number;
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(parsedBody.max_tokens).toBe(256);
+    // System message comes first in OpenAI Chat format
+    expect(parsedBody.messages[0].role).toBe('system');
+    // User message carries both users' content
+    const userMessage = parsedBody.messages[1].content;
     expect(userMessage).toContain('Alice Smith');
     expect(userMessage).toContain('alice@example.com');
     expect(userMessage).toContain('alice.smith@students.jointheleague.org');
-    // pike13_id and cohort_name should be included
     expect(userMessage).toContain('p13-001');
     expect(userMessage).toContain('Spring 2024');
   });
@@ -187,28 +237,52 @@ describe('HaikuClientImpl.evaluate — success', () => {
 // ---------------------------------------------------------------------------
 
 describe('HaikuClientImpl.evaluate — HaikuApiError', () => {
-  it('throws HaikuApiError when the Anthropic SDK throws', async () => {
-    const sdkError = new Error('Network error');
-    const mockCreate = vi.fn().mockRejectedValue(sdkError);
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
+  it('throws HaikuApiError when fetch throws (network error)', async () => {
+    const networkError = new Error('Network error');
+    vi.stubGlobal('fetch', mockFetchNetworkError(networkError));
+
+    const client = new HaikuClientImpl('test-key');
     await expect(client.evaluate(userA, userB)).rejects.toThrow(HaikuApiError);
     await expect(client.evaluate(userA, userB)).rejects.not.toThrow(HaikuParseError);
   });
 
-  it('wraps the original SDK error as cause', async () => {
-    const sdkError = new Error('Rate limited');
-    const mockCreate = vi.fn().mockRejectedValue(sdkError);
+  it('wraps the original network error as cause', async () => {
+    const networkError = new Error('Rate limited');
+    vi.stubGlobal('fetch', mockFetchNetworkError(networkError));
+
     const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
 
     try {
       await client.evaluate(userA, userB);
       expect.fail('Expected HaikuApiError to be thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(HaikuApiError);
-      expect((err as HaikuApiError).cause).toBe(sdkError);
+      expect((err as HaikuApiError).cause).toBe(networkError);
+    }
+  });
+
+  it('throws HaikuApiError when the API returns non-2xx status', async () => {
+    vi.stubGlobal('fetch', mockFetchError(429, 'Too Many Requests'));
+
+    const client = new HaikuClientImpl('test-key');
+    await expect(client.evaluate(userA, userB)).rejects.toThrow(HaikuApiError);
+  });
+
+  it('includes the HTTP status in the HaikuApiError message for non-2xx', async () => {
+    vi.stubGlobal('fetch', mockFetchError(503, 'Service Unavailable'));
+
+    const client = new HaikuClientImpl('test-key');
+
+    try {
+      await client.evaluate(userA, userB);
+      expect.fail('Expected HaikuApiError to be thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(HaikuApiError);
+      expect((err as HaikuApiError).message).toContain('503');
     }
   });
 });
@@ -218,21 +292,22 @@ describe('HaikuClientImpl.evaluate — HaikuApiError', () => {
 // ---------------------------------------------------------------------------
 
 describe('HaikuClientImpl.evaluate — HaikuParseError', () => {
-  it('throws HaikuParseError when the response is not valid JSON', async () => {
-    const mockCreate = vi
-      .fn()
-      .mockResolvedValue(mockAnthropicResponse('This is not JSON at all.'));
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
+  it('throws HaikuParseError when the response content is not valid JSON', async () => {
+    vi.stubGlobal('fetch', mockFetchOk(mockOpenRouterResponse('This is not JSON at all.')));
+
+    const client = new HaikuClientImpl('test-key');
     await expect(client.evaluate(userA, userB)).rejects.toThrow(HaikuParseError);
   });
 
   it('stores the raw text on HaikuParseError for diagnostics', async () => {
     const rawText = 'definitely not json { broken';
-    const mockCreate = vi.fn().mockResolvedValue(mockAnthropicResponse(rawText));
+    vi.stubGlobal('fetch', mockFetchOk(mockOpenRouterResponse(rawText)));
+
     const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
 
     try {
       await client.evaluate(userA, userB);
@@ -245,38 +320,30 @@ describe('HaikuClientImpl.evaluate — HaikuParseError', () => {
 
   it('throws HaikuParseError when JSON is missing the confidence field', async () => {
     const noConfidence = JSON.stringify({ rationale: 'No confidence here.' });
-    const mockCreate = vi.fn().mockResolvedValue(mockAnthropicResponse(noConfidence));
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+    vi.stubGlobal('fetch', mockFetchOk(mockOpenRouterResponse(noConfidence)));
 
+    const client = new HaikuClientImpl('test-key');
     await expect(client.evaluate(userA, userB)).rejects.toThrow(HaikuParseError);
     await expect(client.evaluate(userA, userB)).rejects.not.toThrow(HaikuApiError);
   });
 
   it('throws HaikuParseError when JSON is missing the rationale field', async () => {
     const noRationale = JSON.stringify({ confidence: 0.8 });
-    const mockCreate = vi.fn().mockResolvedValue(mockAnthropicResponse(noRationale));
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+    vi.stubGlobal('fetch', mockFetchOk(mockOpenRouterResponse(noRationale)));
 
+    const client = new HaikuClientImpl('test-key');
     await expect(client.evaluate(userA, userB)).rejects.toThrow(HaikuParseError);
   });
 
-  it('throws HaikuParseError when the response has no text block', async () => {
-    const emptyContentResponse = {
-      id: 'msg_test',
-      type: 'message',
-      role: 'assistant',
-      content: [],
-      model: 'claude-haiku-4-5',
-      stop_reason: 'end_turn',
-      stop_sequence: null,
-      usage: { input_tokens: 10, output_tokens: 0 },
+  it('throws HaikuParseError when choices[0].message.content is missing', async () => {
+    const emptyChoicesResponse = {
+      id: 'chatcmpl_test',
+      object: 'chat.completion',
+      choices: [],
     };
-    const mockCreate = vi.fn().mockResolvedValue(emptyContentResponse);
-    const client = new HaikuClientImpl('test-key');
-    (client as any).anthropic = { messages: { create: mockCreate } };
+    vi.stubGlobal('fetch', mockFetchOk(emptyChoicesResponse));
 
+    const client = new HaikuClientImpl('test-key');
     await expect(client.evaluate(userA, userB)).rejects.toThrow(HaikuParseError);
   });
 });
