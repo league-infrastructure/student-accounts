@@ -1,13 +1,13 @@
 ---
-id: "004"
-title: "Update student UI setup snippets and copy for OpenAI and League tiers"
-status: open
+id: '004'
+title: Update student UI setup snippets and copy for OpenAI and League tiers
+status: done
 use-cases:
-  - SUC-003
+- SUC-003
 depends-on:
-  - "003"
-github-issue: ""
-issue: ""
+- '003'
+github-issue: ''
+issue: ''
 completes_issue: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -72,15 +72,15 @@ Claude Code, Anthropic, or specific Claude model slugs.
 
 ## Acceptance Criteria
 
-- [ ] `LlmProxyUsage.tsx` setup snippet references `OPENAI_BASE_URL` and
+- [x] `LlmProxyUsage.tsx` setup snippet references `OPENAI_BASE_URL` and
       `OPENAI_API_KEY` (not `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY`).
-- [ ] curl example targets `${endpoint}/v1/chat/completions` with
+- [x] curl example targets `${endpoint}/v1/chat/completions` with
       `Authorization: Bearer`.
-- [ ] Snippet mentions `league-medium`, `league-large`, `league-small`.
-- [ ] No rendered text in `LlmProxy.tsx` or `AccountLlmProxyCard.tsx` contains
+- [x] Snippet mentions `league-medium`, `league-large`, `league-small`.
+- [x] No rendered text in `LlmProxy.tsx` or `AccountLlmProxyCard.tsx` contains
       "Claude Code", "ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY",
       "claude-sonnet-4-6", or "claude-haiku" visible to students.
-- [ ] All existing frontend tests pass (if any test these components).
+- [x] All existing frontend tests pass (if any test these components).
 - [ ] Manual review: visit /llm-proxy while signed in; setup snippet is correct
       and copy-pasteable.
 

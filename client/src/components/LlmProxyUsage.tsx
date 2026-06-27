@@ -1,35 +1,32 @@
 /**
- * LlmProxyUsage — the "Using your token" setup snippets for the student LLM
- * proxy view (shared by /llm-proxy and the /account card so they can't drift).
+ * LlmProxyUsage — the "Connect your AI client" setup snippets for the student
+ * LLM proxy view (shared by /llm-proxy and the /account card so they can't
+ * drift).
  *
  * Renders two independently copy-pasteable code blocks:
- *   - Claude Code — always shown, with a Copy button.
- *   - curl example — collapsed by default behind a <details> disclosure
- *     (the rotating triangle), with its own Copy button.
+ *   - OpenAI-compatible client setup — environment variables for any
+ *     OpenAI-compatible client (e.g. Continue).
+ *   - curl example — inline test against the proxy.
  */
 
 import { useState } from 'react';
 
-function claudeSnippet(endpoint: string, token: string): string {
-  return `# Claude Code
-export ANTHROPIC_BASE_URL="${endpoint}"
-export ANTHROPIC_API_KEY="${token}"
-# Allowed models: Sonnet or Haiku (specified in the request model field)
-export ANTHROPIC_MODEL="claude-sonnet-4-6"
-export ANTHROPIC_SMALL_FAST_MODEL="claude-haiku-4-5-20251001"
-claude --dangerously-skip-permissions`;
+function openAiSnippet(endpoint: string, token: string): string {
+  return `# OpenAI-compatible client setup
+export OPENAI_BASE_URL="${endpoint}/v1"
+export OPENAI_API_KEY="${token}"
+# League model tiers (choose one):
+#   league-large   — most capable
+#   league-medium  — balanced (recommended)
+#   league-small   — fast and lightweight`;
 }
 
 function curlSnippet(endpoint: string, token: string): string {
-  return `# curl — the proxy automatically maps model strings to allowed versions
-# Any string containing "Sonnet" → claude-sonnet-4-6
-# Any string containing "Haiku" → claude-haiku-4-5-20251001
-curl -X POST "${endpoint}/v1/messages" \\
-  -H "x-api-key: ${token}" \\
-  -H "anthropic-version: 2023-06-01" \\
-  -H "content-type: application/json" \\
-  -d '{"model":"claude-sonnet-4-6","max_tokens":1024,
-       "messages":[{"role":"user","content":"hi"}]}'`;
+  return `# curl — use league-medium, league-large, or league-small
+curl -X POST "${endpoint}/v1/chat/completions" \\
+  -H "Authorization: Bearer ${token}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"league-medium","messages":[{"role":"user","content":"hi"}]}'`;
 }
 
 /** A dark code block with a top-right copy-to-clipboard button. */
@@ -70,11 +67,10 @@ export default function LlmProxyUsage({
 }) {
   return (
     <div>
-      <CodeBlock code={claudeSnippet(endpoint, token)} label="Claude Code setup" />
-      <details style={styles.details}>
-        <summary style={styles.summary}>curl example</summary>
+      <CodeBlock code={openAiSnippet(endpoint, token)} label="OpenAI-compatible client setup" />
+      <div style={styles.curlBlock}>
         <CodeBlock code={curlSnippet(endpoint, token)} label="curl example" />
-      </details>
+      </div>
     </div>
   );
 }
@@ -104,13 +100,5 @@ const styles: Record<string, React.CSSProperties> = {
     overflowX: 'auto',
     margin: 0,
   },
-  details: { marginTop: '0.75rem' },
-  summary: {
-    cursor: 'pointer',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    color: '#334155',
-    padding: '0.25rem 0',
-    userSelect: 'none',
-  },
+  curlBlock: { marginTop: '0.75rem' },
 };
