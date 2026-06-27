@@ -1,14 +1,15 @@
 ---
-id: "002"
-title: "Rewrite LlmProxyForwarderService for OpenRouter/OpenAI and rewrite forwarder tests"
-status: open
+id: '002'
+title: Rewrite LlmProxyForwarderService for OpenRouter/OpenAI and rewrite forwarder
+  tests
+status: done
 use-cases:
-  - SUC-001
-  - SUC-002
+- SUC-001
+- SUC-002
 depends-on:
-  - "001"
-github-issue: ""
-issue: ""
+- '001'
+github-issue: ''
+issue: ''
 completes_issue: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -103,25 +104,25 @@ The new test suite must cover:
 
 ## Acceptance Criteria
 
-- [ ] Upstream URL defaults to `https://openrouter.ai/api/v1/chat/completions`;
+- [x] Upstream URL defaults to `https://openrouter.ai/api/v1/chat/completions`;
       overridable via `LLM_PROXY_BASE_URL` env var.
-- [ ] Outgoing request uses `Authorization: Bearer <OPENROUTER_API_KEY>`; no
+- [x] Outgoing request uses `Authorization: Bearer <OPENROUTER_API_KEY>`; no
       `x-api-key` or `anthropic-version` headers are sent.
-- [ ] `resolveLlmProxyApiKey()` returns `OPENROUTER_API_KEY` when set, falls back
+- [x] `resolveLlmProxyApiKey()` returns `OPENROUTER_API_KEY` when set, falls back
       to `LLM_PROXY_API_KEY`, and returns empty string for placeholder value.
-- [ ] `mapModel('league-large')` returns `LLM_PROXY_MODEL_LARGE` (or its default).
-- [ ] `mapModel('league-medium')` returns `LLM_PROXY_MODEL_MEDIUM` (or its default).
-- [ ] `mapModel('league-small')` returns `LLM_PROXY_MODEL_SMALL` (or its default).
-- [ ] `mapModel('sonnet')` returns MEDIUM tier; `mapModel('opus')` returns LARGE;
+- [x] `mapModel('league-large')` returns `LLM_PROXY_MODEL_LARGE` (or its default).
+- [x] `mapModel('league-medium')` returns `LLM_PROXY_MODEL_MEDIUM` (or its default).
+- [x] `mapModel('league-small')` returns `LLM_PROXY_MODEL_SMALL` (or its default).
+- [x] `mapModel('sonnet')` returns MEDIUM tier; `mapModel('opus')` returns LARGE;
       `mapModel('haiku')` returns SMALL.
-- [ ] Unknown or absent model string defaults to MEDIUM tier.
-- [ ] When `body.stream === true`, the forwarded body includes
+- [x] Unknown or absent model string defaults to MEDIUM tier.
+- [x] When `body.stream === true`, the forwarded body includes
       `stream_options: { include_usage: true }`.
-- [ ] Non-streaming usage reads `usage.prompt_tokens` / `usage.completion_tokens`.
-- [ ] Streaming usage reads from the final chunk's `usage` field.
-- [ ] `onUsage(inputTokens, outputTokens)` is called with correct counts in
+- [x] Non-streaming usage reads `usage.prompt_tokens` / `usage.completion_tokens`.
+- [x] Streaming usage reads from the final chunk's `usage` field.
+- [x] `onUsage(inputTokens, outputTokens)` is called with correct counts in
       both streaming and non-streaming paths.
-- [ ] All new unit tests pass (`npm test` in `server/`).
+- [x] All new unit tests pass (`npm test` in `server/`).
 
 ## Implementation Plan
 

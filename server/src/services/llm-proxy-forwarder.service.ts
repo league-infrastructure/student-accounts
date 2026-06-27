@@ -1,10 +1,11 @@
 /**
- * LlmProxyForwarderService — Anthropic Messages API forwarder (Sprint 013 T003).
+ * LlmProxyForwarderService — OpenRouter/OpenAI Chat Completions forwarder.
  *
  * Responsibilities:
- *  - Hold the server-side Anthropic API key.
- *  - Forward POST /proxy/v1/messages → https://api.anthropic.com/v1/messages
- *    using fetch, preserving streaming (SSE).
+ *  - Hold the server-side OpenRouter API key.
+ *  - Forward POST /proxy/v1/messages → LLM_PROXY_BASE_URL (default:
+ *    https://openrouter.ai/api/v1/chat/completions) using the OpenAI Chat
+ *    Completions protocol, preserving streaming (SSE).
  *  - Report token usage to the caller via an `onUsage` callback after the
  *    request completes so the caller can update `LlmProxyToken` counters.
  *
@@ -12,17 +13,18 @@
  *  - The client-supplied Authorization header is stripped. The real API key
  *    never leaves the server.
  *  - The client-supplied x-api-key header is also stripped.
- *  - The `anthropic-beta` header is passed through (newer Claude Code
- *    builds rely on it).
  *
  * Streaming:
  *  - Bytes are piped from the upstream ReadableStream to `res.write(chunk)`
  *    as they arrive — no buffering of the whole response.
- *  - SSE events are parsed in-flight to extract `usage.output_tokens` from
- *    `message_delta` events and `usage.input_tokens` from `message_start`.
- *    These drive the `onUsage` callback after the stream finishes.
- *  - Client disconnects (`res.on('close')`) abort the upstream fetch via
- *    AbortController so we stop consuming Anthropic tokens when the client
+ *  - When `body.stream === true`, `stream_options: { include_usage: true }`
+ *    is injected into the forwarded body so OpenRouter returns token counts
+ *    in the final SSE chunk.
+ *  - SSE events are parsed in-flight to extract `usage.prompt_tokens` and
+ *    `usage.completion_tokens` from the final chunk. These drive the
+ *    `onUsage` callback after the stream finishes.
+ *  - Client disconnects (`res.once('close', …)`) abort the upstream fetch via
+ *    AbortController so we stop consuming OpenRouter tokens when the client
  *    has gone.
  */
 
@@ -33,25 +35,25 @@ import { createLogger } from './logger.js';
 const logger = createLogger('llm-proxy-forwarder');
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants — model tier defaults
 // ---------------------------------------------------------------------------
 
-const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
-const SONNET_MODEL = 'claude-sonnet-4-6';
-const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_MODEL_LARGE = 'deepseek/deepseek-v4-pro';
+const DEFAULT_MODEL_MEDIUM = 'deepseek/deepseek-v4-flash';
+const DEFAULT_MODEL_SMALL = 'deepseek/deepseek-v3.2';
+const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // ---------------------------------------------------------------------------
 // Typed errors
 // ---------------------------------------------------------------------------
 
 /**
- * Thrown when the server has no Anthropic API key configured. The route
+ * Thrown when the server has no OpenRouter API key configured. The route
  * layer translates this to HTTP 503.
  */
 export class LlmProxyNotConfiguredError extends AppError {
   constructor(
-    message = 'LLM proxy is not configured: ANTHROPIC_API_KEY (or LLM_PROXY_ANTHROPIC_API_KEY) is missing.',
+    message = 'LLM proxy is not configured: OPENROUTER_API_KEY (or LLM_PROXY_API_KEY) is missing.',
   ) {
     super(message, 503);
     this.name = 'LlmProxyNotConfiguredError';
@@ -76,46 +78,60 @@ export type ForwardOptions = {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the API key from the same env var precedence used at construction.
- * Exported for the route layer's 503-check.
+ * Resolve the API key from environment variables.
  *
- * Strips obvious non-keys: the placeholder shipped in secrets.env.example
- * ("your-anthropic-api-key") and admin keys (`sk-ant-admin…`) — admin
- * keys can't call /v1/messages, so accepting them here would route every
- * student call into a guaranteed 401 at Anthropic.
+ * Precedence: OPENROUTER_API_KEY ?? LLM_PROXY_API_KEY ?? ''
+ *
+ * Strips the placeholder shipped in secrets.env.example
+ * ("your-anthropic-api-key"). No admin-key guard — not applicable to
+ * OpenRouter keys.
  */
 export function resolveLlmProxyApiKey(): string {
   const raw =
-    process.env.LLM_PROXY_ANTHROPIC_API_KEY ??
-    process.env.ANTHROPIC_API_KEY ??
+    process.env.OPENROUTER_API_KEY ??
+    process.env.LLM_PROXY_API_KEY ??
     '';
   if (!raw) return '';
   if (raw === 'your-anthropic-api-key') return '';
-  if (raw.startsWith('sk-ant-admin')) return '';
   return raw;
 }
 
 /**
- * Map a client-provided model string to an allowed model.
+ * Map a client-provided model string to a League tier model on OpenRouter.
  *
- * Rules:
- *  - If the string (case-insensitive) contains "Sonnet", use claude-sonnet-4-6
- *  - If the string (case-insensitive) contains "Haiku", use claude-haiku-4-5-20251001
- *  - Otherwise, default to claude-sonnet-4-6
+ * Rules (case-insensitive full-string match):
+ *  - 'league-large' | 'large' | 'opus'   → LLM_PROXY_MODEL_LARGE  (or default)
+ *  - 'league-medium' | 'medium' | 'sonnet' → LLM_PROXY_MODEL_MEDIUM (or default)
+ *  - 'league-small' | 'small' | 'haiku'  → LLM_PROXY_MODEL_SMALL  (or default)
+ *  - Unknown / absent → MEDIUM (cost-control default)
  */
 function mapModel(model: unknown): string {
-  if (typeof model !== 'string') return SONNET_MODEL;
-  const lower = model.toLowerCase();
-  if (lower.includes('sonnet')) return SONNET_MODEL;
-  if (lower.includes('haiku')) return HAIKU_MODEL;
-  return SONNET_MODEL;
+  const large = process.env.LLM_PROXY_MODEL_LARGE ?? DEFAULT_MODEL_LARGE;
+  const medium = process.env.LLM_PROXY_MODEL_MEDIUM ?? DEFAULT_MODEL_MEDIUM;
+  const small = process.env.LLM_PROXY_MODEL_SMALL ?? DEFAULT_MODEL_SMALL;
+
+  if (typeof model !== 'string') return medium;
+  const lower = model.toLowerCase().trim();
+
+  if (lower === 'league-large' || lower === 'large' || lower === 'opus') {
+    return large;
+  }
+  if (lower === 'league-medium' || lower === 'medium' || lower === 'sonnet') {
+    return medium;
+  }
+  if (lower === 'league-small' || lower === 'small' || lower === 'haiku') {
+    return small;
+  }
+
+  // Unknown → MEDIUM (cost-control default)
+  return medium;
 }
 
 /**
  * Parse SSE event bytes looking for `data: {...}` lines and invoke the
  * callback with the parsed JSON payload. Handles multi-line events.
  */
-function parseSseEvents(
+export function parseSseEvents(
   buffer: string,
   onEvent: (payload: Record<string, unknown>) => void,
 ): string {
@@ -141,8 +157,7 @@ function parseSseEvents(
       const payload = JSON.parse(data) as Record<string, unknown>;
       onEvent(payload);
     } catch {
-      // Non-JSON data lines are ignored — Anthropic does send plain
-      // comment frames in some cases.
+      // Non-JSON data lines are ignored.
     }
   }
   return remainder;
@@ -168,8 +183,9 @@ export class LlmProxyForwarderService {
   }
 
   /**
-   * Forward the given request to Anthropic and write the response into the
-   * caller's Express response. Preserves streaming.
+   * Forward the given request to OpenRouter (via OpenAI Chat Completions
+   * protocol) and write the response into the caller's Express response.
+   * Preserves streaming.
    */
   async forwardMessages(
     req: Request,
@@ -183,44 +199,44 @@ export class LlmProxyForwarderService {
     const body = req.body ?? {};
     const isStream = body && typeof body === 'object' && body.stream === true;
 
-    // Map the model to an allowed model. If not present, defaults to Sonnet.
+    // Map the model to an allowed League tier. Defaults to MEDIUM.
     if (body && typeof body === 'object') {
       (body as any).model = mapModel((body as any).model);
+    }
+
+    // Inject stream_options so OpenRouter includes usage in the final chunk.
+    if (isStream && body && typeof body === 'object') {
+      (body as any).stream_options = { include_usage: true };
     }
 
     // Build upstream headers. Strip any client-supplied auth.
     const headers: Record<string, string> = {
       'content-type': 'application/json',
-      'x-api-key': this.apiKey,
-      // Prefer the client's version header when present — SDK versions
-      // get bumped as new models ship, and forcing our pinned default
-      // can downshift a request out of the model's required version.
-      'anthropic-version': req.header('anthropic-version') ?? ANTHROPIC_VERSION,
+      'authorization': `Bearer ${this.apiKey}`,
     };
-    const beta = req.header('anthropic-beta');
-    if (beta) headers['anthropic-beta'] = beta;
 
-    // Carry the client's query string across — e.g. `?beta=true`
-    // toggles the beta Messages endpoint for some SDK versions.
-    const qsIndex = (req.originalUrl ?? '').indexOf('?');
-    const queryString = qsIndex >= 0 ? req.originalUrl.slice(qsIndex) : '';
-    const upstreamUrl = `${ANTHROPIC_MESSAGES_URL}${queryString}`;
+    // Optional OpenRouter attribution headers.
+    const httpReferer = process.env.LLM_PROXY_HTTP_REFERER;
+    if (httpReferer) headers['HTTP-Referer'] = httpReferer;
+    const xTitle = process.env.LLM_PROXY_X_TITLE;
+    if (xTitle) headers['X-Title'] = xTitle;
+
+    const upstreamUrl =
+      process.env.LLM_PROXY_BASE_URL ?? DEFAULT_BASE_URL;
 
     logger.info(
       {
         isStream,
         model: (body as any)?.model ?? null,
         hasMessages: Array.isArray((body as any)?.messages),
-        queryString,
-        anthropicVersion: headers['anthropic-version'],
-        anthropicBeta: headers['anthropic-beta'] ?? null,
+        upstreamUrl,
       },
-      '[llm-proxy-forwarder] forwarding request to Anthropic',
+      '[llm-proxy-forwarder] forwarding request to openrouter',
     );
 
     const controller = new AbortController();
     // If the client hangs up, abort the upstream so we stop consuming
-    // Anthropic tokens.
+    // OpenRouter tokens.
     const abortOnClose = () => {
       if (!controller.signal.aborted) {
         controller.abort();
@@ -252,7 +268,7 @@ export class LlmProxyForwarderService {
       logger.warn({ err }, '[llm-proxy-forwarder] upstream fetch failed');
       if (!res.headersSent) {
         res.status(502).json({
-          error: 'Upstream Anthropic request failed',
+          error: 'Upstream OpenRouter request failed',
           detail: (err as Error)?.message ?? String(err),
         });
       } else if (!res.writableEnded) {
@@ -312,11 +328,12 @@ export class LlmProxyForwarderService {
         const parsed = JSON.parse(text) as any;
         const usage = parsed?.usage;
         if (usage && typeof usage === 'object') {
-          inputTokens = Number(usage.input_tokens ?? 0) || 0;
-          outputTokens = Number(usage.output_tokens ?? 0) || 0;
+          // OpenAI Chat Completions format: prompt_tokens / completion_tokens
+          inputTokens = Number(usage.prompt_tokens ?? 0) || 0;
+          outputTokens = Number(usage.completion_tokens ?? 0) || 0;
         }
       } catch {
-        // Non-JSON body (unlikely for Anthropic) — report zero tokens.
+        // Non-JSON body — report zero tokens.
       }
     }
     try {
@@ -336,7 +353,7 @@ export class LlmProxyForwarderService {
     opts: ForwardOptions,
   ): Promise<void> {
     // Upstream might fail with a non-2xx before any SSE bytes land. In
-    // that case pass the body through as-is (Anthropic returns JSON).
+    // that case pass the body through as-is (OpenRouter returns JSON).
     if (!upstream.ok || !upstream.body) {
       await this.pipeJson(upstream, res, opts);
       return;
@@ -356,27 +373,16 @@ export class LlmProxyForwarderService {
     const decoder = new TextDecoder();
     let buffer = '';
 
+    // OpenAI SSE: usage appears in the final chunk when
+    // stream_options.include_usage is true.
     const onSseEvent = (payload: Record<string, unknown>) => {
-      const type = payload.type;
-      if (type === 'message_start') {
-        const m = (payload as any).message;
-        const u = m?.usage;
-        if (u) {
-          if (typeof u.input_tokens === 'number') {
-            inputTokens = u.input_tokens;
-          }
-          if (typeof u.output_tokens === 'number') {
-            outputTokens = u.output_tokens;
-          }
+      const usage = (payload as any).usage;
+      if (usage && typeof usage === 'object') {
+        if (typeof usage.prompt_tokens === 'number') {
+          inputTokens = usage.prompt_tokens;
         }
-      } else if (type === 'message_delta') {
-        const u = (payload as any).usage;
-        if (u && typeof u.output_tokens === 'number') {
-          // Anthropic reports cumulative output_tokens in message_delta.
-          outputTokens = u.output_tokens;
-        }
-        if (u && typeof u.input_tokens === 'number') {
-          inputTokens = u.input_tokens;
+        if (typeof usage.completion_tokens === 'number') {
+          outputTokens = usage.completion_tokens;
         }
       }
     };
