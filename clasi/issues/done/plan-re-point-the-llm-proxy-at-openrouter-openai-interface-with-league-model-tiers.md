@@ -1,5 +1,11 @@
 ---
-status: pending
+status: done
+tickets:
+- '001'
+- '002'
+- '003'
+- '004'
+- '005'
 ---
 
 # Plan: Re-point the LLM proxy at OpenRouter (OpenAI interface), with League model tiers
