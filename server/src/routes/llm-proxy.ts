@@ -1,19 +1,19 @@
 /**
- * Public LLM proxy routes (Sprint 013 T004).
+ * Public LLM proxy routes.
  *
- * Mounted at /proxy/v1 (outside /api) so Anthropic-compatible clients can
- * set ANTHROPIC_BASE_URL="<origin>/proxy" and hit /v1/messages directly.
+ * Mounted at /proxy/v1 (outside /api) so OpenAI-compatible clients can
+ * set OPENAI_BASE_URL="<origin>/proxy/v1" and hit /chat/completions directly.
  *
  * Routes:
- *   GET  /proxy/v1/health    — unauthenticated liveness probe.
- *   POST /proxy/v1/messages  — bearer-authed forwarder to the Anthropic
- *                              Messages API.
+ *   GET  /proxy/v1/health            — unauthenticated liveness probe.
+ *   GET  /proxy/v1/models            — unauthenticated League model tier list.
+ *   POST /proxy/v1/chat/completions  — bearer-authed forwarder to the upstream
+ *                                      LLM API (OpenRouter).
  *
  * The forwarder handler:
  *   1. Requires a valid LlmProxyToken via the llmProxyTokenAuth middleware.
- *   2. Returns 503 up-front when the server has no Anthropic API key
- *      configured (so the token holder sees a clear error instead of a
- *      network-timeout).
+ *   2. Returns 503 up-front when the server has no API key configured (so
+ *      the token holder sees a clear error instead of a network-timeout).
  *   3. Delegates the forward to LlmProxyForwarderService, which preserves
  *      streaming and reports token usage via the onUsage callback.
  *   4. Updates LlmProxyToken counters via recordUsage (fire-and-forget —
@@ -36,10 +36,7 @@ export const llmProxyRouter = Router();
 llmProxyRouter.use((_req: Request, res: Response, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Content-Type, Authorization, anthropic-version, anthropic-beta, x-api-key',
-  );
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (_req.method === 'OPTIONS') {
     res.sendStatus(204);
   } else {
@@ -48,21 +45,36 @@ llmProxyRouter.use((_req: Request, res: Response, next) => {
 });
 
 llmProxyRouter.get('/health', (_req: Request, res: Response) => {
-  res.json({ ok: true, endpoint: '/proxy/v1/messages' });
+  res.json({ ok: true, endpoint: '/proxy/v1/chat/completions' });
 });
 
 // ---------------------------------------------------------------------------
-// POST /messages — bearer-authed forwarder
+// GET /models — unauthenticated League model tier list
+// ---------------------------------------------------------------------------
+
+llmProxyRouter.get('/models', (_req: Request, res: Response) => {
+  res.json({
+    object: 'list',
+    data: [
+      { id: 'league-large', object: 'model', owned_by: 'league' },
+      { id: 'league-medium', object: 'model', owned_by: 'league' },
+      { id: 'league-small', object: 'model', owned_by: 'league' },
+    ],
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /chat/completions — bearer-authed forwarder
 // ---------------------------------------------------------------------------
 //
-// Explicit express.json() with a generous limit — Claude requests carry
-// base64 images and can be large. The rest of the app's /api routes are
+// Explicit express.json() with a generous limit — requests carrying
+// base64 images can be large. The rest of the app's /api routes are
 // unaffected.
 //
 const jsonBody = express.json({ limit: '10mb' });
 
 llmProxyRouter.post(
-  '/messages',
+  '/chat/completions',
   jsonBody,
   llmProxyTokenAuth,
   async (req: Request, res: Response) => {
@@ -73,7 +85,7 @@ llmProxyRouter.post(
     if (!forwarder.isConfigured()) {
       res.status(503).json({
         error:
-          'LLM proxy is not configured on the server (missing ANTHROPIC_API_KEY).',
+          'LLM proxy is not configured on the server (missing OPENROUTER_API_KEY).',
       });
       return;
     }
@@ -90,10 +102,10 @@ llmProxyRouter.post(
 );
 
 // ---------------------------------------------------------------------------
-// 405 for any other method on /messages
+// 405 for any other method on /chat/completions
 // ---------------------------------------------------------------------------
 
-llmProxyRouter.all('/messages', (_req: Request, res: Response) => {
+llmProxyRouter.all('/chat/completions', (_req: Request, res: Response) => {
   res.set('allow', 'POST');
   res.status(405).json({ error: 'Method not allowed; use POST.' });
 });

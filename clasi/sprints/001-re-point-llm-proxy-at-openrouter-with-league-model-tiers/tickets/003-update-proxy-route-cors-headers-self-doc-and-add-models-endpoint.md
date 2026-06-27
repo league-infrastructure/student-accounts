@@ -1,14 +1,14 @@
 ---
-id: "003"
-title: "Update proxy route, CORS headers, self-doc, and add /models endpoint"
-status: open
+id: '003'
+title: Update proxy route, CORS headers, self-doc, and add /models endpoint
+status: done
 use-cases:
-  - SUC-001
-  - SUC-003
+- SUC-001
+- SUC-003
 depends-on:
-  - "002"
-github-issue: ""
-issue: ""
+- '002'
+github-issue: ''
+issue: ''
 completes_issue: true
 ---
 <!-- CLASI: Before changing code or making plans, review the SE process in CLAUDE.md -->
@@ -63,15 +63,15 @@ Update the `GET /proxy` self-doc JSON response:
 
 ## Acceptance Criteria
 
-- [ ] `POST /proxy/v1/chat/completions` with valid bearer token returns 200.
-- [ ] `POST /proxy/v1/messages` returns 404 (no longer registered).
-- [ ] `GET /proxy/v1/health` returns `{ ok: true, endpoint: '/proxy/v1/chat/completions' }`.
-- [ ] `GET /proxy/v1/models` returns the three-tier model list JSON (unauthenticated).
-- [ ] CORS `Access-Control-Allow-Headers` does not include `anthropic-version`,
+- [x] `POST /proxy/v1/chat/completions` with valid bearer token returns 200.
+- [x] `POST /proxy/v1/messages` returns 404 (no longer registered).
+- [x] `GET /proxy/v1/health` returns `{ ok: true, endpoint: '/proxy/v1/chat/completions' }`.
+- [x] `GET /proxy/v1/models` returns the three-tier model list JSON (unauthenticated).
+- [x] CORS `Access-Control-Allow-Headers` does not include `anthropic-version`,
       `anthropic-beta`, or `x-api-key`.
-- [ ] `GET /proxy` returns JSON with `openaiBaseUrl` key and `chatCompletions` key;
+- [x] `GET /proxy` returns JSON with `openaiBaseUrl` key and `chatCompletions` key;
       no `anthropicBaseUrl` key.
-- [ ] All existing route tests pass; full test suite passes.
+- [x] All existing route tests pass; full test suite passes.
 
 ## Implementation Plan
 

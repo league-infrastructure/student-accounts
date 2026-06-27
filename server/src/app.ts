@@ -86,16 +86,16 @@ app.use('/api', oauthClientsRouter);
 app.use('/api', accountRouter);
 app.use('/api', staffDirectoryRouter);
 
-// LLM proxy — mounted OUTSIDE /api so Anthropic-compatible clients
-// (Claude Code, VS Code extension) can set ANTHROPIC_BASE_URL to
-// <origin>/proxy and append /v1/messages themselves. See Sprint 013.
+// LLM proxy — mounted OUTSIDE /api so OpenAI-compatible clients
+// can set OPENAI_BASE_URL to <origin>/proxy/v1 and hit /chat/completions.
+// See Sprint 001.
 app.use('/proxy/v1', llmProxyRouter);
 
 // GET /proxy — self-documenting info for the advertised base URL. Without
-// this, a bare GET to the base (the value of ANTHROPIC_BASE_URL) falls through
+// this, a bare GET to the base (the value of OPENAI_BASE_URL) falls through
 // to the SPA catch-all and returns index.html, which looks broken when someone
-// probes the endpoint. The actual API lives at /proxy/v1/messages — clients
-// (Claude Code, the Anthropic SDK) append /v1/messages to this base themselves.
+// probes the endpoint. The actual API lives at /proxy/v1/chat/completions —
+// the OpenAI SDK appends /chat/completions to OPENAI_BASE_URL automatically.
 app.get('/proxy', (req: express.Request, res: express.Response) => {
   res.header('Access-Control-Allow-Origin', '*');
   const forwardedProto = req.header('x-forwarded-proto');
@@ -110,10 +110,10 @@ app.get('/proxy', (req: express.Request, res: express.Response) => {
     ok: true,
     service: 'llm-proxy',
     base,
-    anthropicBaseUrl: base,
-    messages: `${base}/v1/messages`,
+    openaiBaseUrl: `${base}/v1`,
+    chatCompletions: `${base}/v1/chat/completions`,
     health: `${base}/v1/health`,
-    note: 'Set ANTHROPIC_BASE_URL to "base"; the Anthropic SDK / Claude Code append /v1/messages. Requires a bearer token (x-api-key).',
+    note: 'Set OPENAI_BASE_URL to the openaiBaseUrl value; the OpenAI SDK appends /chat/completions. Requires a bearer token (Authorization: Bearer).',
   });
 });
 

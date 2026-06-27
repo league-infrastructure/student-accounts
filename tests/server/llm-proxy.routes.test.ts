@@ -1,8 +1,8 @@
 /**
- * Integration tests for the public /proxy/v1/* routes (Sprint 013 T004).
+ * Integration tests for the public /proxy/v1/* routes.
  *
  * Swaps `registry.llmProxyForwarder` with a fake so tests focus on auth,
- * status-code mapping, and 503 behaviour without hitting Anthropic.
+ * status-code mapping, and 503 behaviour without hitting the upstream LLM API.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
@@ -106,9 +106,37 @@ describe('GET /proxy/v1/health', () => {
     const res = await request(app).get('/proxy/v1/health');
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.endpoint).toBe('/proxy/v1/messages');
+    expect(res.body.endpoint).toBe('/proxy/v1/chat/completions');
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /proxy/v1/models
+// ---------------------------------------------------------------------------
+
+describe('GET /proxy/v1/models', () => {
+  it('returns the three-tier model list without auth', async () => {
+    const res = await request(app).get('/proxy/v1/models');
+    expect(res.status).toBe(200);
+    expect(res.body.object).toBe('list');
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data).toHaveLength(3);
+    const ids = res.body.data.map((m: any) => m.id);
+    expect(ids).toContain('league-large');
+    expect(ids).toContain('league-medium');
+    expect(ids).toContain('league-small');
+    for (const model of res.body.data) {
+      expect(model.object).toBe('model');
+      expect(model.owned_by).toBe('league');
+      // Must NOT expose backing DeepSeek slugs
+      expect(model.id).not.toMatch(/deepseek/i);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /proxy — base-URL info
+// ---------------------------------------------------------------------------
 
 describe('GET /proxy — base-URL info', () => {
   it('returns JSON describing the proxy (not the SPA HTML)', async () => {
@@ -117,20 +145,22 @@ describe('GET /proxy — base-URL info', () => {
     expect(res.headers['content-type']).toMatch(/application\/json/);
     expect(res.body.ok).toBe(true);
     expect(res.body.service).toBe('llm-proxy');
-    // base is the value students set as ANTHROPIC_BASE_URL; messages appends /v1.
     expect(res.body.base).toMatch(/\/proxy$/);
-    expect(res.body.messages).toMatch(/\/proxy\/v1\/messages$/);
+    expect(res.body.openaiBaseUrl).toMatch(/\/proxy\/v1$/);
+    expect(res.body.chatCompletions).toMatch(/\/proxy\/v1\/chat\/completions$/);
+    expect(res.body).not.toHaveProperty('anthropicBaseUrl');
+    expect(res.body).not.toHaveProperty('messages');
   });
 });
 
 // ---------------------------------------------------------------------------
-// POST /proxy/v1/messages — auth
+// POST /proxy/v1/chat/completions — auth
 // ---------------------------------------------------------------------------
 
-describe('POST /proxy/v1/messages — authentication', () => {
+describe('POST /proxy/v1/chat/completions — authentication', () => {
   it('401 with no Authorization header', async () => {
     const res = await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .send({ model: 'x' });
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/bearer/i);
@@ -138,7 +168,7 @@ describe('POST /proxy/v1/messages — authentication', () => {
 
   it('401 for a malformed Authorization header', async () => {
     const res = await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .set('Authorization', 'NotBearer abc')
       .send({ model: 'x' });
     expect(res.status).toBe(401);
@@ -146,7 +176,7 @@ describe('POST /proxy/v1/messages — authentication', () => {
 
   it('401 for an unknown bearer token', async () => {
     const res = await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .set('Authorization', 'Bearer llmp_garbage')
       .send({ model: 'x' });
     expect(res.status).toBe(401);
@@ -157,7 +187,7 @@ describe('POST /proxy/v1/messages — authentication', () => {
     // Revoke via the service (uses actorId = the user for simplicity).
     await registry.llmProxyTokens.revoke(userId, userId);
     const res = await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .set('Authorization', `Bearer ${token}`)
       .send({ model: 'x' });
     expect(res.status).toBe(401);
@@ -170,7 +200,7 @@ describe('POST /proxy/v1/messages — authentication', () => {
       data: { expires_at: new Date(Date.now() - 24 * 3600 * 1000) },
     });
     const res = await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .set('Authorization', `Bearer ${token}`)
       .send({ model: 'x' });
     expect(res.status).toBe(401);
@@ -183,7 +213,7 @@ describe('POST /proxy/v1/messages — authentication', () => {
       data: { tokens_used: 1_000_000 }, // equals token_limit
     });
     const res = await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .set('Authorization', `Bearer ${token}`)
       .send({ model: 'x' });
     expect(res.status).toBe(429);
@@ -191,32 +221,32 @@ describe('POST /proxy/v1/messages — authentication', () => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /proxy/v1/messages — happy path + 503
+// POST /proxy/v1/chat/completions — happy path + 503
 // ---------------------------------------------------------------------------
 
-describe('POST /proxy/v1/messages — forwarding', () => {
+describe('POST /proxy/v1/chat/completions — forwarding', () => {
   it('forwards to the forwarder and returns 200 on the happy path', async () => {
     const { token } = await grantTokenForStudent();
 
     const res = await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        model: 'claude-3-5-haiku-latest',
+        model: 'league-large',
         messages: [{ role: 'user', content: 'hi' }],
       });
     expect(res.status).toBe(200);
     expect(fakeForwarder.forwardMessages).toHaveBeenCalledTimes(1);
     // The request body reached the fake unchanged.
     const [req] = fakeForwarder.forwardMessages.mock.calls[0];
-    expect(req.body.model).toBe('claude-3-5-haiku-latest');
+    expect(req.body.model).toBe('league-large');
   });
 
   it('invokes recordUsage via onUsage and increments counters', async () => {
     const { token, tokenId } = await grantTokenForStudent();
     forwarderState.lastUsage = { input: 42, output: 58 };
     await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .set('Authorization', `Bearer ${token}`)
       .send({ model: 'x' })
       .expect(200);
@@ -235,7 +265,7 @@ describe('POST /proxy/v1/messages — forwarding', () => {
     const { token } = await grantTokenForStudent();
     forwarderState.configured = false;
     const res = await request(app)
-      .post('/proxy/v1/messages')
+      .post('/proxy/v1/chat/completions')
       .set('Authorization', `Bearer ${token}`)
       .send({ model: 'x' });
     expect(res.status).toBe(503);
@@ -244,13 +274,44 @@ describe('POST /proxy/v1/messages — forwarding', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Method-not-allowed
+// Method-not-allowed on /chat/completions
 // ---------------------------------------------------------------------------
 
-describe('/proxy/v1/messages — other methods', () => {
+describe('/proxy/v1/chat/completions — other methods', () => {
   it('GET returns 405', async () => {
-    const res = await request(app).get('/proxy/v1/messages');
+    const res = await request(app).get('/proxy/v1/chat/completions');
     expect(res.status).toBe(405);
     expect(res.headers.allow).toBe('POST');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Old /messages path returns 404
+// ---------------------------------------------------------------------------
+
+describe('/proxy/v1/messages — no longer registered', () => {
+  it('POST returns 404', async () => {
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .send({ model: 'x' });
+    expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CORS headers
+// ---------------------------------------------------------------------------
+
+describe('CORS headers on /proxy/v1/*', () => {
+  it('does not include anthropic-specific headers in Access-Control-Allow-Headers', async () => {
+    const res = await request(app)
+      .options('/proxy/v1/chat/completions')
+      .set('Origin', 'https://example.com');
+    const allowHeaders = res.headers['access-control-allow-headers'] ?? '';
+    expect(allowHeaders).not.toMatch(/anthropic-version/i);
+    expect(allowHeaders).not.toMatch(/anthropic-beta/i);
+    expect(allowHeaders).not.toMatch(/x-api-key/i);
+    expect(allowHeaders).toMatch(/Content-Type/i);
+    expect(allowHeaders).toMatch(/Authorization/i);
   });
 });
