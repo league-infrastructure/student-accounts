@@ -172,7 +172,7 @@ describe('LlmProxy page — enabled state', () => {
     });
   });
 
-  it('renders the usage code snippet with endpoint and token', async () => {
+  it('renders the Continue config snippet with endpoint and token', async () => {
     (globalThis as any).fetch = makeFetch({
       llmProxyPayload: makeLlmProxyEnabled({
         endpoint: 'https://llm.example.com',
@@ -183,8 +183,10 @@ describe('LlmProxy page — enabled state', () => {
     renderLlmProxy();
 
     await waitFor(() => {
-      const pre = screen.getByText(/ANTHROPIC_BASE_URL/);
+      const pre = screen.getByText(/apiBase/);
       expect(pre).toBeInTheDocument();
+      expect(pre).toHaveTextContent('https://llm.example.com/v1');
+      expect(pre).toHaveTextContent('league-medium');
     });
   });
 

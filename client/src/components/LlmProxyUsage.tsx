@@ -1,24 +1,28 @@
 /**
  * LlmProxyUsage — the "Connect your AI client" setup snippets for the student
- * LLM proxy view (shared by /llm-proxy and the /account card so they can't
+ * LLM proxy view (shared by /llm-proxy and the admin user card so they can't
  * drift).
  *
+ * The proxy speaks the OpenAI chat/completions API (it forwards to
+ * OpenRouter upstream), so students connect with an OpenAI-compatible
+ * client. We document Continue (https://continue.dev) — a VS Code /
+ * JetBrains extension — as the supported client.
+ *
  * Renders two independently copy-pasteable code blocks:
- *   - OpenAI-compatible client setup — environment variables for any
- *     OpenAI-compatible client (e.g. Continue).
+ *   - Continue config — a model entry for ~/.continue/config.json.
  *   - curl example — inline test against the proxy.
  */
 
 import { useState } from 'react';
 
-function openAiSnippet(endpoint: string, token: string): string {
-  return `# OpenAI-compatible client setup
-export OPENAI_BASE_URL="${endpoint}/v1"
-export OPENAI_API_KEY="${token}"
-# League model tiers (choose one):
-#   league-large   — most capable
-#   league-medium  — balanced (recommended)
-#   league-small   — fast and lightweight`;
+function continueSnippet(endpoint: string, token: string): string {
+  return `{
+  "title": "League",
+  "provider": "openai",
+  "apiBase": "${endpoint}/v1",
+  "apiKey": "${token}",
+  "model": "league-medium"
+}`;
 }
 
 function curlSnippet(endpoint: string, token: string): string {
@@ -67,7 +71,15 @@ export default function LlmProxyUsage({
 }) {
   return (
     <div>
-      <CodeBlock code={openAiSnippet(endpoint, token)} label="OpenAI-compatible client setup" />
+      <p style={styles.note}>
+        Add this entry to the <code>models</code> array in your Continue
+        config (<code>~/.continue/config.json</code>):
+      </p>
+      <CodeBlock code={continueSnippet(endpoint, token)} label="Continue config" />
+      <p style={styles.note}>
+        Model tiers: <code>league-large</code> (most capable) ·{' '}
+        <code>league-medium</code> (balanced) · <code>league-small</code> (fast).
+      </p>
       <div style={styles.curlBlock}>
         <CodeBlock code={curlSnippet(endpoint, token)} label="curl example" />
       </div>
@@ -76,6 +88,7 @@ export default function LlmProxyUsage({
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  note: { color: '#475569', fontSize: '0.85rem', margin: '0.5rem 0 0.25rem' },
   wrap: { position: 'relative', margin: '0.25rem 0' },
   copyBtn: {
     position: 'absolute',

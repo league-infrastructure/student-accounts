@@ -384,9 +384,10 @@ accountRouter.get(
     // Derive the endpoint URL from the request (not from config) so any
     // origin that serves the app also serves a working proxy URL.
     //
-    // We return the base *without* /v1 because Anthropic's SDK (and
-    // Claude Code by extension) always append `/v1/messages` to
-    // ANTHROPIC_BASE_URL. Including /v1 here yielded /proxy/v1/v1/messages.
+    // We return the base *without* /v1. The proxy's OpenAI surface lives
+    // at /proxy/v1/chat/completions, and the client setup snippet appends
+    // /v1 to this base itself (so apiBase becomes <origin>/proxy/v1).
+    // Returning /proxy/v1 here would yield a doubled /proxy/v1/v1.
     const forwardedProto = req.header('x-forwarded-proto');
     const scheme = forwardedProto
       ? forwardedProto.split(',')[0].trim()

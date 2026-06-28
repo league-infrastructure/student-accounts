@@ -19,6 +19,7 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import LlmProxyUsage from '../../components/LlmProxyUsage';
 
 interface StatusResponse {
   enabled: boolean;
@@ -30,7 +31,7 @@ interface StatusResponse {
   grantedAt?: string;
   grantedBy?: number | null;
   revokedAt?: string | null;
-  /** Proxy base URL (ANTHROPIC_BASE_URL), derived from request origin. */
+  /** Proxy base URL (OpenAI base, minus /v1), derived from request origin. */
   endpoint?: string;
   /** Full plaintext bearer token. Admins see the whole key, by design. */
   token?: string | null;
@@ -282,14 +283,6 @@ function SetupPanel({
     navigator.clipboard?.writeText(text).catch(() => {});
   };
 
-  const snippet = `# Claude Code
-export ANTHROPIC_BASE_URL="${base}"
-export ANTHROPIC_API_KEY="${key}"
-# Allowed models: Sonnet or Haiku
-export ANTHROPIC_MODEL="claude-sonnet-4-6"
-export ANTHROPIC_SMALL_FAST_MODEL="claude-haiku-4-5-20251001"
-claude --dangerously-skip-permissions`;
-
   return (
     <div>
       <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>
@@ -322,12 +315,9 @@ claude --dangerously-skip-permissions`;
       />
 
       <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, margin: '12px 0 6px' }}>
-        Environment variables
+        Connect Continue
       </div>
-      <pre style={snippetStyle}>{snippet}</pre>
-      <button type="button" onClick={() => copy(snippet)} style={copyBtnStyle}>
-        Copy snippet
-      </button>
+      <LlmProxyUsage endpoint={base} token={key} />
     </div>
   );
 }
@@ -460,14 +450,3 @@ const copyBtnStyle: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-const snippetStyle: React.CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 12,
-  background: '#0f172a',
-  color: '#e2e8f0',
-  padding: '10px 12px',
-  borderRadius: 6,
-  overflowX: 'auto',
-  margin: '0 0 8px',
-  whiteSpace: 'pre',
-};
