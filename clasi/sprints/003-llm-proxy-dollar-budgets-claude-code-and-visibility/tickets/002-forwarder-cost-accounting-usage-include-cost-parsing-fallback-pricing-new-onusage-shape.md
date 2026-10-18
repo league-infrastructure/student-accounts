@@ -2,9 +2,11 @@
 id: '002'
 title: 'Forwarder cost accounting: usage.include, cost parsing, fallback pricing,
   new onUsage shape'
-status: open
-use-cases: [SUC-001]
-depends-on: ['001']
+status: in-progress
+use-cases:
+- SUC-001
+depends-on:
+- '001'
 github-issue: ''
 issue: llm-proxy-dollar-budgets-with-monthly-reset.md
 completes_issue: false
