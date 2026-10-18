@@ -290,20 +290,21 @@ describe('PATCH /api/admin/users/:id/permissions — error cases', () => {
 });
 
 // ---------------------------------------------------------------------------
-// allows_laptop_account (sprint 002 "laptop accounts" T004)
+// allows_laptop_account is retired: the laptop login is the account's
+// username and password. Old clients may still send it; it is ignored.
 // ---------------------------------------------------------------------------
 
-describe('PATCH /api/admin/users/:id/permissions — allows_laptop_account', () => {
-  it('defaults to true and is returned as allowsLaptopAccount', async () => {
+describe('PATCH /api/admin/users/:id/permissions — retired allows_laptop_account', () => {
+  it('does not return allowsLaptopAccount', async () => {
     const user = await makeUser({ role: 'student' });
 
     const res = await adminAgent.patch(`/api/admin/users/${user.id}/permissions`).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ allowsLaptopAccount: true });
+    expect(res.body).not.toHaveProperty('allowsLaptopAccount');
   });
 
-  it('updates allows_laptop_account and returns 200 with updated flags', async () => {
+  it('accepts and ignores the field: nothing changes, no audit event, no roster write', async () => {
     const user = await makeUser({ role: 'student' });
 
     const res = await adminAgent
@@ -311,34 +312,16 @@ describe('PATCH /api/admin/users/:id/permissions — allows_laptop_account', () 
       .send({ allows_laptop_account: false });
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
+    expect(res.body).toEqual({
       allowsOauthClient: false,
       allowsLlmProxy: false,
       allowsLeagueAccount: false,
-      allowsLaptopAccount: false,
     });
-
-    const updated = await (prisma as any).user.findUnique({ where: { id: user.id } });
-    expect(updated.allows_laptop_account).toBe(false);
-
+    const row = await (prisma as any).user.findUnique({ where: { id: user.id } });
+    expect(row.allows_laptop_account).toBe(true);
     const events = await (prisma as any).auditEvent.findMany({
       where: { action: 'user_permission_changed', target_user_id: user.id },
     });
-    expect(events).toHaveLength(1);
-    expect(events[0].details).toMatchObject({
-      before: { allows_laptop_account: true },
-      after: { allows_laptop_account: false },
-    });
-  });
-
-  it('returns 400 when allows_laptop_account is not a boolean', async () => {
-    const user = await makeUser({ role: 'student' });
-
-    const res = await adminAgent
-      .patch(`/api/admin/users/${user.id}/permissions`)
-      .send({ allows_laptop_account: 'yes' });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/allows_laptop_account/);
+    expect(events).toHaveLength(0);
   });
 });

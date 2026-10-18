@@ -5,10 +5,10 @@
  * Covers:
  *  - desiredEntry: exact entry shape and timestamps; `created`/`created_host`
  *    kept from an existing entry; locked (`!`) when not eligible but an entry
- *    exists; null when nothing should be written; staff eligible, admin not
+ *    exists; null when nothing should be written; staff and admin both eligible
  *  - reconcile: written (hash verifies against the plaintext, created_host
  *    student-accounts), unchanged, display-name update preserving `created`,
- *    deactivate → `!`, flag off → `!`, flag on → real hash, skipped cases,
+ *    deactivate → `!`, flag ignored, skipped cases,
  *    failWrites/failReads/unconfigured → user action unaffected, dirty set,
  *    cleared again once writes work; audit events
  *  - pushAll counts
@@ -145,9 +145,7 @@ describe('LaptopAccountService.desiredEntry', () => {
 
   it.each([
     ['deactivated', { is_active: false }],
-    ['flag off', { allows_laptop_account: false }],
     ['no laptop hash', { laptop_password_hash: null }],
-    ['admin role', { role: 'admin' as const }],
   ])('locks (!) an existing entry when %s', async (_label, overrides) => {
     const user = await makeLaptopUser('carol', overrides);
     const existing = laptopEntry('carol');
@@ -160,6 +158,11 @@ describe('LaptopAccountService.desiredEntry', () => {
       managed_by: MANAGED_BY,
       updated: NOW_STAMP,
     });
+  });
+
+  it('treats admins as eligible and ignores the legacy flag', async () => {
+    const user = await makeLaptopUser('root-admin', { role: 'admin', allows_laptop_account: false });
+    expect(service.desiredEntry(user, null, NOW)?.password_hash).toBe(HASH);
   });
 
   it('treats staff as eligible', async () => {
@@ -259,18 +262,20 @@ describe('LaptopAccountService.reconcile — writes', () => {
     expect(events[0].target_user_id).toBe(user.id);
   });
 
-  it('locks when allows_laptop_account is off and restores the hash when it is on again', async () => {
+  it('ignores allows_laptop_account: the entry stays usable when the legacy flag is off', async () => {
     const user = await makeLaptopUser('alice');
     expect(await service.reconcile(user.id)).toBe('written');
 
     await (prisma as any).user.update({ where: { id: user.id }, data: { allows_laptop_account: false } });
-    expect(await service.reconcile(user.id)).toBe('locked');
-    expect(roster.entries.get('alice')!.password_hash).toBe('!');
-
-    await (prisma as any).user.update({ where: { id: user.id }, data: { allows_laptop_account: true } });
-    expect(await service.reconcile(user.id)).toBe('written');
+    expect(await service.reconcile(user.id)).toBe('unchanged');
     expect(roster.entries.get('alice')!.password_hash).toBe(HASH);
     expect(verifyCryptHash(PLAINTEXT, roster.entries.get('alice')!.password_hash)).toBe(true);
+  });
+
+  it('writes a usable entry for an admin with a username and password', async () => {
+    const admin = await makeLaptopUser('root-admin', { role: 'admin' });
+    expect(await service.reconcile(admin.id)).toBe('written');
+    expect(roster.entries.get('root-admin')!.password_hash).toBe(HASH);
   });
 
   it('does not re-lock an already locked entry', async () => {

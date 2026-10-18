@@ -9,13 +9,14 @@
  * once could but no longer should. Entries are never deleted: `drive/`
  * next to `config.json` is the student's synced work.
  *
- * Who has a laptop account (`desiredEntry`):
- *   is_active && allows_laptop_account && role !== 'admin' (staff allowed)
- *   && username && laptop_password_hash && isValidRosterId(username)
+ * Who has a laptop account (`desiredEntry`): the laptop login IS the account's
+ * username and password, there is no separate switch and no role exclusion
+ * (admins included):
+ *   is_active && username && laptop_password_hash && isValidRosterId(username)
  *
  * `reconcile(userId)` is the single entry point called after every change
  * that can affect the entry: password set/changed, username set,
- * display-name change, deactivate/reactivate, flag change, merge approval,
+ * display-name change, deactivate/reactivate, merge approval,
  * and from the hourly `laptop-roster-push` job. It reads the existing entry
  * first so `created` / `created_host` survive, writes only when
  * `password_hash` or `display_name` differ, and NEVER throws: a Spaces
@@ -64,8 +65,6 @@ export interface LaptopUser {
   display_name: string;
   laptop_password_hash: string | null;
   is_active: boolean;
-  allows_laptop_account: boolean;
-  role: string;
 }
 
 /**
@@ -92,22 +91,19 @@ export interface PushAllResult {
  * entry should be", not "what it is"; `dirty` says whether the two may differ.
  *
  *  - ready            — eligible: an unlocked entry with the crypt hash
- *  - locked           — role admin: admins never get a roster entry, whatever
- *                       the flags say, so nothing the user does changes this
- *  - disabled         — `allows_laptop_account` off or `is_active` false
- *                       (admin switched it off / account deactivated or
- *                       denied); the entry, if any, is locked with `!`
+ *  - disabled         — `is_active` false (account deactivated or denied);
+ *                       the entry, if any, is locked with `!`
  *  - needs_password   — no `laptop_password_hash`: social-login or
  *                       passphrase-only users until they set a password here
  *  - invalid_username — no username, or one the laptops cannot use
  *                       (`isValidRosterId` fails: mixed case, too short,
  *                       reserved…)
  *
- * Checks run in that order (disabled, locked, needs_password,
+ * Checks run in that order (disabled, needs_password,
  * invalid_username) so the user is told about the first thing that blocks
  * them; the remaining case is exactly `isEligible(user)`.
  */
-export type LaptopLoginState = 'ready' | 'locked' | 'disabled' | 'needs_password' | 'invalid_username';
+export type LaptopLoginState = 'ready' | 'disabled' | 'needs_password' | 'invalid_username';
 
 export interface LaptopLoginView {
   /** True when the laptop login works right now (state === 'ready'). */
@@ -125,8 +121,7 @@ export type LaptopStateUser = LaptopUser & { laptop_roster_dirty: boolean };
 
 /** Classify a user row; see `LaptopLoginState` for the mapping. Pure. */
 export function laptopLoginState(user: LaptopUser): LaptopLoginState {
-  if (!user.allows_laptop_account || !user.is_active) return 'disabled';
-  if (user.role === 'admin') return 'locked';
+  if (!user.is_active) return 'disabled';
   if (!user.laptop_password_hash) return 'needs_password';
   if (!user.username || !isValidRosterId(user.username)) return 'invalid_username';
   return 'ready';
@@ -166,8 +161,6 @@ export class LaptopAccountService {
   isEligible(user: LaptopUser): boolean {
     return (
       user.is_active &&
-      user.allows_laptop_account &&
-      user.role !== 'admin' &&
       !!user.username &&
       !!user.laptop_password_hash &&
       isValidRosterId(user.username)

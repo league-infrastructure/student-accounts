@@ -4,12 +4,12 @@
  * Covers:
  *  - renders the state pill and line from GET /api/admin/users/:id for each
  *    state; the "Sync pending" indicator follows laptop_roster_dirty
- *  - the Allow toggle PATCHes { allows_laptop_account } and refetches
+ *  - no Allow toggle exists (the login is the account's username and password)
  *  - "Push now" is rendered only while laptop_roster_dirty (repair action);
  *    it POSTs /api/admin/users/:id/laptop/push and toasts the outcome
  *    (success for written, error for failed); a server error is shown
  *    inline and toasted
- *  - describeState / describeOutcome helpers
+ *  - StateLine / describeOutcome helpers
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -17,7 +17,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import UserLaptopCard, {
   describeOutcome,
-  describeState,
+  StateLine,
   type LaptopDetail,
 } from '../../client/src/pages/admin/UserLaptopCard';
 import { ToastProvider } from '../../client/src/context/ToastContext';
@@ -26,7 +26,6 @@ const BASE: LaptopDetail = {
   id: 7,
   role: 'student',
   username: 'alice',
-  allows_laptop_account: true,
   laptop_roster_dirty: false,
   laptop_login_state: 'ready',
 };
@@ -74,17 +73,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('describeState / describeOutcome', () => {
+describe('StateLine / describeOutcome', () => {
   it('has one line per state', () => {
-    expect(describeState(BASE)).toMatch(/Ready.*alice/);
-    expect(describeState({ ...BASE, laptop_login_state: 'needs_password' })).toMatch(/No password set/);
-    expect(describeState({ ...BASE, laptop_login_state: 'invalid_username', username: 'Alice' })).toMatch(
-      /"Alice" can't be used on laptops/,
+    const text = (d: Parameters<typeof StateLine>[0]['detail']) => {
+      const { container, unmount } = render(<StateLine detail={d} />);
+      const t = container.textContent;
+      unmount();
+      return t;
+    };
+    expect(text(BASE)).toBe('Logs in on League laptops as alice with the account password.');
+    expect(text({ ...BASE, laptop_login_state: 'needs_password' })).toBe(
+      'Set a password (Credentials card above) to enable laptop login.',
     );
-    expect(describeState({ ...BASE, laptop_login_state: 'invalid_username', username: null })).toMatch(/No username set/);
-    expect(describeState({ ...BASE, laptop_login_state: 'locked' })).toMatch(/Admins/);
-    expect(describeState({ ...BASE, laptop_login_state: 'disabled', allows_laptop_account: false })).toMatch(/Turned off/);
-    expect(describeState({ ...BASE, laptop_login_state: 'disabled', allows_laptop_account: true })).toMatch(/inactive/);
+    expect(text({ ...BASE, laptop_login_state: 'invalid_username', username: 'Alice' })).toBe(
+      'Username must be 3–32 lowercase letters, digits or dashes to work on laptops.',
+    );
+    expect(text({ ...BASE, laptop_login_state: 'disabled' })).toBe(
+      'Account is deactivated; laptop login is locked.',
+    );
   });
 
   it('has one toast per outcome', () => {
@@ -101,9 +107,9 @@ describe('UserLaptopCard — render', () => {
     setFetch({ current: BASE }, () => jsonResponse(200, {}));
     renderCard();
     expect(await screen.findByTestId('laptop-state-pill')).toHaveTextContent('ready');
-    expect(screen.getByTestId('laptop-state-line')).toHaveTextContent('logs in on League laptops as alice');
+    expect(screen.getByTestId('laptop-state-line')).toHaveTextContent('Logs in on League laptops as alice with the account password.');
     expect(screen.queryByTestId('laptop-dirty')).not.toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Allow laptop login' })).toBeChecked();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     // Writes are automatic; Push now is a repair action for dirty rows only.
     expect(screen.queryByRole('button', { name: 'Push now' })).not.toBeInTheDocument();
     expect(calls[0]).toMatchObject({ url: '/api/admin/users/7', method: 'GET' });
@@ -116,60 +122,31 @@ describe('UserLaptopCard — render', () => {
     expect(screen.getByRole('button', { name: 'Push now' })).toBeEnabled();
   });
 
-  it('shows disabled with the toggle off', async () => {
-    setFetch(
-      { current: { ...BASE, allows_laptop_account: false, laptop_login_state: 'disabled' } },
-      () => jsonResponse(200, {}),
-    );
+  it('shows disabled for a deactivated account', async () => {
+    setFetch({ current: { ...BASE, laptop_login_state: 'disabled' } }, () => jsonResponse(200, {}));
     renderCard();
     expect(await screen.findByTestId('laptop-state-pill')).toHaveTextContent('disabled');
-    expect(screen.getByRole('checkbox', { name: 'Allow laptop login' })).not.toBeChecked();
-    expect(screen.getByTestId('laptop-state-line')).toHaveTextContent('Turned off for this account');
+    expect(screen.getByTestId('laptop-state-line')).toHaveTextContent(
+      'Account is deactivated; laptop login is locked.',
+    );
   });
 
   it('shows needs_password and invalid_username lines', async () => {
     const state = { current: { ...BASE, laptop_login_state: 'needs_password' as const } };
     setFetch(state, () => jsonResponse(200, {}));
     const { unmount } = renderCard();
-    expect(await screen.findByTestId('laptop-state-line')).toHaveTextContent('No password set');
+    expect(await screen.findByTestId('laptop-state-line')).toHaveTextContent('Set a password (Credentials card above)');
     unmount();
 
     setFetch({ current: { ...BASE, username: 'Alice', laptop_login_state: 'invalid_username' } }, () =>
       jsonResponse(200, {}),
     );
     renderCard();
-    expect(await screen.findByTestId('laptop-state-line')).toHaveTextContent(`"Alice" can't be used on laptops`);
+    expect(await screen.findByTestId('laptop-state-line')).toHaveTextContent('Username must be 3–32 lowercase letters');
   });
 });
 
 describe('UserLaptopCard — actions', () => {
-  it('toggling Allow PATCHes allows_laptop_account and refetches', async () => {
-    const state = { current: BASE };
-    setFetch(state, (call) => {
-      state.current = {
-        ...BASE,
-        allows_laptop_account: call.body.allows_laptop_account,
-        laptop_login_state: call.body.allows_laptop_account ? 'ready' : 'disabled',
-      };
-      return jsonResponse(200, { allowsLaptopAccount: call.body.allows_laptop_account });
-    });
-    renderCard();
-    const box = await screen.findByRole('checkbox', { name: 'Allow laptop login' });
-    expect(box).toBeChecked();
-
-    fireEvent.click(box);
-
-    await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0]).toMatchObject({
-      url: '/api/admin/users/7/permissions',
-      method: 'PATCH',
-      body: { allows_laptop_account: false },
-    });
-    await waitFor(() => expect(screen.getByTestId('laptop-state-pill')).toHaveTextContent('disabled'));
-    expect(screen.getByRole('checkbox', { name: 'Allow laptop login' })).not.toBeChecked();
-    expect(screen.getByText('Laptop login turned off')).toBeInTheDocument();
-  });
-
   it('Push now POSTs the push endpoint and toasts the outcome', async () => {
     const state = { current: { ...BASE, laptop_roster_dirty: true } };
     setFetch(state, () => {

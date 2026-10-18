@@ -10,7 +10,7 @@
  * Covers:
  *  - 401 unauthenticated, 403 student, 404 unknown user
  *  - set username: Login row `admin:<id>:<username>`, audit, laptop rule
- *    message (flag on), legacy rules (flag off), 409 when taken
+ *    message (always), 409 when taken
  *  - set password: POST /api/auth/login works, laptop hash verifies, roster
  *    entry written, audit without the password, min length
  *  - generate: three words, returned once, login works
@@ -172,7 +172,6 @@ describe('GET /api/admin/users/:id/credentials', () => {
     expect(res.body).toEqual({
       username: 'alice',
       hasPassword: true,
-      allowsLaptopAccount: true,
       laptopLogin: true,
       displayName: 'Alice Liddell',
       primaryEmail: 'alice@example.com',
@@ -181,9 +180,9 @@ describe('GET /api/admin/users/:id/credentials', () => {
     expect(JSON.stringify(res.body)).not.toMatch(/deadbeef|\$6\$/);
   });
 
-  it('laptopLogin is true for an eligible student and false with the flag off', async () => {
+  it('laptopLogin is true for an eligible user and the legacy flag has no effect', async () => {
     const on = await makeUser({ username: 'alice', password_hash: 'a:b', laptop_password_hash: '$6$x$y' });
-    const off = await makeUser({
+    const flagOff = await makeUser({
       username: 'bob',
       password_hash: 'a:b',
       laptop_password_hash: '$6$x$y',
@@ -192,9 +191,9 @@ describe('GET /api/admin/users/:id/credentials', () => {
     const { agent } = await loginAs('admin@example.com');
 
     expect((await agent.get(`/api/admin/users/${on.id}/credentials`)).body.laptopLogin).toBe(true);
-    const offBody = (await agent.get(`/api/admin/users/${off.id}/credentials`)).body;
-    expect(offBody.laptopLogin).toBe(false);
-    expect(offBody.allowsLaptopAccount).toBe(false);
+    const body = (await agent.get(`/api/admin/users/${flagOff.id}/credentials`)).body;
+    expect(body.laptopLogin).toBe(true);
+    expect(body).not.toHaveProperty('allowsLaptopAccount');
   });
 });
 
@@ -260,14 +259,13 @@ describe('PUT /api/admin/users/:id/credentials — username', () => {
     expect(await auditEvents('admin_set_username')).toHaveLength(0);
   });
 
-  it('applies the legacy rules when allows_laptop_account is off (Alice → alice)', async () => {
+  it('applies the laptop rules whatever the legacy allows_laptop_account flag says', async () => {
     const user = await makeUser({ allows_laptop_account: false });
     const { agent } = await loginAs('admin@example.com');
 
     const res = await agent.put(`/api/admin/users/${user.id}/credentials`).send({ username: 'Alice' });
 
-    expect(res.status).toBe(200);
-    expect(res.body.username).toBe('alice');
+    expect(res.status).toBe(400);
   });
 
   it('returns 409 when another user has the username', async () => {
@@ -466,13 +464,13 @@ describe('POST /api/admin/users/:id/credentials/email', () => {
     expect(JSON.stringify(events)).not.toContain('purple-cactus-river');
   });
 
-  it('omits the password line when none is supplied and the laptop line when the flag is off', async () => {
+  it('omits the password line when none is supplied and the laptop line when the user is inactive', async () => {
     const user = await makeUser({
       display_name: 'Bob',
       username: 'bob',
       password_hash: 'a:b',
       laptop_password_hash: '$6$x$y',
-      allows_laptop_account: false,
+      is_active: false,
     });
     const { agent } = await loginAs('admin@example.com');
 

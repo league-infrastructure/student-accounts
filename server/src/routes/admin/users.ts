@@ -35,7 +35,6 @@ adminUsersRouter.get('/users/:id', async (req, res, next) => {
       // Laptop login (sprint 002 "laptop accounts" T006): what the admin
       // detail card shows. laptop_login_state is LaptopAccountService.stateFor.
       username: (user as any).username ?? null,
-      allows_laptop_account: (user as any).allows_laptop_account ?? false,
       laptop_roster_dirty: (user as any).laptop_roster_dirty ?? false,
       laptop_login_state: req.services.laptopAccounts.stateFor(user as any).state,
       logins: user.logins.map((l: any) => ({
@@ -542,11 +541,11 @@ adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
 //
 // Body (all optional):
 //   { allows_oauth_client?: boolean, allows_llm_proxy?: boolean,
-//     allows_league_account?: boolean, allows_laptop_account?: boolean }
+//     allows_league_account?: boolean }
 //
-// Returns 200 with { allowsOauthClient, allowsLlmProxy, allowsLeagueAccount,
-// allowsLaptopAccount }. A change to allows_laptop_account reconciles the
-// laptop roster entry (locks it when off; sprint 002 T004).
+// Returns 200 with { allowsOauthClient, allowsLlmProxy, allowsLeagueAccount }.
+// `allows_laptop_account` is accepted and ignored (old clients): a laptop login
+// is just the account's username and password.
 // Returns 400 if any provided field is not a boolean.
 // Returns 404 if the user does not exist.
 // ---------------------------------------------------------------------------
@@ -564,7 +563,6 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
       'allows_oauth_client',
       'allows_llm_proxy',
       'allows_league_account',
-      'allows_laptop_account',
     ] as const;
     for (const field of PERMISSION_FIELDS) {
       if (field in body && typeof body[field] !== 'boolean') {
@@ -576,7 +574,6 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
       allows_oauth_client?: boolean;
       allows_llm_proxy?: boolean;
       allows_league_account?: boolean;
-      allows_laptop_account?: boolean;
     } = {};
     for (const field of PERMISSION_FIELDS) {
       if (field in body) {
@@ -588,18 +585,11 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
       leagueAccountFlipped,
       llmProxyFlipped,
       llmProxyUnflipped,
-      laptopAccountChanged,
       ...permissions
     } = await req.services.users.setPermissions(id, patch, actorId);
 
     adminBus.notify('users');
     userBus.notifyUser(id);
-
-    // Laptop login flag changed: write (on) or lock (off) the roster entry.
-    // Awaited because it never throws; a failure marks the user dirty.
-    if (laptopAccountChanged) {
-      await req.services.laptopAccounts.reconcile(id, actorId);
-    }
 
     // Fire-and-soft-fail: if allows_league_account just flipped false→true,
     // try to provision a Workspace account for the user. Failure does not
@@ -695,14 +685,12 @@ function serializeUser(user: any) {
     // does not show 'laptop_import' rows as new.
     createdVia: user.created_via ?? null,
     // True when this user can log in on a League laptop right now: has a
-    // username and a roster-compatible password hash, is active, and has
-    // not been opted out. Only the boolean leaves the server; the hash
+    // username and a roster-compatible password hash and is active. Only the boolean leaves the server; the hash
     // itself is never serialized.
     laptopLogin: Boolean(
       user.username &&
         user.laptop_password_hash &&
-        user.is_active !== false &&
-        (user.allows_laptop_account ?? true),
+        user.is_active !== false,
     ),
     createdAt: user.created_at,
     updatedAt: user.updated_at,

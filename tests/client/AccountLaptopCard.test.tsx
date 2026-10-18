@@ -4,7 +4,7 @@
  * Covers:
  *  - the title and one line per state: ready (username shown, "Other..."),
  *    needs_password, invalid_username (with and without a username),
- *    locked and disabled
+ *    disabled
  *  - the next-step link targets the Username & Password fields when the
  *    account has credentials, and opens the Add username/password flow when
  *    it does not
@@ -31,7 +31,7 @@ describe('AccountLaptopCard — states', () => {
     expect(screen.getByTestId('laptop-login-state')).toHaveAttribute('data-state', 'ready');
     expect(screen.getByText('alice')).toBeInTheDocument();
     expect(screen.getByTestId('laptop-login-state')).toHaveTextContent(
-      'Use username alice and your password at the login screen on a League laptop: choose Other...',
+      'At the login screen on a League laptop choose Other... and use username alice and your password.',
     );
   });
 
@@ -55,15 +55,11 @@ describe('AccountLaptopCard — states', () => {
     expect(screen.getByRole('link', { name: 'Choose a username' })).toHaveAttribute('href', '#ups-username');
   });
 
-  it('locked and disabled: turned off, ask an instructor', () => {
-    const { unmount } = render(
-      <AccountLaptopCard laptop={laptop({ enabled: false, state: 'locked' })} hasCredentials onAddCredentials={vi.fn()} />,
-    );
-    expect(screen.getByText('Laptop login is turned off for this account. Ask an instructor.')).toBeInTheDocument();
-    unmount();
-
+  it('disabled: account deactivated, ask an instructor', () => {
     renderCard(laptop({ enabled: false, state: 'disabled' }));
-    expect(screen.getByText('Laptop login is turned off for this account. Ask an instructor.')).toBeInTheDocument();
+    expect(
+      screen.getByText('This account is deactivated, so laptop login is locked. Ask an instructor.'),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 });

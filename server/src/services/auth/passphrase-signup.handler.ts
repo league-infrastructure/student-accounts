@@ -42,8 +42,7 @@ const auditService = new AuditService();
 // ---------------------------------------------------------------------------
 
 /**
- * New accounts get a laptop login by default (`allows_laptop_account` is
- * true), so the username must work as a laptop roster id: 3–32 chars of
+ * The username is the laptop login, so it must work as a laptop roster id: 3–32 chars of
  * `[a-z0-9-]`, starting with a letter or digit, not a reserved system name.
  * Case is not folded: Unix logins are case-sensitive.
  */

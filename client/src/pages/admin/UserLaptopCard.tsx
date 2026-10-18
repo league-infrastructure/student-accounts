@@ -3,11 +3,10 @@
  * accounts" T006, SUC-007).
  *
  * Rendered inside UserDetailPanel with the same inline-style vocabulary as
- * the neighbouring cards. Shows the state line the student sees, plus the
- * three things an instructor can do about it:
+ * the neighbouring cards. The laptop login is simply the account's username
+ * and password (no separate switch, admins included). Shows the state line,
+ * plus what an instructor can do about a failed sync:
  *
- *   - "Allow laptop login" toggle → PATCH /api/admin/users/:id/permissions
- *                                   { allows_laptop_account }
  *   - "Sync pending" indicator     — laptop_roster_dirty: the last roster
  *                                   write failed; the hourly job retries
  *   - "Push now"                   → POST /api/admin/users/:id/laptop/push
@@ -28,7 +27,6 @@ import { useToast } from '../../context/ToastContext';
 
 export type LaptopLoginStateName =
   | 'ready'
-  | 'locked'
   | 'disabled'
   | 'needs_password'
   | 'invalid_username';
@@ -38,7 +36,6 @@ export interface LaptopDetail {
   id: number;
   role: string;
   username: string | null;
-  allows_laptop_account: boolean;
   laptop_roster_dirty: boolean;
   laptop_login_state: LaptopLoginStateName;
 }
@@ -56,23 +53,21 @@ interface Props {
 }
 
 /** One line per state, for an instructor. */
-export function describeState(detail: Pick<LaptopDetail, 'laptop_login_state' | 'username' | 'allows_laptop_account'>): string {
+export function StateLine({ detail }: { detail: Pick<LaptopDetail, 'laptop_login_state' | 'username'> }) {
   switch (detail.laptop_login_state) {
     case 'ready':
-      return `Ready: logs in on League laptops as ${detail.username}.`;
+      return (
+        <>
+          Logs in on League laptops as <strong>{detail.username}</strong> with the account password.
+        </>
+      );
     case 'needs_password':
-      return 'No password set. Set one in Credentials above to enable laptop login.';
+      return <>Set a password (Credentials card above) to enable laptop login.</>;
     case 'invalid_username':
-      return detail.username
-        ? `Username "${detail.username}" can't be used on laptops: 3-32 lowercase letters, digits or dashes.`
-        : 'No username set. Set one in Credentials above to enable laptop login.';
-    case 'locked':
-      return 'Admins do not get laptop logins.';
+      return <>Username must be 3–32 lowercase letters, digits or dashes to work on laptops.</>;
     case 'disabled':
     default:
-      return detail.allows_laptop_account
-        ? 'Account is inactive; the roster entry is locked.'
-        : 'Turned off for this account; the roster entry is locked.';
+      return <>Account is deactivated; laptop login is locked.</>;
   }
 }
 
@@ -136,21 +131,6 @@ export default function UserLaptopCard({ userId, userName }: Props) {
     }
   }
 
-  async function setAllowed(allowed: boolean) {
-    const ok = await run(async () => {
-      const res = await fetch(`/api/admin/users/${userId}/permissions`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ allows_laptop_account: allowed }),
-      });
-      if (!res.ok) throw new Error(await readError(res));
-      return true;
-    });
-    if (!ok) return;
-    showToast(allowed ? 'Laptop login turned on' : 'Laptop login turned off', 'success');
-    await refetch();
-  }
-
   async function pushNow() {
     const result = await run(async () => {
       const res = await fetch(`/api/admin/users/${userId}/laptop/push`, { method: 'POST' });
@@ -193,19 +173,8 @@ export default function UserLaptopCard({ userId, userName }: Props) {
             )}
           </div>
           <p data-testid="laptop-state-line" style={stateLineStyle}>
-            {describeState(detail)}
+            <StateLine detail={detail} />
           </p>
-
-          <label style={checkboxLabelStyle}>
-            <input
-              type="checkbox"
-              checked={detail.allows_laptop_account}
-              disabled={busy}
-              onChange={(e) => void setAllowed(e.target.checked)}
-              aria-label="Allow laptop login"
-            />
-            Allow laptop login
-          </label>
 
           {detail.laptop_roster_dirty && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -311,14 +280,6 @@ const dirtyPillStyle: React.CSSProperties = {
   border: '1px solid #fcd34d',
   borderRadius: 999,
   fontWeight: 600,
-};
-
-const checkboxLabelStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 8,
-  alignItems: 'center',
-  fontSize: 13,
-  margin: '4px 0 12px',
 };
 
 const hintStyle: React.CSSProperties = { fontSize: 12, color: '#94a3b8' };

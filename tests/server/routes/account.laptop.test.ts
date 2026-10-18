@@ -9,7 +9,7 @@
  * Covers:
  *  - 401 without a session
  *  - the five states as the row changes (ready, needs_password,
- *    invalid_username, disabled, locked for an admin)
+ *    invalid_username, disabled, ready for an admin)
  *  - dirty flag passthrough; lastWritten absent until a roster write, then
  *    the ISO time of that audit event
  *  - GET /api/account carries the same object as profile.laptopLogin
@@ -98,18 +98,25 @@ describe('GET /api/account/laptop — states', () => {
     expect(res.body).toMatchObject({ enabled: false, state: 'invalid_username', username: 'Alice' });
   });
 
-  it('disabled when the flag is off', async () => {
+  it('disabled when the account is deactivated', async () => {
     const { agent, id } = await loginAs('alice@example.com');
-    await setRow(id, { username: 'alice', laptop_password_hash: HASH, allows_laptop_account: false });
+    await setRow(id, { username: 'alice', laptop_password_hash: HASH, is_active: false });
     const res = await agent.get('/api/account/laptop');
     expect(res.body).toMatchObject({ enabled: false, state: 'disabled', username: 'alice' });
   });
 
-  it('locked for an admin', async () => {
+  it('the legacy allows_laptop_account flag has no effect', async () => {
+    const { agent, id } = await loginAs('alice@example.com');
+    await setRow(id, { username: 'alice', laptop_password_hash: HASH, allows_laptop_account: false });
+    const res = await agent.get('/api/account/laptop');
+    expect(res.body).toMatchObject({ enabled: true, state: 'ready', username: 'alice' });
+  });
+
+  it('ready for an admin: the login is just the username and password', async () => {
     const { agent, id } = await loginAs('admin@example.com', 'admin');
     await setRow(id, { username: 'admin-1', laptop_password_hash: HASH });
     const res = await agent.get('/api/account/laptop');
-    expect(res.body).toMatchObject({ enabled: false, state: 'locked', username: 'admin-1' });
+    expect(res.body).toMatchObject({ enabled: true, state: 'ready', username: 'admin-1' });
   });
 
   it('ready for staff', async () => {
@@ -159,7 +166,7 @@ describe('GET /api/account/laptop — lastWritten', () => {
     const { agent, id } = await loginAs('alice@example.com');
     await setRow(id, { username: 'alice', laptop_password_hash: HASH });
     roster.seed({ id: 'alice', display_name: 'Alice', password_hash: HASH, created: '20260825T170542Z', created_host: 'x' });
-    await setRow(id, { allows_laptop_account: false });
+    await setRow(id, { is_active: false });
 
     expect(await laptopAccounts.reconcile(id, null)).toBe('locked');
 

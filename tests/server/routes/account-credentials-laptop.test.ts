@@ -13,7 +13,7 @@
  *  - username rules with the flag on: Alice, student, ab, a.b rejected with
  *    the laptop message; alice-2 accepted; an id in the roster for someone
  *    else (or nobody here) rejected with the "already used" message
- *  - flag off → legacy rules (Alice → alice) and no roster traffic
+ *  - the legacy flag being off changes nothing: laptop rules, roster writes
  *  - write failure → 200, password changed, laptop_roster_dirty; the job
  *    clears it once writes work
  *  - display-name edits reach the roster
@@ -286,19 +286,20 @@ describe('PATCH /api/account/credentials — laptop username rules (flag on)', (
   });
 });
 
-describe('PATCH /api/account/credentials — legacy rules when allows_laptop_account is off', () => {
-  it('lower-cases Alice to alice and never touches the roster', async () => {
+describe('PATCH /api/account/credentials — the legacy allows_laptop_account flag has no effect', () => {
+  it('still applies the laptop rules and writes the roster', async () => {
     const { agent, id } = await loginAs('alice@example.com', 'Alice');
     await (prisma as any).user.update({ where: { id }, data: { allows_laptop_account: false } });
 
-    const res = await agent.patch('/api/account/credentials').send({ username: 'Alice', newPassword: 'purple-cactus-river' });
+    const bad = await agent.patch('/api/account/credentials').send({ username: 'Alice', newPassword: 'purple-cactus-river' });
+    expect(bad.status).toBe(400);
+    expect(roster.writes).toHaveLength(0);
 
+    const res = await agent.patch('/api/account/credentials').send({ username: 'alice', newPassword: 'purple-cactus-river' });
     expect(res.status, res.text).toBe(200);
     expect(res.body).toEqual({ id, username: 'alice' });
-    const user = await reload(id);
-    expect(user.laptop_password_hash).toMatch(/^\$6\$/); // kept for when the flag comes back on
-    expect(roster.writes).toHaveLength(0);
-    expect(user.laptop_roster_dirty).toBe(false);
+    expect((await reload(id)).laptop_password_hash).toMatch(/^\$6\$/);
+    expect(roster.writes.length).toBeGreaterThan(0);
   });
 });
 

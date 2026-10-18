@@ -305,7 +305,7 @@ describe('GET /api/admin/users — createdVia and laptopLogin', () => {
     expect(res.body.find((u: any) => u.id === noHash.id).laptopLogin).toBe(false);
   });
 
-  it('laptopLogin is false when allows_laptop_account is off', async () => {
+  it('laptopLogin ignores the legacy allows_laptop_account flag', async () => {
     const { agent } = await adminAgent();
     const optedOut = await makeUser({
       primary_email: 'optedout@example.com',
@@ -319,7 +319,7 @@ describe('GET /api/admin/users — createdVia and laptopLogin', () => {
     expect(res.status).toBe(200);
 
     const found = res.body.find((u: any) => u.id === optedOut.id);
-    expect(found.laptopLogin).toBe(false);
+    expect(found.laptopLogin).toBe(true);
   });
 
   it('every row has createdVia (string) and laptopLogin (boolean) and no laptop_password_hash', async () => {

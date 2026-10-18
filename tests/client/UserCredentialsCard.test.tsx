@@ -28,7 +28,6 @@ import { ToastProvider } from '../../client/src/context/ToastContext';
 const BASE: CredentialsState = {
   username: 'alice',
   hasPassword: false,
-  allowsLaptopAccount: true,
   laptopLogin: false,
   displayName: 'Alice Liddell',
   primaryEmail: 'alice@example.com',

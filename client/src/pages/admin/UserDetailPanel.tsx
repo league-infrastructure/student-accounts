@@ -4,7 +4,7 @@
  * Layout (top-down):
  *   1. Identity card — display name + all known email addresses.
  *   1a. Credentials card — username / password / email credentials (admin).
- *   1a'. Laptop login card — state, allow toggle, dirty indicator, Push now.
+ *   1a'. Laptop login card — state, dirty indicator, Push now.
  *   2. Account blocks, one per account kind:
  *        - External Google (read-only; only shown if present)
  *        - League         (read-only; only shown if present)
@@ -59,7 +59,6 @@ interface UserDetail {
   externalAccounts: ExternalAccount[];
   /** Laptop login fields (sprint 002 T006); read by UserLaptopCard. */
   username?: string | null;
-  allows_laptop_account?: boolean;
   laptop_roster_dirty?: boolean;
   laptop_login_state?: string;
 }

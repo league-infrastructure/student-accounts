@@ -25,7 +25,6 @@ import { useToast } from '../../context/ToastContext';
 export interface CredentialsState {
   username: string | null;
   hasPassword: boolean;
-  allowsLaptopAccount: boolean;
   laptopLogin: boolean;
   displayName: string;
   primaryEmail: string;
@@ -275,11 +274,9 @@ export default function UserCredentialsCard({ userId, userName }: Props) {
             Save username
           </button>
         </div>
-        {state?.allowsLaptopAccount && (
-          <div style={hintStyle}>
-            Laptop login rules: 3–32 lowercase letters, digits and dashes, starting with a letter or digit.
-          </div>
-        )}
+        <div style={hintStyle}>
+          Laptop login rules: 3–32 lowercase letters, digits and dashes, starting with a letter or digit.
+        </div>
       </div>
 
       {/* Password ----------------------------------------------------------- */}

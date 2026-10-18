@@ -13,8 +13,8 @@
  *  - 200 with { written, locked, unchanged, skipped, failed } counts and a
  *    laptop_push_all audit event with the admin as actor
  *  - write failures are counted and leave the users dirty
- *  - PATCH /users/:id/permissions allows_laptop_account false → entry `!`,
- *    true → real hash again; response carries allowsLaptopAccount
+ *  - PATCH /users/:id/permissions: the retired allows_laptop_account is
+ *    ignored (no roster write, no audit); other flags do not touch the roster
  *  - DELETE /users/:id and POST /users/:id/deny-approval lock the entry
  *  - PUT /users/:id displayName → entry display_name updated
  *
@@ -23,8 +23,7 @@
  *    503 not configured; 200 { outcome, laptopLogin } for written / locked /
  *    unchanged / skipped; a write failure is outcome 'failed' with
  *    dirty: true; the admin is the audit actor
- *  - GET /users/:id carries username, allows_laptop_account,
- *    laptop_roster_dirty and laptop_login_state
+ *  - GET /users/:id carries username, laptop_roster_dirty and laptop_login_state
  */
 
 import request from 'supertest';
@@ -199,51 +198,25 @@ describe('POST /api/admin/laptop/push-all — admin', () => {
 // Admin paths that reconcile the roster
 // ---------------------------------------------------------------------------
 
-describe('PATCH /api/admin/users/:id/permissions — allows_laptop_account', () => {
-  it('turning the flag off locks the entry; turning it on writes the hash again', async () => {
+describe('PATCH /api/admin/users/:id/permissions — retired allows_laptop_account', () => {
+  it('is ignored: the entry stays usable, nothing is written or audited', async () => {
     const user = await makeLaptopUser('alice');
     roster.seed(entry('alice'));
-    const { agent, id: adminId } = await loginAs('admin@example.com');
-
-    const off = await agent
-      .patch(`/api/admin/users/${user.id}/permissions`)
-      .send({ allows_laptop_account: false });
-    expect(off.status).toBe(200);
-    expect(off.body).toMatchObject({ allowsLaptopAccount: false });
-    expect((await reload(user.id)).allows_laptop_account).toBe(false);
-    expect(roster.entries.get('alice')!.password_hash).toBe('!');
-    expect(roster.entries.get('alice')!.created).toBe('20260825T170542Z');
-
-    const locked = await (prisma as any).auditEvent.findMany({ where: { action: 'laptop_roster_locked' } });
-    expect(locked).toHaveLength(1);
-    expect(locked[0].actor_user_id).toBe(adminId);
-    expect(locked[0].target_user_id).toBe(user.id);
-
-    const on = await agent
-      .patch(`/api/admin/users/${user.id}/permissions`)
-      .send({ allows_laptop_account: true });
-    expect(on.status).toBe(200);
-    expect(on.body).toMatchObject({ allowsLaptopAccount: true });
-    expect(roster.entries.get('alice')!.password_hash).toBe(HASH);
-  });
-
-  it('includes the flag in the user_permission_changed audit before/after', async () => {
-    const user = await makeLaptopUser('alice');
     const { agent } = await loginAs('admin@example.com');
 
-    await agent
+    const res = await agent
       .patch(`/api/admin/users/${user.id}/permissions`)
-      .send({ allows_laptop_account: false })
-      .expect(200);
+      .send({ allows_laptop_account: false });
 
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('allowsLaptopAccount');
+    expect((await reload(user.id)).allows_laptop_account).toBe(true);
+    expect(roster.writes).toHaveLength(0);
+    expect(roster.entries.get('alice')!.password_hash).toBe(HASH);
     const events = await (prisma as any).auditEvent.findMany({
       where: { action: 'user_permission_changed', target_user_id: user.id },
     });
-    expect(events).toHaveLength(1);
-    expect(events[0].details).toMatchObject({
-      before: { allows_laptop_account: true },
-      after: { allows_laptop_account: false },
-    });
+    expect(events).toHaveLength(0);
   });
 
   it('does not touch the roster when another flag changes', async () => {
@@ -254,31 +227,6 @@ describe('PATCH /api/admin/users/:id/permissions — allows_laptop_account', () 
     await agent.patch(`/api/admin/users/${user.id}/permissions`).send({ allows_oauth_client: true }).expect(200);
 
     expect(roster.writes).toHaveLength(0);
-  });
-
-  it('returns 400 when allows_laptop_account is not a boolean', async () => {
-    const user = await makeLaptopUser('alice');
-    const { agent } = await loginAs('admin@example.com');
-
-    const res = await agent.patch(`/api/admin/users/${user.id}/permissions`).send({ allows_laptop_account: 'no' });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/allows_laptop_account/);
-  });
-
-  it('a write failure does not fail the flag change; the user is marked dirty', async () => {
-    const user = await makeLaptopUser('alice');
-    roster.seed(entry('alice'));
-    roster.failWrites = true;
-    const { agent } = await loginAs('admin@example.com');
-
-    const res = await agent.patch(`/api/admin/users/${user.id}/permissions`).send({ allows_laptop_account: false });
-
-    expect(res.status).toBe(200);
-    const after = await reload(user.id);
-    expect(after.allows_laptop_account).toBe(false);
-    expect(after.laptop_roster_dirty).toBe(true);
-    expect(roster.entries.get('alice')!.password_hash).toBe(HASH); // unchanged in the bucket
   });
 });
 
@@ -403,8 +351,8 @@ describe('POST /api/admin/users/:id/laptop/push — outcomes', () => {
     expect(events[0].target_user_id).toBe(user.id);
   });
 
-  it('locks the entry for a flag-off user and reports disabled', async () => {
-    const user = await makeLaptopUser('alice', { allows_laptop_account: false });
+  it('locks the entry for a deactivated user and reports disabled', async () => {
+    const user = await makeLaptopUser('alice', { is_active: false });
     roster.seed(entry('alice'));
     const { agent } = await loginAs('admin@example.com');
 
@@ -454,7 +402,7 @@ describe('POST /api/admin/users/:id/laptop/push — outcomes', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /api/admin/users/:id — laptop login fields', () => {
-  it('includes username, the flag, the dirty bit and the computed state', async () => {
+  it('includes username, the dirty bit and the computed state, but not the retired flag', async () => {
     const user = await makeLaptopUser('alice', { laptop_roster_dirty: true });
     const { agent } = await loginAs('admin@example.com');
 
@@ -464,22 +412,21 @@ describe('GET /api/admin/users/:id — laptop login fields', () => {
     expect(res.body).toMatchObject({
       id: user.id,
       username: 'alice',
-      allows_laptop_account: true,
       laptop_roster_dirty: true,
       laptop_login_state: 'ready',
     });
+    expect(res.body).not.toHaveProperty('allows_laptop_account');
   });
 
-  it('reflects the flag and the password in the state', async () => {
-    const off = await makeLaptopUser('bob', { allows_laptop_account: false });
+  it('reflects activity, role and the password in the state', async () => {
+    const off = await makeLaptopUser('bob', { is_active: false });
+    const admin = await makeLaptopUser('root-admin', { role: 'admin', allows_laptop_account: false });
     const noPw = await makeLaptopUser('carol', { laptop_password_hash: null });
     const badName = await makeLaptopUser('Dave');
     const { agent } = await loginAs('admin@example.com');
 
-    expect((await agent.get(`/api/admin/users/${off.id}`)).body).toMatchObject({
-      allows_laptop_account: false,
-      laptop_login_state: 'disabled',
-    });
+    expect((await agent.get(`/api/admin/users/${off.id}`)).body.laptop_login_state).toBe('disabled');
+    expect((await agent.get(`/api/admin/users/${admin.id}`)).body.laptop_login_state).toBe('ready');
     expect((await agent.get(`/api/admin/users/${noPw.id}`)).body.laptop_login_state).toBe('needs_password');
     expect((await agent.get(`/api/admin/users/${badName.id}`)).body).toMatchObject({
       username: 'Dave',

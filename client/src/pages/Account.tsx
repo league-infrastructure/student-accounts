@@ -12,7 +12,7 @@
  * The tile launchpad (AppsZone) was removed in ticket 001.
  *
  * Sprint 002 "laptop accounts" T006: AccountLaptopCard shows the laptop
- * login state (`profile.laptopLogin`) for students and staff.
+ * login state (`profile.laptopLogin`) for every role.
  */
 
 import { useState } from 'react';
@@ -1025,9 +1025,8 @@ export default function Account() {
           </>
         )}
 
-        {/* Laptop login (sprint 002 T006). Admins never get a laptop login,
-            so the card would only ever say "turned off" for them: hidden. */}
-        {data.profile.laptopLogin && data.profile.role !== 'admin' && (
+        {/* Laptop login (sprint 002 T006): the account's username and password, for every role. */}
+        {data.profile.laptopLogin && (
           <>
             <div style={styles.spacer} />
             <AccountLaptopCard

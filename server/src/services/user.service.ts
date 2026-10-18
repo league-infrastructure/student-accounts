@@ -283,7 +283,7 @@ export class UserService {
    * actor is the admin, a password can be generated (three words, see
    * `generatePassword`), and a typed password must be at least
    * `ADMIN_PASSWORD_MIN_LENGTH` characters. Everything else is shared: the
-   * username rules (laptop rules when `allows_laptop_account`), scrypt plus
+   * username rules (the laptop rules), scrypt plus
    * `laptop_password_hash`, the `username` Login row when the user has none
    * (`provider_user_id: 'admin:<userId>:<username>'`), and the roster
    * write-back, which never throws.
@@ -393,7 +393,7 @@ export class UserService {
    * paths so the two can never drift.
    */
   private async credentialData(
-    user: { id: number; allows_laptop_account?: boolean },
+    user: { id: number },
     patch: { username?: string; password?: string },
   ): Promise<Record<string, unknown>> {
     const data: Record<string, unknown> = {};
@@ -412,38 +412,25 @@ export class UserService {
   /**
    * Normalise and validate a username for `user` (sprint 002 T004).
    *
-   * With `allows_laptop_account` on (the default) the laptop rules apply so
+   * The username is the laptop login, so the laptop rules always apply and
    * the same name works at a laptop login screen: `isValidRosterId` (3–32
    * chars of `[a-z0-9-]`, starting with a letter or digit, not a reserved
    * system name; case is NOT folded, Unix logins are case-sensitive) and the
-   * roster must not already hold that id for somebody else. With the flag
-   * off the legacy rules apply: 2–32 chars of `[a-z0-9._-]`, lower-cased.
+   * roster must not already hold that id for somebody else.
    *
    * @throws ValidationError (400) on shape, ConflictError (409) when the
    *         roster id belongs to another account.
    */
   async validateUsername(
     raw: string,
-    user: { id: number | null; allows_laptop_account?: boolean },
+    user: { id: number | null },
   ): Promise<string> {
     const trimmed = (raw ?? '').trim();
-    if (user.allows_laptop_account ?? true) {
-      if (!isValidRosterId(trimmed)) throw new ValidationError(LAPTOP_USERNAME_RULES_MESSAGE);
-      if (this.laptopAccounts && (await this.laptopAccounts.rosterIdTakenByOther(trimmed, user.id))) {
-        throw new ConflictError(LAPTOP_USERNAME_TAKEN_MESSAGE);
-      }
-      return trimmed;
+    if (!isValidRosterId(trimmed)) throw new ValidationError(LAPTOP_USERNAME_RULES_MESSAGE);
+    if (this.laptopAccounts && (await this.laptopAccounts.rosterIdTakenByOther(trimmed, user.id))) {
+      throw new ConflictError(LAPTOP_USERNAME_TAKEN_MESSAGE);
     }
-    const lower = trimmed.toLowerCase();
-    if (lower.length < 2 || lower.length > 32) {
-      throw new ValidationError('Username must be 2–32 characters');
-    }
-    if (!/^[a-z0-9._-]+$/.test(lower)) {
-      throw new ValidationError(
-        'Username must contain only letters, numbers, dots, dashes, underscores',
-      );
-    }
-    return lower;
+    return trimmed;
   }
 
   // -------------------------------------------------------------------------
@@ -525,8 +512,6 @@ export class UserService {
    * flag that is `true` when `allows_league_account` transitioned from `false`
    * to `true` in this call.  The caller (route handler) uses this to decide
    * whether to trigger `provisionUserIfNeeded` as a fail-soft side-effect.
-   * `laptopAccountChanged` tells the caller to reconcile the laptop roster
-   * (sprint 002 T004).
    *
    * @param userId  - Target user primary key.
    * @param patch   - Partial permission update; at least one field is typical.
@@ -539,18 +524,15 @@ export class UserService {
       allows_oauth_client?: boolean;
       allows_llm_proxy?: boolean;
       allows_league_account?: boolean;
-      allows_laptop_account?: boolean;
     },
     actorId: number | null = null,
   ): Promise<{
     allowsOauthClient: boolean;
     allowsLlmProxy: boolean;
     allowsLeagueAccount: boolean;
-    allowsLaptopAccount: boolean;
     leagueAccountFlipped: boolean;
     llmProxyFlipped: boolean;
     llmProxyUnflipped: boolean;
-    laptopAccountChanged: boolean;
   }> {
     const user = await UserRepository.findByIdIncludingInactive(this.prisma, userId);
     if (!user) throw new NotFoundError(`User ${userId} not found`);
@@ -558,14 +540,12 @@ export class UserService {
     const hasChanges =
       patch.allows_oauth_client !== undefined ||
       patch.allows_llm_proxy !== undefined ||
-      patch.allows_league_account !== undefined ||
-      patch.allows_laptop_account !== undefined;
+      patch.allows_league_account !== undefined;
 
     const before = {
       allows_oauth_client: (user as any).allows_oauth_client as boolean,
       allows_llm_proxy: (user as any).allows_llm_proxy as boolean,
       allows_league_account: (user as any).allows_league_account as boolean,
-      allows_laptop_account: (user as any).allows_laptop_account as boolean,
     };
 
     if (!hasChanges) {
@@ -574,11 +554,9 @@ export class UserService {
         allowsOauthClient: before.allows_oauth_client,
         allowsLlmProxy: before.allows_llm_proxy,
         allowsLeagueAccount: before.allows_league_account,
-        allowsLaptopAccount: before.allows_laptop_account,
         leagueAccountFlipped: false,
         llmProxyFlipped: false,
         llmProxyUnflipped: false,
-        laptopAccountChanged: false,
       };
     }
 
@@ -586,7 +564,6 @@ export class UserService {
       allows_oauth_client: patch.allows_oauth_client ?? before.allows_oauth_client,
       allows_llm_proxy: patch.allows_llm_proxy ?? before.allows_llm_proxy,
       allows_league_account: patch.allows_league_account ?? before.allows_league_account,
-      allows_laptop_account: patch.allows_laptop_account ?? before.allows_laptop_account,
     };
 
     await this.prisma.$transaction(async (tx: any) => {
@@ -605,17 +582,14 @@ export class UserService {
       !before.allows_league_account && after.allows_league_account;
     const llmProxyFlipped = !before.allows_llm_proxy && after.allows_llm_proxy;
     const llmProxyUnflipped = before.allows_llm_proxy && !after.allows_llm_proxy;
-    const laptopAccountChanged = before.allows_laptop_account !== after.allows_laptop_account;
 
     return {
       allowsOauthClient: after.allows_oauth_client,
       allowsLlmProxy: after.allows_llm_proxy,
       allowsLeagueAccount: after.allows_league_account,
-      allowsLaptopAccount: after.allows_laptop_account,
       leagueAccountFlipped,
       llmProxyFlipped,
       llmProxyUnflipped,
-      laptopAccountChanged,
     };
   }
 }

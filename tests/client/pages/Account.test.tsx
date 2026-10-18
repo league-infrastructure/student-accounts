@@ -506,7 +506,7 @@ describe('Account page — Laptop login card', () => {
     const card = await screen.findByTestId('laptop-login-card');
     expect(card).toHaveTextContent('Laptop login');
     expect(screen.getByTestId('laptop-login-state')).toHaveAttribute('data-state', 'ready');
-    expect(screen.getByTestId('laptop-login-state')).toHaveTextContent('Use username alice and your password');
+    expect(screen.getByTestId('laptop-login-state')).toHaveTextContent('use username alice and your password');
     expect(screen.queryByTestId('laptop-login-syncing')).not.toBeInTheDocument();
   });
 
@@ -554,11 +554,11 @@ describe('Account page — Laptop login card', () => {
     expect(screen.queryByTestId('laptop-login-card')).not.toBeInTheDocument();
   });
 
-  it('is hidden for admins even when the server reports a state', async () => {
+  it('is shown for admins too', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
     (globalThis as any).fetch = makeFetch(
       true,
-      { profile: { laptopLogin: { enabled: false, state: 'locked', username: null, dirty: false } } },
+      { profile: { laptopLogin: { enabled: true, state: 'ready', username: 'root-admin', dirty: false } } },
       undefined,
       ADMIN_ACCOUNT_BASE,
     );
@@ -566,7 +566,7 @@ describe('Account page — Laptop login card', () => {
     renderAccount();
 
     await waitFor(() => expect(screen.getAllByText('admin@example.com').length).toBeGreaterThan(0));
-    expect(screen.queryByTestId('laptop-login-card')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('laptop-login-card')).toBeInTheDocument();
   });
 });
 

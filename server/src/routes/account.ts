@@ -505,8 +505,7 @@ accountRouter.get(
 //   if one does not already exist.
 //
 // Laptop accounts (sprint 002 T004): UserService.updateCredentials stores the
-// SHA-512 crypt hash alongside scrypt, applies the laptop username rules when
-// allows_laptop_account is on, and reconciles the roster entry (never throws).
+// SHA-512 crypt hash alongside scrypt, applies the laptop username rules, and reconciles the roster entry (never throws).
 accountRouter.patch(
   '/account/credentials',
   requireAuth,

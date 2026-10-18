@@ -7,10 +7,11 @@
  * per state, each telling the student the one thing to do next:
  *
  *   ready            — use username + password; choose "Other..." on the laptop
+ *                      (the laptop login is just the account's username and password)
  *   needs_password   — set a password (link to the Username & Password section,
  *                      or the Add username/password flow when there is none yet)
  *   invalid_username — change the username (link to the username field)
- *   locked/disabled  — turned off; ask an instructor
+ *   disabled         — account deactivated; ask an instructor
  *
  * `dirty` adds a small "Syncing to laptops…" note: the last roster write
  * failed and the hourly job will retry.
@@ -21,7 +22,6 @@
 
 export type LaptopLoginStateName =
   | 'ready'
-  | 'locked'
   | 'disabled'
   | 'needs_password'
   | 'invalid_username';
@@ -66,8 +66,8 @@ function StateLine({ laptop, hasCredentials, onAddCredentials }: Props) {
     case 'ready':
       return (
         <p style={styles.text}>
-          Use username <strong style={styles.username}>{laptop.username}</strong> and your
-          password at the login screen on a League laptop: choose <em>Other...</em>
+          At the login screen on a League laptop choose <em>Other...</em> and use username{' '}
+          <strong style={styles.username}>{laptop.username}</strong> and your password.
         </p>
       );
 
@@ -105,11 +105,10 @@ function StateLine({ laptop, hasCredentials, onAddCredentials }: Props) {
         </p>
       );
 
-    case 'locked':
     case 'disabled':
     default:
       return (
-        <p style={styles.text}>Laptop login is turned off for this account. Ask an instructor.</p>
+        <p style={styles.text}>This account is deactivated, so laptop login is locked. Ask an instructor.</p>
       );
   }
 }

@@ -82,7 +82,6 @@ adminCredentialsRouter.get(
       res.json({
         username: u.username ?? null,
         hasPassword: !!u.password_hash,
-        allowsLaptopAccount: !!u.allows_laptop_account,
         laptopLogin: req.services.laptopAccounts.isEligible(u),
         displayName: u.display_name,
         primaryEmail: u.primary_email,
@@ -207,7 +206,7 @@ adminCredentialsRouter.post(
         email: u.primary_email,
         password,
         siteUrl: requestOrigin(req),
-        laptopLogin: !!u.allows_laptop_account && laptopAccounts.isEligible(u),
+        laptopLogin: laptopAccounts.isEligible(u),
         note,
       });
 

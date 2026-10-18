@@ -4,7 +4,7 @@
  * no database, no roster.
  *
  * Covers:
- *  - every state and the precedence between them (disabled > locked >
+ *  - every state and the precedence between them (disabled >
  *    needs_password > invalid_username > ready)
  *  - `ready` is exactly `isEligible`
  *  - username / dirty / enabled are passed through; lastWritten is absent
@@ -30,8 +30,6 @@ function user(overrides: Partial<LaptopStateUser> = {}): LaptopStateUser {
     display_name: 'Alice',
     laptop_password_hash: HASH,
     is_active: true,
-    allows_laptop_account: true,
-    role: 'student',
     laptop_roster_dirty: false,
     ...overrides,
   };
@@ -43,19 +41,19 @@ describe('laptopLoginState', () => {
   });
 
   it('is ready for staff too', () => {
-    expect(laptopLoginState(user({ role: 'staff' }))).toBe('ready');
+    expect(laptopLoginState(user({ role: 'staff' } as any))).toBe('ready');
   });
 
-  it('is disabled when the flag is off', () => {
-    expect(laptopLoginState(user({ allows_laptop_account: false }))).toBe('disabled');
+  it('ignores the retired allows_laptop_account flag', () => {
+    expect(laptopLoginState(user({ allows_laptop_account: false } as any))).toBe('ready');
   });
 
   it('is disabled when the account is inactive', () => {
     expect(laptopLoginState(user({ is_active: false }))).toBe('disabled');
   });
 
-  it('is locked for admins', () => {
-    expect(laptopLoginState(user({ role: 'admin' }))).toBe('locked');
+  it('is ready for admins too: the login is just the username and password', () => {
+    expect(laptopLoginState(user({ role: 'admin' } as any))).toBe('ready');
   });
 
   it('is needs_password without a laptop hash', () => {
@@ -70,11 +68,8 @@ describe('laptopLoginState', () => {
     expect(laptopLoginState(user({ username: 'a.b' }))).toBe('invalid_username');
   });
 
-  it('reports the first blocker: disabled beats locked beats needs_password beats invalid_username', () => {
-    expect(
-      laptopLoginState(user({ allows_laptop_account: false, role: 'admin', laptop_password_hash: null, username: 'X' })),
-    ).toBe('disabled');
-    expect(laptopLoginState(user({ role: 'admin', laptop_password_hash: null, username: 'X' }))).toBe('locked');
+  it('reports the first blocker: disabled beats needs_password beats invalid_username', () => {
+    expect(laptopLoginState(user({ is_active: false, laptop_password_hash: null, username: 'X' }))).toBe('disabled');
     expect(laptopLoginState(user({ laptop_password_hash: null, username: 'X' }))).toBe('needs_password');
   });
 
@@ -82,14 +77,13 @@ describe('laptopLoginState', () => {
     const service = new LaptopAccountService(new FakeLaptopRosterClient(), {} as any, new AuditService());
     const cases: LaptopStateUser[] = [
       user(),
-      user({ role: 'staff' }),
-      user({ role: 'admin' }),
-      user({ allows_laptop_account: false }),
+      user({ role: 'staff' } as any),
+      user({ role: 'admin' } as any),
       user({ is_active: false }),
       user({ laptop_password_hash: null }),
       user({ username: null }),
       user({ username: 'Alice' }),
-      user({ username: 'alice-2', role: 'student' }),
+      user({ username: 'alice-2' }),
     ];
     for (const u of cases) {
       expect(laptopLoginState(u) === 'ready', JSON.stringify(u)).toBe(service.isEligible(u));
@@ -117,8 +111,8 @@ describe('stateFor', () => {
     });
     expect(stateFor(user({ username: null }))).toMatchObject({ enabled: false, state: 'invalid_username', username: null });
     expect(stateFor(user({ username: 'Alice' }))).toMatchObject({ state: 'invalid_username', username: 'Alice' });
-    expect(stateFor(user({ allows_laptop_account: false }))).toMatchObject({ enabled: false, state: 'disabled' });
-    expect(stateFor(user({ role: 'admin' }))).toMatchObject({ enabled: false, state: 'locked' });
+    expect(stateFor(user({ is_active: false }))).toMatchObject({ enabled: false, state: 'disabled' });
+    expect(stateFor(user({ role: 'admin' } as any))).toMatchObject({ enabled: true, state: 'ready' });
   });
 
   it('is exposed on the service and gives the same answer', () => {
