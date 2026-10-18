@@ -1,6 +1,6 @@
 # Deploying student-accounts to production
 
-Runbook for `https://student-accounts.jtlapp.net`. Written for the person who
+Runbook for `https://accounts.jointheleague.org`. Written for the person who
 runs the deploy by hand (sprint 002, ticket 009, 2026-10-18; extended for
 sprint 003, ticket 006, same day). Every command below is copied from the
 scripts in this repo; when a script and this page disagree, the script wins
@@ -89,7 +89,7 @@ check (`start_period: 30s`). Plan for about a minute without service.
 | `OPENROUTER_API_KEY` | `config/prod/secrets.env` | **Yes** | Without it every `chat/completions` call returns 503 "LLM proxy is not configured". The forwarder reads it from the environment (`LLM_PROXY_API_KEY` is an accepted alias). |
 | `LLM_PROXY_BASE_URL` | `config/prod/public.env` | No | Default `https://openrouter.ai/api/v1/chat/completions`. |
 | `LLM_PROXY_MODEL_LARGE` / `_MEDIUM` / `_SMALL` | `config/prod/public.env` | No | Code defaults `deepseek/deepseek-v4-pro`, `deepseek/deepseek-v4-flash`, `deepseek/deepseek-v3.2`. The forwarder reads `process.env` directly, so a value saved on Admin → Configuration does **not** reach the proxy; set them in `public.env` and redeploy. |
-| `LLM_PROXY_ANTHROPIC_ENABLED` | `config/prod/public.env` or Admin → Configuration | No | **Default `true`** (changed in sprint 003). Serves `POST /proxy/v1/messages` (Anthropic Messages protocol, passed through to OpenRouter) so Claude Code works with `ANTHROPIC_BASE_URL=https://student-accounts.jtlapp.net/proxy`; also makes `POST /api/fleet/llm-token` and the student/admin payloads advertise `anthropic_base_url` / `anthropicEndpoint`. **To turn it off** (if OpenRouter's Anthropic endpoint misbehaves): set it to `false` on Admin → Configuration (takes effect on the next request, no restart) or put `LLM_PROXY_ANTHROPIC_ENABLED=false` in `public.env` and redeploy. Off means the route answers 404 `{"error":"anthropic endpoint disabled"}` and the Claude Code example disappears from the student and admin pages. Only the literal string `true` enables it. |
+| `LLM_PROXY_ANTHROPIC_ENABLED` | `config/prod/public.env` or Admin → Configuration | No | **Default `true`** (changed in sprint 003). Serves `POST /proxy/v1/messages` (Anthropic Messages protocol, passed through to OpenRouter) so Claude Code works with `ANTHROPIC_BASE_URL=https://accounts.jointheleague.org/proxy`; also makes `POST /api/fleet/llm-token` and the student/admin payloads advertise `anthropic_base_url` / `anthropicEndpoint`. **To turn it off** (if OpenRouter's Anthropic endpoint misbehaves): set it to `false` on Admin → Configuration (takes effect on the next request, no restart) or put `LLM_PROXY_ANTHROPIC_ENABLED=false` in `public.env` and redeploy. Off means the route answers 404 `{"error":"anthropic endpoint disabled"}` and the Claude Code example disappears from the student and admin pages. Only the literal string `true` enables it. |
 | `LLM_PROXY_ANTHROPIC_BASE_URL` | `config/prod/public.env` or Admin → Configuration | No | Default `https://openrouter.ai/api/v1/messages`, OpenRouter's Anthropic-compatible Messages URL. Only change it to point at another Anthropic-shaped provider. |
 | `LLM_PROXY_DEFAULT_BUDGET_USD` | `config/prod/public.env` or Admin → Configuration | No | Default `5` (dollars per UTC calendar month). Applied to new grants, auto-grants (fleet login, signup passphrase, startup reconcile) and the backfill in section 7b. Per-token overrides via the admin card or `PATCH /api/admin/llm-proxy/tokens/:id`; the admin-settable maximum is `1000`. A non-numeric or non-positive value falls back to 5. |
 | `LLM_PROXY_PRICE_LARGE` / `_MEDIUM` / `_SMALL` | `config/prod/public.env` or Admin → Configuration | No | Fallback pricing, `"<usd per 1M input tokens>,<usd per 1M output tokens>"`, used only when OpenRouter omits `usage.cost` from a response (accounting must never record zero). Defaults `0.2088,0.4176` / `0.091,0.182` / `0.28,0.42`, OpenRouter's list prices for the default tier models fetched 2026-10-18. If you change `LLM_PROXY_MODEL_*`, update the matching price so the fallback stays honest. |
@@ -246,7 +246,7 @@ it, but do not copy it anywhere.
 ## 6. Smoke checks
 
 ```bash
-BASE=https://student-accounts.jtlapp.net
+BASE=https://accounts.jointheleague.org
 
 curl -s $BASE/api/health
 #  {"status":"ok","db":"ok","version":"<IMAGE_TAG>",...}   version must equal the tag you deployed
@@ -257,7 +257,7 @@ curl -s $BASE/proxy/v1/health
 #  anthropicEndpoint missing on the new build means LLM_PROXY_ANTHROPIC_ENABLED is off
 
 curl -s $BASE/proxy
-#  {"ok":true,"service":"llm-proxy","base":"https://student-accounts.jtlapp.net/proxy",
+#  {"ok":true,"service":"llm-proxy","base":"https://accounts.jointheleague.org/proxy",
 #   "protocols":["openai","anthropic"],"openaiBaseUrl":".../proxy/v1","anthropicBaseUrl":".../proxy",...}
 #  HTML here means the old build is still serving (there was no GET /proxy before)
 
@@ -505,4 +505,4 @@ you are staying on the new build.
 | Claude Code hangs or answers with an OpenAI-shaped error | `ANTHROPIC_BASE_URL` must be `…/proxy` (no `/v1`; the SDK appends `/v1/messages`) and the token goes in `ANTHROPIC_AUTH_TOKEN`, with `ANTHROPIC_API_KEY=""`. Copy the block from `/llm-proxy` rather than typing it. |
 | Import script exits 2 / push-all → 503 "not configured" | `DO_SPACES_KEY`/`DO_SPACES_SECRET` missing from the rendered env (they require a restart to take effect). |
 | Push all reports failures, users stay dirty | The Spaces key lacks write access on `jtl-student-unix-accounts`; fix in the DigitalOcean console, then call push-all again (section 7) or wait for the hourly job. |
-| Google/GitHub sign-in redirect mismatch | Callback URLs must be `https://student-accounts.jtlapp.net/api/auth/{google,github}/callback` both in `config/prod/public.env` and in the provider console. |
+| Google/GitHub sign-in redirect mismatch | Callback URLs must be `https://accounts.jointheleague.org/api/auth/{google,github}/callback` both in `config/prod/public.env` and in the provider console. |

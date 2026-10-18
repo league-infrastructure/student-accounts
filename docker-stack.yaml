@@ -1,4 +1,4 @@
-# docker-stack.yaml — Swarm stack for prod (student-accounts.jtlapp.net).
+# docker-stack.yaml — Swarm stack for prod (accounts.jointheleague.org; also student-accounts.jtlapp.net).
 # Deploy via: docker stack deploy -c docker-stack.yaml --with-registry-auth student-accounts
 # scripts/up.sh prod (npm run deploy:prod) handles this for you: it renders the
 # dotconfig env (config/prod/{public,secrets}.env) into this file and runs the
@@ -43,8 +43,13 @@ services:
           cpus: '1.0'
           memory: 512M
       labels:
-        caddy: student-accounts.jtlapp.net
+        caddy: accounts.jointheleague.org
         caddy.reverse_proxy: "{{upstreams 5201}}"
+        # The old name keeps answering (same app, same session cookie host
+        # rules apply per hostname). Turn it into a redirect once the OAuth
+        # apps at Google/GitHub/Pike13 list the new callback URLs.
+        caddy_1: student-accounts.jtlapp.net
+        caddy_1.reverse_proxy: "{{upstreams 5201}}"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5201/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
