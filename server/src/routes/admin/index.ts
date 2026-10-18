@@ -26,6 +26,7 @@ import { adminLlmProxyRouter } from './llm-proxy';
 import { adminUsersViewsRouter } from './users-views';
 import { adminImportRouter } from './import';
 import { adminLaptopRouter } from './laptop';
+import { adminCredentialsRouter } from './credentials';
 
 export const adminRouter = Router();
 
@@ -63,3 +64,4 @@ adminRouter.use('/admin', adminGroupsRouter);
 adminRouter.use('/admin', adminLlmProxyRouter);
 adminRouter.use('/admin', adminImportRouter);
 adminRouter.use('/admin', adminLaptopRouter);
+adminRouter.use('/admin', adminCredentialsRouter);

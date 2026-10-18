@@ -1,7 +1,7 @@
 ---
 id: '005'
 title: 'Admin credentials: set username/password, generate, email'
-status: in-progress
+status: done
 use-cases:
 - SUC-003
 depends-on:
@@ -20,11 +20,11 @@ Give administrators the controls they lack on a student: set the username, set o
 
 ## Acceptance Criteria
 
-- [ ] `UserService.setCredentialsByAdmin(userId, { username?, password?, generatePassword? }, actorId)`: validates the username (ticket 004 rules when `allows_laptop_account`), hashes with scrypt + `makeCryptHash`, creates the `username` Login row if the user has none (`provider_user_id: 'admin:<userId>:<username>'`, mirroring `routes/account.ts:498`), audits `admin_set_username` / `admin_set_password` (never the password), calls `laptopAccounts.reconcile`, returns `{ username, password? }` with the plaintext only when generated/set in this call.
-- [ ] `PUT /api/admin/users/:id/credentials` (admin; `server/src/routes/admin/credentials.ts`, mounted in `app.ts`) → that result; 400 with the validation message on bad username; 404 unknown user.
-- [ ] `POST /api/admin/users/:id/credentials/email` body `{ to: string, password?: string, note?: string }`: validates `to` as an email and refuses `*.invalid`; sends "Your League account" via `mail.service.ts` (new template: display name, username, password if present, the site URL for signing in, and, when `allows_laptop_account` and a roster entry would exist, the line "On a League laptop, choose Other... at the login screen and use this username and password."; optional note); audits `credentials_emailed` with the recipient (not the password). Returns `{ sent: true }` or the mail service's skipped result.
-- [ ] Client `client/src/pages/admin/UserCredentialsCard.tsx` on `UserDetailPanel.tsx`: username field + Save; "Set password" (typed, min 4 chars, confirm field) and "Generate" (calls the endpoint with `generatePassword: true`, shows the result once with Copy); "Email credentials…" dialog: To (prefilled `notification_email ?? primary_email`, empty when it ends in `.invalid`), "Include the password I just set" checkbox (enabled only when a plaintext is in component state), note, Send; toasts; plaintext cleared from state after send or unmount.
-- [ ] Tests: route tests (403 non-admin; set username validation incl. laptop rule; set password then `POST /api/auth/login` works; generate returns a 3-word password and login works; email endpoint calls a fake mail transport with username/password/recipient and refuses `.invalid`; audit rows present without the password); client test for the card (generate shows once, email dialog prefill and `.invalid` empty).
+- [x] `UserService.setCredentialsByAdmin(userId, { username?, password?, generatePassword? }, actorId)`: validates the username (ticket 004 rules when `allows_laptop_account`), hashes with scrypt + `makeCryptHash`, creates the `username` Login row if the user has none (`provider_user_id: 'admin:<userId>:<username>'`, mirroring `routes/account.ts:498`), audits `admin_set_username` / `admin_set_password` (never the password), calls `laptopAccounts.reconcile`, returns `{ username, password? }` with the plaintext only when generated/set in this call.
+- [x] `PUT /api/admin/users/:id/credentials` (admin; `server/src/routes/admin/credentials.ts`, mounted in `app.ts`) → that result; 400 with the validation message on bad username; 404 unknown user.
+- [x] `POST /api/admin/users/:id/credentials/email` body `{ to: string, password?: string, note?: string }`: validates `to` as an email and refuses `*.invalid`; sends "Your League account" via `mail.service.ts` (new template: display name, username, password if present, the site URL for signing in, and, when `allows_laptop_account` and a roster entry would exist, the line "On a League laptop, choose Other... at the login screen and use this username and password."; optional note); audits `credentials_emailed` with the recipient (not the password). Returns `{ sent: true }` or the mail service's skipped result.
+- [x] Client `client/src/pages/admin/UserCredentialsCard.tsx` on `UserDetailPanel.tsx`: username field + Save; "Set password" (typed, min 4 chars, confirm field) and "Generate" (calls the endpoint with `generatePassword: true`, shows the result once with Copy); "Email credentials…" dialog: To (prefilled `notification_email ?? primary_email`, empty when it ends in `.invalid`), "Include the password I just set" checkbox (enabled only when a plaintext is in component state), note, Send; toasts; plaintext cleared from state after send or unmount.
+- [x] Tests: route tests (403 non-admin; set username validation incl. laptop rule; set password then `POST /api/auth/login` works; generate returns a 3-word password and login works; email endpoint calls a fake mail transport with username/password/recipient and refuses `.invalid`; audit rows present without the password); client test for the card (generate shows once, email dialog prefill and `.invalid` empty).
 
 ## Testing
 

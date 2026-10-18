@@ -64,6 +64,80 @@ export function isUndeliverableAddress(address: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Template: "Your League account" (sprint 002 T005, SUC-003)
+// ---------------------------------------------------------------------------
+
+export const CREDENTIALS_EMAIL_SUBJECT = 'Your League account';
+
+/** Included when the user has (or will have) a laptop roster entry. */
+export const LAPTOP_LOGIN_LINE =
+  'On a League laptop, choose Other... at the login screen and use this username and password.';
+
+export interface CredentialsEmailInput {
+  displayName: string;
+  /** The username to sign in with; null when the user has none yet. */
+  username: string | null;
+  /** The sign-in email, used instead of the username when there is none. */
+  email: string;
+  /** Plaintext password, only when the sender supplied one in this request. */
+  password?: string;
+  /** Where to sign in — the site's origin, e.g. https://accounts.jointheleague.org */
+  siteUrl: string;
+  /** True when a usable laptop roster entry exists for this user. */
+  laptopLogin: boolean;
+  /** Optional free-text note from the admin, appended verbatim (escaped in HTML). */
+  note?: string;
+}
+
+export interface MailContent {
+  subject: string;
+  text: string;
+  html: string;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Build the credentials email an admin sends a student (or parent).
+ *
+ * Pure: no I/O. The password appears only when `input.password` is given —
+ * it is never read from storage. The laptop sentence appears only when
+ * `laptopLogin` is true.
+ */
+export function buildCredentialsEmail(input: CredentialsEmailInput): MailContent {
+  const name = input.displayName.trim() || 'there';
+  const lines: string[] = [`Hi ${name},`, '', 'Here is your League account.', ''];
+
+  if (input.username) {
+    lines.push(`Username: ${input.username}`);
+  } else {
+    lines.push(`Sign in with your email address: ${input.email}`);
+  }
+  if (input.password !== undefined) lines.push(`Password: ${input.password}`);
+  lines.push('', `Sign in at ${input.siteUrl}`);
+  if (input.laptopLogin) lines.push('', LAPTOP_LOGIN_LINE);
+  const note = input.note?.trim();
+  if (note) lines.push('', note);
+  lines.push('', '— The League');
+
+  const text = lines.join('\n');
+  const html =
+    '<div style="font-family: sans-serif; font-size: 14px; color: #0f172a;">' +
+    lines
+      .map((l) => (l === '' ? '<br>' : `<div>${escapeHtml(l)}</div>`))
+      .join('') +
+    '</div>';
+
+  return { subject: CREDENTIALS_EMAIL_SUBJECT, text, html };
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 

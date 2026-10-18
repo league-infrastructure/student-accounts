@@ -17,7 +17,7 @@ import { LoginRepository } from './repositories/login.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { User } from '../generated/prisma/client.js';
 import type { FindAllUsersFilter } from './repositories/user.repository.js';
-import { hashPassword, makeCryptHash, verifyPassword } from '../utils/password.js';
+import { generatePassword, hashPassword, makeCryptHash, verifyPassword } from '../utils/password.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
   LAPTOP_USERNAME_RULES_MESSAGE,
@@ -25,6 +25,9 @@ import {
   type LaptopAccountService,
 } from './laptop/laptop-account.service.js';
 import { isValidRosterId } from './laptop/roster-ids.js';
+
+/** Shortest password an admin may type for a student (generated ones are longer). */
+export const ADMIN_PASSWORD_MIN_LENGTH = 4;
 
 export class UserService {
   constructor(
@@ -229,16 +232,10 @@ export class UserService {
 
     // 4. Build the update payload (username rules first: no hashing for a
     //    request that is going to be rejected anyway).
-    const data: Record<string, unknown> = {};
-    if (hasUsername) {
-      data['username'] = await this.validateUsername(patch.username ?? '', user);
-    }
-    if (hasNewPassword) {
-      data['password_hash'] = await hashPassword(patch.newPassword!);
-      // The plaintext is only in hand here, so the laptop roster's crypt
-      // form is computed now and kept for later rewrites (push-all, merges).
-      data['laptop_password_hash'] = makeCryptHash(patch.newPassword!);
-    }
+    const data = await this.credentialData(user, {
+      username: hasUsername ? (patch.username ?? '') : undefined,
+      password: hasNewPassword ? patch.newPassword : undefined,
+    });
 
     // 5. Update and record audit event atomically.
     let result: { id: number; username: string | null };
@@ -273,6 +270,143 @@ export class UserService {
     if (this.laptopAccounts) await this.laptopAccounts.reconcile(userId, userId);
 
     return result;
+  }
+
+  // -------------------------------------------------------------------------
+  // Admin credential set (sprint 002 T005, SUC-003)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Set a user's username and/or password on their behalf (admin only).
+   *
+   * Differences from `updateCredentials`: no current password is needed, the
+   * actor is the admin, a password can be generated (three words, see
+   * `generatePassword`), and a typed password must be at least
+   * `ADMIN_PASSWORD_MIN_LENGTH` characters. Everything else is shared: the
+   * username rules (laptop rules when `allows_laptop_account`), scrypt plus
+   * `laptop_password_hash`, the `username` Login row when the user has none
+   * (`provider_user_id: 'admin:<userId>:<username>'`), and the roster
+   * write-back, which never throws.
+   *
+   * Audits `admin_set_username` and `admin_set_password` separately; neither
+   * carries the password.
+   *
+   * @returns `{ username, password? }` — `password` is the plaintext only
+   *          when one was set or generated in this call. It is not stored
+   *          and cannot be read back later.
+   * @throws NotFoundError (404), ValidationError (shape; the route maps it to
+   *         400), ConflictError (409, username taken).
+   */
+  async setCredentialsByAdmin(
+    userId: number,
+    patch: { username?: string; password?: string; generatePassword?: boolean },
+    actorId: number | null,
+  ): Promise<{ username: string | null; password?: string }> {
+    const user = await UserRepository.findByIdIncludingInactive(this.prisma, userId);
+    if (!user) throw new NotFoundError(`User ${userId} not found`);
+
+    const hasUsername = patch.username !== undefined;
+    const hasTypedPassword = patch.password !== undefined;
+    const generate = patch.generatePassword === true;
+    if (!hasUsername && !hasTypedPassword && !generate) {
+      throw new ValidationError('Provide a username, a password, or generatePassword: true');
+    }
+    if (hasTypedPassword && generate) {
+      throw new ValidationError('Provide either password or generatePassword, not both');
+    }
+
+    let password: string | undefined;
+    if (generate) {
+      password = generatePassword();
+    } else if (hasTypedPassword) {
+      const typed = patch.password ?? '';
+      if (typed.trim().length === 0) throw new ValidationError('Password must not be empty');
+      if (typed.length < ADMIN_PASSWORD_MIN_LENGTH) {
+        throw new ValidationError(`Password must be at least ${ADMIN_PASSWORD_MIN_LENGTH} characters`);
+      }
+      password = typed;
+    }
+
+    const data = await this.credentialData(user, {
+      username: hasUsername ? (patch.username ?? '') : undefined,
+      password,
+    });
+
+    let username: string | null;
+    try {
+      username = await this.prisma.$transaction(async (tx: any) => {
+        const updated = await tx.user.update({ where: { id: userId }, data });
+        const finalUsername: string | null = updated.username ?? null;
+
+        // The same Login row passphrase signup / first-time setup creates, so
+        // the user shows up as a username login everywhere else in the app.
+        if (finalUsername) {
+          const logins = await LoginRepository.findAllByUser(tx, userId);
+          if (!logins.some((l) => l.provider === 'username')) {
+            await LoginRepository.create(tx, {
+              user_id: userId,
+              provider: 'username',
+              provider_user_id: `admin:${userId}:${finalUsername}`,
+              provider_email: updated.primary_email ?? null,
+              provider_username: finalUsername,
+            });
+          }
+        }
+
+        const base = {
+          actor_user_id: actorId,
+          target_user_id: userId,
+          target_entity_type: 'User',
+          target_entity_id: String(userId),
+        };
+        if (hasUsername) {
+          await this.audit.record(tx, {
+            ...base,
+            action: 'admin_set_username',
+            details: { username: finalUsername },
+          });
+        }
+        if (password !== undefined) {
+          await this.audit.record(tx, {
+            ...base,
+            action: 'admin_set_password',
+            details: { generated: generate },
+          });
+        }
+        return finalUsername;
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictError('That username is already taken');
+      }
+      throw err;
+    }
+
+    if (this.laptopAccounts) await this.laptopAccounts.reconcile(userId, actorId);
+
+    return password !== undefined ? { username, password } : { username };
+  }
+
+  /**
+   * The User columns a credential change writes: the validated username and,
+   * for a new password, both hash forms. Shared by the self-service and admin
+   * paths so the two can never drift.
+   */
+  private async credentialData(
+    user: { id: number; allows_laptop_account?: boolean },
+    patch: { username?: string; password?: string },
+  ): Promise<Record<string, unknown>> {
+    const data: Record<string, unknown> = {};
+    if (patch.username !== undefined) {
+      data['username'] = await this.validateUsername(patch.username, user);
+    }
+    if (patch.password !== undefined) {
+      data['password_hash'] = await hashPassword(patch.password);
+      // The plaintext is only in hand here, so the laptop roster's crypt
+      // form is computed now and kept for later rewrites (push-all, merges).
+      data['laptop_password_hash'] = makeCryptHash(patch.password);
+    }
+    return data;
   }
 
   /**

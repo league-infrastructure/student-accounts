@@ -3,6 +3,7 @@
  *
  * Layout (top-down):
  *   1. Identity card — display name + all known email addresses.
+ *   1a. Credentials card — username / password / email credentials (admin).
  *   2. Account blocks, one per account kind:
  *        - External Google (read-only; only shown if present)
  *        - League         (read-only; only shown if present)
@@ -22,6 +23,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { prettifyName } from './utils/prettifyName';
 import UserGroupsCard from './UserGroupsCard';
 import UserLlmProxyCard from './UserLlmProxyCard';
+import UserCredentialsCard from './UserCredentialsCard';
 import { isStudentLeagueEmail, isStaffLeagueEmail } from '../../lib/email-domain';
 
 // ---------------------------------------------------------------------------
@@ -301,6 +303,14 @@ export default function UserDetailPanel() {
           </ul>
         </div>
       </section>
+
+      {/* ================================================================== */}
+      {/* 1a. Credentials (sprint 002 "laptop accounts" T005)                 */}
+      {/* ================================================================== */}
+      <UserCredentialsCard
+        userId={user.id}
+        userName={prettifyNameFromUser()}
+      />
 
       {/* ================================================================== */}
       {/* 1b. Groups (Sprint 012 T006)                                         */}
