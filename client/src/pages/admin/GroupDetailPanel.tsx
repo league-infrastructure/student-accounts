@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PassphraseCard } from '../../components/PassphraseCard';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 
 // ---------------------------------------------------------------------------
@@ -125,6 +126,86 @@ function ColumnTriToggle({
   );
 }
 
+/** Same rule as the Users page: only student-role users are suspendable. */
+function isSuspendEligible(m: Member): boolean {
+  const r = m.role.toLowerCase();
+  return r !== 'admin' && r !== 'staff';
+}
+
+interface BulkOutcome {
+  succeeded: number[];
+  failed: Array<{ userId: number; error?: string }>;
+  skipped?: number[];
+}
+
+/** POST a JSON body to a bulk endpoint; 207 (partial success) is not an error. */
+async function postBulk(url: string, body: unknown): Promise<BulkOutcome> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok && res.status !== 207) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  const json = (await res.json().catch(() => ({}))) as Partial<BulkOutcome>;
+  return {
+    succeeded: json.succeeded ?? [],
+    failed: json.failed ?? [],
+    skipped: json.skipped ?? [],
+  };
+}
+
+function bulkButtonStyle(variant: 'secondary' | 'danger' | 'warning'): React.CSSProperties {
+  const bg = variant === 'danger' ? '#dc2626' : variant === 'warning' ? '#d97706' : '#e2e8f0';
+  const fg = variant === 'secondary' ? '#1e293b' : '#fff';
+  return {
+    padding: '4px 12px',
+    fontSize: 12,
+    fontWeight: 600,
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    background: bg,
+    color: fg,
+  };
+}
+
+/** Header select-all checkbox with an indeterminate state. */
+function SelectAllCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <input
+      type="checkbox"
+      aria-label="Select all members"
+      checked={checked}
+      ref={(el) => {
+        if (el) el.indeterminate = indeterminate;
+      }}
+      onChange={onChange}
+      style={{ cursor: 'pointer' }}
+    />
+  );
+}
+
+type ConfirmState =
+  | { open: false }
+  | {
+      open: true;
+      title: string;
+      message: string;
+      confirmLabel: string;
+      onConfirm: () => void;
+    };
+
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -184,6 +265,28 @@ export default function GroupDetailPanel() {
 
   // Column-level bulk-action state
   const [columnBusy, setColumnBusy] = useState<PermField | null>(null);
+
+  // Row selection (member user ids)
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirmState, setConfirmState] = useState<ConfirmState>({ open: false });
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Group changed: drop the selection.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [numericId]);
+
+  // Member list reloaded: drop ids that are no longer members.
+  useEffect(() => {
+    const users = detailQuery.data?.users;
+    if (!users) return;
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(users.map((u) => u.id));
+      const next = new Set([...prev].filter((uid) => present.has(uid)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [detailQuery.data]);
 
   // Live search effect
   useEffect(() => {
@@ -254,6 +357,117 @@ export default function GroupDetailPanel() {
     }
   }
 
+
+  function toggleRow(userId: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (!data) return;
+    setSelected((prev) =>
+      data.users.length > 0 && data.users.every((u) => prev.has(u.id))
+        ? new Set()
+        : new Set(data.users.map((u) => u.id)),
+    );
+  }
+
+  /** Runs a bulk action, then toasts, clears the selection, and reloads. */
+  async function runBulk(label: string, action: () => Promise<string>) {
+    setConfirmState({ open: false });
+    setBulkBusy(true);
+    try {
+      const msg = await action();
+      showToast(msg, 'success');
+    } catch (err: any) {
+      showToast(`${label} failed: ${err.message || 'unknown error'}`, 'error');
+    } finally {
+      setBulkBusy(false);
+      setSelected(new Set());
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      await load();
+    }
+  }
+
+  function summarize(verb: string, r: BulkOutcome): string {
+    const n = r.succeeded.length;
+    let msg = `${verb} ${n} member${n === 1 ? '' : 's'}`;
+    if (r.failed.length > 0) msg += `, ${r.failed.length} failed`;
+    if (r.skipped && r.skipped.length > 0) msg += `, ${r.skipped.length} skipped`;
+    return msg;
+  }
+
+  function openRemoveConfirm(ids: number[]) {
+    setConfirmState({
+      open: true,
+      title: 'Remove from group',
+      message: `Remove ${ids.length} member${ids.length === 1 ? '' : 's'} from this group?`,
+      confirmLabel: 'Remove',
+      onConfirm: () =>
+        void runBulk('Remove', async () => {
+          const results = await Promise.allSettled(
+            ids.map(async (uid) => {
+              const res = await fetch(`/api/admin/groups/${id}/members/${uid}`, {
+                method: 'DELETE',
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status} for user ${uid}`);
+            }),
+          );
+          const failed = results.filter((r) => r.status === 'rejected').length;
+          const ok = ids.length - failed;
+          return `Removed ${ok} member${ok === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}`;
+        }),
+    });
+  }
+
+  function openSuspendConfirm(ids: number[]) {
+    setConfirmState({
+      open: true,
+      title: 'Suspend accounts',
+      message: `Suspend every active workspace + Claude account for ${ids.length} student${ids.length === 1 ? '' : 's'} in the selection? Non-student users are skipped.`,
+      confirmLabel: 'Suspend',
+      onConfirm: () =>
+        void runBulk('Suspend', async () =>
+          summarize('Suspended accounts for', await postBulk('/api/admin/users/bulk-suspend-accounts', { userIds: ids })),
+        ),
+    });
+  }
+
+  function openRevokeConfirm(ids: number[]) {
+    setConfirmState({
+      open: true,
+      title: 'Revoke LLM Proxy',
+      message: `Revoke LLM proxy tokens for ${ids.length} member${ids.length === 1 ? '' : 's'} in the selection? Their tokens will stop working immediately.`,
+      confirmLabel: 'Revoke',
+      onConfirm: () =>
+        void runBulk('Revoke', async () =>
+          summarize('Revoked LLM proxy for', await postBulk('/api/admin/users/bulk-revoke-llm-proxy', { userIds: ids })),
+        ),
+    });
+  }
+
+  function openGrantConfirm(ids: number[]) {
+    setConfirmState({
+      open: true,
+      title: 'Grant LLM Proxy',
+      message: `Grant LLM proxy tokens (30 days, default budget) to ${ids.length} member${ids.length === 1 ? '' : 's'} in the selection? Members whose group does not allow the LLM proxy are skipped.`,
+      confirmLabel: 'Grant',
+      onConfirm: () =>
+        void runBulk('Grant', async () =>
+          summarize(
+            'Granted LLM proxy to',
+            await postBulk(`/api/admin/groups/${id}/llm-proxy/bulk-grant`, {
+              userIds: ids,
+              expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+            }),
+          ),
+        ),
+    });
+  }
 
   async function patchUserPermission(
     userId: number,
@@ -415,6 +629,16 @@ export default function GroupDetailPanel() {
   }
   if (!data) return <p style={{ color: '#64748b' }}>Loading group…</p>;
 
+  const selectedMembers = data.users.filter((u) => selected.has(u.id));
+  const allSelected = data.users.length > 0 && selectedMembers.length === data.users.length;
+  const suspendIds = selectedMembers.filter(isSuspendEligible).map((u) => u.id);
+  const revokeIds = selectedMembers
+    .filter((u) => u.llmProxyToken.status === 'active')
+    .map((u) => u.id);
+  const grantIds = selectedMembers
+    .filter((u) => u.llmProxyToken.status === 'none')
+    .map((u) => u.id);
+
   return (
     <div>
       <button onClick={() => navigate('/groups')} style={backBtn}>
@@ -547,10 +771,72 @@ export default function GroupDetailPanel() {
         )}
       </div>
 
+      {/* Selection toolbar */}
+      {selectedMembers.length > 0 && (
+        <div
+          role="toolbar"
+          aria-label="Selected members"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+            padding: '8px 12px',
+            marginBottom: 8,
+            background: '#f0f9ff',
+            border: '1px solid #bae6fd',
+            borderRadius: 6,
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, marginRight: 8 }}>
+            {selectedMembers.length} selected
+          </span>
+          <button
+            type="button"
+            style={bulkButtonStyle('danger')}
+            disabled={bulkBusy}
+            onClick={() => openRemoveConfirm(selectedMembers.map((u) => u.id))}
+          >
+            Remove from group
+          </button>
+          <button
+            type="button"
+            style={bulkButtonStyle('warning')}
+            disabled={bulkBusy || suspendIds.length === 0}
+            onClick={() => openSuspendConfirm(suspendIds)}
+          >
+            Suspend accounts
+          </button>
+          <button
+            type="button"
+            style={bulkButtonStyle('secondary')}
+            disabled={bulkBusy || grantIds.length === 0}
+            onClick={() => openGrantConfirm(grantIds)}
+          >
+            Grant LLM Proxy
+          </button>
+          <button
+            type="button"
+            style={bulkButtonStyle('danger')}
+            disabled={bulkBusy || revokeIds.length === 0}
+            onClick={() => openRevokeConfirm(revokeIds)}
+          >
+            Revoke LLM Proxy
+          </button>
+        </div>
+      )}
+
       {/* Member table */}
       <table style={tableStyle}>
         <thead>
           <tr>
+            <th style={{ ...th, width: 32 }}>
+              <SelectAllCheckbox
+                checked={allSelected}
+                indeterminate={selectedMembers.length > 0 && !allSelected}
+                onChange={toggleAll}
+              />
+            </th>
             <th style={th}>Name</th>
             <th style={th}>Email</th>
             <th style={{ ...th, textAlign: 'center' }}>
@@ -608,6 +894,15 @@ export default function GroupDetailPanel() {
           {data.users.map((m) => {
             return (
               <tr key={m.id}>
+                <td style={td}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(m.id)}
+                    aria-label={`Select ${m.displayName || m.email}`}
+                    style={{ cursor: 'pointer' }}
+                    onChange={() => toggleRow(m.id)}
+                  />
+                </td>
                 <td style={td}>
                   <Link
                     to={`/users/${m.id}`}
@@ -678,7 +973,7 @@ export default function GroupDetailPanel() {
           })}
           {data.users.length === 0 && (
             <tr>
-              <td colSpan={6} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
+              <td colSpan={7} style={{ ...td, color: '#94a3b8', textAlign: 'center' }}>
                 No members yet. Search above to add one.
               </td>
             </tr>
@@ -686,6 +981,17 @@ export default function GroupDetailPanel() {
         </tbody>
       </table>
 
+      {confirmState.open && (
+        <ConfirmDialog
+          open
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmLabel={confirmState.confirmLabel}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState({ open: false })}
+          danger
+        />
+      )}
     </div>
   );
 }

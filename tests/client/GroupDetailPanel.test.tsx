@@ -13,8 +13,8 @@
  * fetch to be handled. The helpers below route by URL so each endpoint gets the
  * correct response regardless of call order.
  *
- * Note (Sprint 028 T006): Bulk-action toolbar and row-selection column have
- * been removed from the component. Tests for those features are deleted here.
+ * Note: row selection + selection toolbar were re-added (2026-10-18); see the
+ * "member selection" describe block at the bottom.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -277,28 +277,6 @@ describe('GroupDetailPanel', () => {
         ),
       ).toBe(true),
     );
-  });
-
-  it('bulk-action buttons are not rendered', async () => {
-    vi.stubGlobal('fetch', buildFetchMock());
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-
-    expect(screen.queryByRole('button', { name: /Create League/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Remove League/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Suspend/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Grant LLM Proxy/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Revoke LLM Proxy/i })).toBeNull();
-  });
-
-  it('select-all and per-row select checkboxes are not rendered', async () => {
-    vi.stubGlobal('fetch', buildFetchMock());
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
-
-    expect(screen.queryByRole('checkbox', { name: /Select all members/i })).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: /Select Alice/i })).toBeNull();
-    expect(screen.queryByRole('checkbox', { name: /Select Bob/i })).toBeNull();
   });
 
   it('permission checkboxes render with current flag values from listMembers', async () => {
@@ -663,3 +641,144 @@ describe('GroupDetailPanel — ColumnTriToggle (tri-state column headers)', () =
   });
 });
 
+
+
+describe('GroupDetailPanel — member selection', () => {
+  const calls = (fm: ReturnType<typeof vi.fn>) =>
+    fm.mock.calls.map(([u, o]) => `${(o as RequestInit | undefined)?.method ?? 'GET'} ${u}`);
+
+  it('renders select-all and per-row checkboxes; toolbar hidden with no selection', async () => {
+    vi.stubGlobal('fetch', buildFetchMock());
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    expect(screen.getByRole('checkbox', { name: 'Select all members' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select Alice' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select Bob' })).toBeInTheDocument();
+    expect(screen.queryByRole('toolbar', { name: 'Selected members' })).toBeNull();
+  });
+
+  it('shows count, and select-all is indeterminate for a partial selection', async () => {
+    vi.stubGlobal('fetch', buildFetchMock());
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    const all = screen.getByRole('checkbox', { name: 'Select all members' }) as HTMLInputElement;
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alice' }));
+    expect(screen.getByRole('toolbar', { name: 'Selected members' })).toBeInTheDocument();
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    expect(all.indeterminate).toBe(true);
+    expect(all.checked).toBe(false);
+  });
+
+  it('select-all selects every member, and again clears them', async () => {
+    vi.stubGlobal('fetch', buildFetchMock());
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    const all = screen.getByRole('checkbox', { name: 'Select all members' }) as HTMLInputElement;
+    fireEvent.click(all);
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    expect(all.checked).toBe(true);
+    expect(all.indeterminate).toBe(false);
+    fireEvent.click(all);
+    expect(screen.queryByRole('toolbar', { name: 'Selected members' })).toBeNull();
+  });
+
+  it('Remove from group confirms, DELETEs each selected id, and reloads', async () => {
+    const fetchMock = buildFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all members' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from group' }));
+    expect(fetchMock.mock.calls.some(([, o]) => (o as RequestInit | undefined)?.method === 'DELETE')).toBe(false);
+    // Row buttons are also named "Remove"; the dialog's confirm renders last.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' }).slice(-1)[0]);
+    await waitFor(() => {
+      const c = calls(fetchMock);
+      expect(c).toContain('DELETE /api/admin/groups/7/members/11');
+      expect(c).toContain('DELETE /api/admin/groups/7/members/12');
+    });
+    await waitFor(() => expect(screen.getByText('Removed 2 members')).toBeInTheDocument());
+    const getsAfter = calls(fetchMock).filter((c) => c === 'GET /api/admin/groups/7/members');
+    expect(getsAfter.length).toBeGreaterThanOrEqual(2);
+    await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Selected members' })).toBeNull());
+  });
+
+  it('Revoke LLM Proxy posts only members with an active token', async () => {
+    const fetchMock = buildFetchMock({
+      'bulk-revoke-llm-proxy': () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ succeeded: [11], failed: [], skipped: [] }),
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all members' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke LLM Proxy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u).includes('bulk-revoke-llm-proxy'));
+      expect(call).toBeTruthy();
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ userIds: [11] });
+    });
+  });
+
+  it('Grant LLM Proxy posts only members without a token to the group bulk-grant route', async () => {
+    const fetchMock = buildFetchMock({
+      'llm-proxy/bulk-grant': () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ succeeded: [12], failed: [], skipped: [] }),
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all members' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Grant LLM Proxy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Grant' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u) === '/api/admin/groups/7/llm-proxy/bulk-grant');
+      expect(call).toBeTruthy();
+      const body = JSON.parse((call![1] as RequestInit).body as string);
+      expect(body.userIds).toEqual([12]);
+      expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    });
+  });
+
+  it('Suspend accounts posts eligible ids; disabled when no selected member is a student', async () => {
+    const fetchMock = buildFetchMock({
+      'bulk-suspend-accounts': () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ succeeded: [], failed: [], totalEligible: 0 }),
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alice' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend accounts' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u).includes('bulk-suspend-accounts'));
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ userIds: [11] });
+    });
+  });
+
+  it('Suspend and Revoke are disabled when no selected member is eligible', async () => {
+    const staff = {
+      ...GROUP_WITH_TWO,
+      users: [
+        { ...GROUP_WITH_TWO.users[1], id: 21, displayName: 'Sam', email: 'sam@league', role: 'STAFF' },
+      ],
+    };
+    renderPanelWith(staff as typeof GROUP_WITH_TWO);
+    await waitFor(() => expect(screen.getByText('Sam')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Sam' }));
+    expect(screen.getByRole('button', { name: 'Suspend accounts' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Revoke LLM Proxy' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Grant LLM Proxy' })).not.toBeDisabled();
+  });
+});
