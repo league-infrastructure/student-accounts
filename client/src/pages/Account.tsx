@@ -25,6 +25,7 @@ import UsernamePasswordSection from './account/UsernamePasswordSection';
 import AddCredentialsModal from './account/AddCredentialsModal';
 import AccountLaptopCard, { type LaptopLoginState } from './account/AccountLaptopCard';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { usageLine } from '../lib/llm-proxy-format';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,8 +52,17 @@ export interface AccountProfile {
   llmProxyEnabled?: boolean;
   /** Number of non-disabled OAuth clients owned by this user. */
   oauthClientCount?: number;
-  /** When the user has an active LLM proxy token, plaintext + endpoint URL. */
-  llmProxy?: { token: string | null; endpoint: string } | null;
+  /** When the user has an active LLM proxy token: plaintext, endpoint URL
+   *  and the dollar/token figures (sprint 003). */
+  llmProxy?: {
+    token: string | null;
+    endpoint: string;
+    budgetUsd?: number | null;
+    spentUsd?: number | null;
+    periodResetsAt?: string | null;
+    tokensUsed?: number;
+    tokenLimit?: number;
+  } | null;
   /** Username for passphrase / local login, or null if not set. */
   username?: string | null;
   /** True when a password_hash is stored for this account. */
@@ -754,18 +764,13 @@ function FeaturesSection({ profile }: { profile: AccountProfile }) {
           <div style={styles.featureLabel}>LLM Proxy</div>
           <div style={styles.featureBody}>
             <Link to="/llm-proxy" style={styles.featureLink}>
-              You have access
+              Set up and details
             </Link>
             <div style={styles.featureMeta}>
-              <span style={styles.featureMetaKey}>endpoint:</span>{' '}
-              <code>{profile.llmProxy.endpoint}</code>
+              {usageLine({ enabled: true, ...profile.llmProxy })} · your key, endpoint and
+              setup examples for Claude Code, Continue, curl and more are on the LLM Proxy
+              page.
             </div>
-            {profile.llmProxy.token && (
-              <div style={styles.featureMeta}>
-                <span style={styles.featureMetaKey}>key:</span>{' '}
-                <code style={styles.featureToken}>{profile.llmProxy.token}</code>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -1215,15 +1220,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#64748b',
     marginTop: 4,
     wordBreak: 'break-all' as const,
-  },
-  featureMetaKey: {
-    color: '#94a3b8',
-  },
-  featureToken: {
-    background: '#f1f5f9',
-    padding: '1px 6px',
-    borderRadius: 3,
-    fontSize: '0.78rem',
   },
   profileMeta: {
     fontSize: '0.9rem',

@@ -1,12 +1,15 @@
 /**
- * Tests for AccountLlmProxyCard (Sprint 013 T006).
+ * Tests for AccountLlmProxyCard (sprint 003, ticket 004; first written in
+ * Sprint 013 T006).
  *
- * Verifies both render states (disabled + enabled) and the
- * plaintext-never-leaks invariant: no matter what the server returns,
- * the component must never display a token value.
+ * The card is deliberately tight: figures, status, masked key with Copy,
+ * one "Set up and details" button. No code blocks. Dollar figures when the
+ * payload has a budget, token figures otherwise, "Not enabled. Ask an
+ * instructor." without a token.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import AccountLlmProxyCard from '../../client/src/pages/account/AccountLlmProxyCard';
@@ -15,26 +18,50 @@ function renderWithClient(ui: ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 const originalFetch = globalThis.fetch;
 
-function jsonResponse(status: number, body: any) {
+function jsonResponse(status: number, body: unknown) {
+  return { ok: status >= 200 && status < 300, status, json: async () => body };
+}
+
+const TOKEN = 'llmp_testtoken_0123456789abcdef';
+
+function enabledPayload(overrides: Record<string, unknown> = {}) {
   return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
+    enabled: true,
+    endpoint: 'https://accounts.example.org/proxy',
+    token: TOKEN,
+    tokensUsed: 2_500,
+    tokenLimit: 10_000,
+    requestCount: 3,
+    budgetUsd: 5,
+    spentUsd: 0.75,
+    spentUsdTotal: 0.75,
+    periodResetsAt: '2026-11-01T00:00:00.000Z',
+    expiresAt: '2027-07-01T12:00:00Z',
+    grantedAt: '2026-06-01T12:00:00Z',
+    models: ['league-large', 'league-medium', 'league-small'],
+    anthropicEnabled: true,
+    anthropicEndpoint: 'https://accounts.example.org/proxy',
+    ...overrides,
   };
 }
 
+let writeText: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
-  if (!navigator.clipboard) {
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: vi.fn(async () => {}) },
-      configurable: true,
-    });
-  }
+  writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText },
+    configurable: true,
+  });
 });
 
 afterEach(() => {
@@ -42,75 +69,89 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('AccountLlmProxyCard — disabled state', () => {
-  it('renders "Not enabled" when server returns enabled:false', async () => {
+describe('AccountLlmProxyCard — not enabled', () => {
+  it('says "Not enabled. Ask an instructor." when enabled:false', async () => {
     globalThis.fetch = vi.fn(async () =>
-      jsonResponse(200, {
-        enabled: false,
-        endpoint: 'https://app.example.com/proxy/v1',
-      }),
+      jsonResponse(200, { enabled: false, endpoint: 'https://accounts.example.org/proxy' }),
     ) as any;
 
     renderWithClient(<AccountLlmProxyCard />);
-    await waitFor(() => {
-      expect(screen.getByText(/not enabled/i)).toBeTruthy();
-    });
-    // No quota data should render.
-    expect(screen.queryByText(/remaining/i)).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('llm-proxy-not-enabled')).toBeInTheDocument());
+    expect(screen.getByTestId('llm-proxy-not-enabled')).toHaveTextContent(
+      /Not enabled\.\s*Ask an instructor\./,
+    );
+    expect(screen.queryByTestId('llm-proxy-token')).toBeNull();
+    expect(screen.queryByRole('link', { name: /set up and details/i })).toBeNull();
+  });
+
+  it('says "Not enabled" when enabled but the server has no plaintext token', async () => {
+    globalThis.fetch = vi.fn(async () => jsonResponse(200, enabledPayload({ token: null }))) as any;
+    renderWithClient(<AccountLlmProxyCard />);
+    await waitFor(() => expect(screen.getByTestId('llm-proxy-not-enabled')).toBeInTheDocument());
+  });
+
+  it('hides itself on a fetch error', async () => {
+    globalThis.fetch = vi.fn(async () => jsonResponse(500, {})) as any;
+    const { container } = renderWithClient(<AccountLlmProxyCard />);
+    await waitFor(() => expect(screen.queryByTestId('account-llm-proxy-card')).toBeNull());
+    expect(container.textContent).toBe('');
   });
 });
 
-describe('AccountLlmProxyCard — enabled state', () => {
-  it('renders endpoint, quota, and expiry', async () => {
-    globalThis.fetch = vi.fn(async () =>
-      jsonResponse(200, {
-        enabled: true,
-        endpoint: 'https://app.example.com/proxy/v1',
-        tokensUsed: 2_500,
-        tokenLimit: 10_000,
-        requestCount: 3,
-        expiresAt: '2026-07-01T12:00:00Z',
-        grantedAt: '2026-06-01T12:00:00Z',
-      }),
-    ) as any;
+describe('AccountLlmProxyCard — enabled', () => {
+  it('shows dollar figures with the reset date, status, masked key and the one button; no code blocks', async () => {
+    globalThis.fetch = vi.fn(async () => jsonResponse(200, enabledPayload())) as any;
 
     renderWithClient(<AccountLlmProxyCard />);
-    await waitFor(() => {
-      expect(screen.getByTestId('llm-proxy-endpoint')).toBeTruthy();
-    });
-    expect(screen.getByText('https://app.example.com/proxy/v1')).toBeTruthy();
-    expect(screen.getByText(/2,500/)).toBeTruthy();
-    expect(screen.getByText(/10,000 tokens used/)).toBeTruthy();
-    expect(screen.getByText(/7,500/)).toBeTruthy(); // remaining
-    expect(screen.getByText(/3 requests/)).toBeTruthy();
-  });
+    await waitFor(() => expect(screen.getByTestId('llm-proxy-usage')).toBeInTheDocument());
 
-  it('shows setup snippets with the endpoint substituted', async () => {
-    globalThis.fetch = vi.fn(async () =>
-      jsonResponse(200, {
-        enabled: true,
-        endpoint: 'https://app.example.com/proxy/v1',
-        tokensUsed: 0,
-        tokenLimit: 100,
-        requestCount: 0,
-        expiresAt: '2026-07-01T12:00:00Z',
-        grantedAt: '2026-06-01T12:00:00Z',
-      }),
-    ) as any;
+    const usage = screen.getByTestId('llm-proxy-usage');
+    expect(usage).toHaveTextContent(/^\$0\.75 of \$5\.00 this month · resets /);
+    expect(usage).toHaveTextContent(/Nov 1/);
+    expect(screen.getByTestId('llm-proxy-status')).toHaveTextContent(/active/i);
+    expect(screen.getByText(/3 requests/)).toBeInTheDocument();
 
-    renderWithClient(<AccountLlmProxyCard />);
-    await waitFor(() => {
-      expect(screen.getByTestId('llm-proxy-endpoint')).toBeTruthy();
-    });
+    // Masked key: prefix and tail visible, middle hidden, never the full token.
+    const key = screen.getByTestId('llm-proxy-token');
+    expect(key).toHaveTextContent('llmp_test…cdef');
+    expect(key.textContent).not.toBe(TOKEN);
+
+    const link = screen.getByRole('link', { name: /set up and details/i });
+    expect(link).toHaveAttribute('href', '/llm-proxy');
 
     const card = screen.getByTestId('account-llm-proxy-card');
-    // The endpoint URL appears in the snippet too.
-    const occurrences = (
-      card.textContent ?? ''
-    ).match(/https:\/\/app\.example\.com\/proxy\/v1/g);
-    expect((occurrences?.length ?? 0) >= 2).toBe(true);
-    // Plaintext token is never surfaced — the placeholder is the only
-    // string the user sees.
-    expect(card.textContent).toContain('llmp_…');
+    expect(card.querySelector('pre')).toBeNull();
+    expect(card.textContent).not.toMatch(/curl|apiBase|ANTHROPIC_/);
+    // Exactly one Copy and one navigation control.
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+  });
+
+  it('falls back to token figures when budgetUsd is null', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse(200, enabledPayload({ budgetUsd: null, spentUsd: 0, periodResetsAt: null })),
+    ) as any;
+
+    renderWithClient(<AccountLlmProxyCard />);
+    await waitFor(() => expect(screen.getByTestId('llm-proxy-usage')).toBeInTheDocument());
+    expect(screen.getByTestId('llm-proxy-usage')).toHaveTextContent('2,500 / 10,000 tokens');
+    expect(screen.queryByText(/\$/)).toBeNull();
+  });
+
+  it('shows Expired when expiresAt is in the past', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse(200, enabledPayload({ expiresAt: '2020-01-01T00:00:00Z' })),
+    ) as any;
+    renderWithClient(<AccountLlmProxyCard />);
+    await waitFor(() => expect(screen.getByTestId('llm-proxy-status')).toHaveTextContent(/expired/i));
+  });
+
+  it('Copy puts the full plaintext token on the clipboard', async () => {
+    globalThis.fetch = vi.fn(async () => jsonResponse(200, enabledPayload())) as any;
+    renderWithClient(<AccountLlmProxyCard />);
+    await waitFor(() => expect(screen.getByTestId('llm-proxy-token')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /copy key/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(TOKEN));
   });
 });

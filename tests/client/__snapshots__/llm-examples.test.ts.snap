@@ -1,0 +1,126 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`llm-examples registry > claude-code matches its snapshot 1`] = `
+{
+  "body": "export ANTHROPIC_BASE_URL="https://accounts.example.org/proxy"
+export ANTHROPIC_AUTH_TOKEN="llmp_testtoken_0123456789abcdef"
+export ANTHROPIC_API_KEY=""
+export ANTHROPIC_MODEL="league-large"
+export ANTHROPIC_SMALL_FAST_MODEL="league-small"
+claude",
+  "howToTest": "Paste the lines into a terminal, then run \`claude -p "say hi"\`. A one-line reply means the proxy is working.",
+  "title": "Claude Code",
+}
+`;
+
+exports[`llm-examples registry > continue matches its snapshot 1`] = `
+{
+  "body": "# ~/.continue/config.yaml — add under "models:"
+models:
+  - name: League
+    provider: openai
+    apiBase: https://accounts.example.org/proxy/v1
+    apiKey: llmp_testtoken_0123456789abcdef
+    model: league-medium
+    roles: [chat, edit, apply]",
+  "howToTest": "Reload VS Code, pick "League" in the Continue model menu, and send "hi" in the chat panel.",
+  "title": "Continue",
+}
+`;
+
+exports[`llm-examples registry > curl matches its snapshot 1`] = `
+{
+  "body": "# Chat completion (league-large, league-medium, league-small)
+curl -X POST "https://accounts.example.org/proxy/v1/chat/completions" \\
+  -H "Authorization: Bearer llmp_testtoken_0123456789abcdef" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"league-medium","messages":[{"role":"user","content":"Say hi in five words."}]}'
+
+# List the League model tiers
+curl "https://accounts.example.org/proxy/v1/models" \\
+  -H "Authorization: Bearer llmp_testtoken_0123456789abcdef"",
+  "howToTest": "The first command prints JSON with a \`choices[0].message.content\` reply; the second lists the three tiers.",
+  "title": "curl",
+}
+`;
+
+exports[`llm-examples registry > env matches its snapshot 1`] = `
+{
+  "body": "export OPENAI_BASE_URL="https://accounts.example.org/proxy/v1"
+export OPENAI_API_KEY="llmp_testtoken_0123456789abcdef"
+
+# Model names (most capable first):
+#   league-large
+#   league-medium
+#   league-small",
+  "howToTest": "Paste into your shell, then run any OpenAI-compatible tool and pick one of the model names above.",
+  "title": "Environment variables",
+}
+`;
+
+exports[`llm-examples registry > hermes matches its snapshot 1`] = `
+{
+  "body": "# ~/.hermes/config.yaml
+model:
+  provider: custom
+  base_url: https://accounts.example.org/proxy/v1
+  default: league-medium
+
+# Then store the token (run once):
+hermes config set OPENAI_API_KEY llmp_testtoken_0123456789abcdef
+
+# Note: key names vary by Hermes version — check the Hermes docs if it rejects this config.",
+  "howToTest": "Run \`hermes chat\` and send "hi"; a reply means the proxy is working.",
+  "title": "Hermes Agent",
+}
+`;
+
+exports[`llm-examples registry > opencode matches its snapshot 1`] = `
+{
+  "body": "// ~/.config/opencode/opencode.json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "league": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "League",
+      "options": {
+        "baseURL": "https://accounts.example.org/proxy/v1",
+        "apiKey": "llmp_testtoken_0123456789abcdef"
+      },
+      "models": {
+        "league-large": {
+          "name": "league-large"
+        },
+        "league-medium": {
+          "name": "league-medium"
+        },
+        "league-small": {
+          "name": "league-small"
+        }
+      }
+    }
+  },
+  "model": "league/league-medium"
+}",
+  "howToTest": "Start \`opencode\` in a project; the status line should show the League model, and a prompt should answer.",
+  "title": "OpenCode",
+}
+`;
+
+exports[`llm-examples registry > python matches its snapshot 1`] = `
+{
+  "body": "# pip install openai
+from openai import OpenAI
+
+client = OpenAI(base_url="https://accounts.example.org/proxy/v1", api_key="llmp_testtoken_0123456789abcdef")
+
+resp = client.chat.completions.create(
+    model="league-medium",  # or league-large, league-small
+    messages=[{"role": "user", "content": "Say hi in five words."}],
+)
+print(resp.choices[0].message.content)",
+  "howToTest": "Run the script; it prints a short reply.",
+  "title": "Python",
+}
+`;

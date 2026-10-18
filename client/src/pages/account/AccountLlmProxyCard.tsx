@@ -1,51 +1,61 @@
 /**
- * AccountLlmProxyCard — student-facing "LLM Proxy" section on /account
- * (Sprint 013 T006).
+ * AccountLlmProxyCard — the tight student-facing "LLM Proxy" card
+ * (sprint 003, ticket 004; originally Sprint 013 T006).
  *
- * Fetches GET /api/account/llm-proxy and renders one of two states:
- *  - enabled: endpoint URL, quota bar, expiry, setup snippets.
- *  - disabled: "Not enabled — ask an admin to grant access".
- *
- * The plaintext token is NEVER fetched here. The student received the
- * token from an admin at grant time (T005 plaintext-once flow).
+ * Fetches GET /api/account/llm-proxy and shows one row of figures
+ * (`$x.xx of $y.yy this month · resets <date>`, or `n / m tokens` for a
+ * legacy token with no dollar budget), the status, the masked key with a
+ * Copy button, and one button "Set up and details" that opens /llm-proxy.
+ * No code blocks here — the examples live on the page.
  */
 
 import { useQuery } from '@tanstack/react-query';
-import LlmProxyUsage from '../../components/LlmProxyUsage';
+import { Link } from 'react-router-dom';
+import {
+  deriveStatus,
+  maskToken,
+  usageLine,
+  type LlmProxyStatusKind,
+} from '../../lib/llm-proxy-format';
 
-interface LlmProxyStatus {
+export interface LlmProxyStatus {
   enabled: boolean;
   endpoint: string;
-  /** Plaintext bearer token. Shown directly on the page — these tokens
-   *  are short-lived, quota-capped, and scoped to demo use. */
+  /** Plaintext bearer token (short-lived, budget-capped, demo-scoped). */
   token?: string | null;
   tokensUsed?: number;
   tokenLimit?: number;
   requestCount?: number;
-  expiresAt?: string;
+  budgetUsd?: number | null;
+  spentUsd?: number | null;
+  spentUsdTotal?: number | null;
+  periodResetsAt?: string | null;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
   grantedAt?: string;
+  models?: string[];
+  anthropicEnabled?: boolean;
+  anthropicEndpoint?: string | null;
 }
 
-async function fetchLlmProxyStatus(): Promise<LlmProxyStatus> {
+export async function fetchLlmProxyStatus(): Promise<LlmProxyStatus> {
   const res = await fetch('/api/account/llm-proxy');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  return res.json() as Promise<LlmProxyStatus>;
 }
+
+const STATUS_LABEL: Record<LlmProxyStatusKind, string> = {
+  active: 'Active',
+  expired: 'Expired',
+  revoked: 'Revoked',
+  disabled: 'Disabled',
+};
 
 export default function AccountLlmProxyCard() {
   const { data: status, error: err } = useQuery<LlmProxyStatus>({
     queryKey: ['account', 'llm-proxy'],
     queryFn: fetchLlmProxyStatus,
   });
-
-  async function copyEndpoint() {
-    if (!status?.endpoint) return;
-    try {
-      await navigator.clipboard.writeText(status.endpoint);
-    } catch {
-      /* ignore */
-    }
-  }
 
   async function copyToken() {
     if (!status?.token) return;
@@ -56,13 +66,8 @@ export default function AccountLlmProxyCard() {
     }
   }
 
-  // Gracefully hide the card when the backend endpoint fails to load
-  // (e.g. missing route in a test fixture, or a transient server error).
-  // This keeps the rest of the /account page readable — the LLM proxy
-  // feature is strictly additive and should not break the page on error.
-  if (err) {
-    return null;
-  }
+  // Hide on fetch error: the feature is additive and must not break /account.
+  if (err) return null;
 
   if (!status) {
     return (
@@ -73,82 +78,58 @@ export default function AccountLlmProxyCard() {
     );
   }
 
-  if (!status.enabled) {
+  if (!status.enabled || !status.token) {
     return (
       <section data-testid="account-llm-proxy-card" style={styles.card}>
         <h2 style={styles.sectionTitle}>LLM Proxy</h2>
-        <p style={styles.muted}>
-          <em>Not enabled.</em> Ask an admin to grant LLM proxy access for
-          your account.
+        <p style={styles.muted} data-testid="llm-proxy-not-enabled">
+          <em>Not enabled.</em> Ask an instructor.
         </p>
       </section>
     );
   }
 
-  const tokensUsed = status.tokensUsed ?? 0;
-  const tokenLimit = status.tokenLimit ?? 0;
-  const remaining = Math.max(0, tokenLimit - tokensUsed);
-  const pct = tokenLimit > 0 ? Math.min(100, (tokensUsed / tokenLimit) * 100) : 0;
+  const kind = deriveStatus(status);
 
   return (
     <section data-testid="account-llm-proxy-card" style={styles.card}>
       <h2 style={styles.sectionTitle}>LLM Proxy</h2>
 
-      <dl style={styles.dl}>
-        <dt style={styles.dt}>Endpoint</dt>
-        <dd style={styles.dd}>
-          <code data-testid="llm-proxy-endpoint">{status.endpoint}</code>{' '}
-          <button type="button" onClick={copyEndpoint} style={styles.copyBtn}>
-            Copy
-          </button>
-        </dd>
-        {status.token && (
-          <>
-            <dt style={styles.dt}>Token</dt>
-            <dd style={styles.dd}>
-              <code data-testid="llm-proxy-token" style={styles.tokenValue}>
-                {status.token}
-              </code>{' '}
-              <button type="button" onClick={copyToken} style={styles.copyBtn}>
-                Copy
-              </button>
-            </dd>
-          </>
+      <div style={styles.row}>
+        <span data-testid="llm-proxy-usage" style={styles.figures}>
+          {usageLine(status)}
+        </span>
+        <span
+          data-testid="llm-proxy-status"
+          style={{ ...styles.pill, ...(kind === 'active' ? styles.pillActive : styles.pillInactive) }}
+        >
+          {STATUS_LABEL[kind]}
+        </span>
+        {status.requestCount !== undefined && (
+          <span style={styles.muted}>{status.requestCount} requests</span>
         )}
-        <dt style={styles.dt}>Usage</dt>
-        <dd style={styles.dd}>
-          <div style={styles.quotaBarBg}>
-            <div
-              style={{
-                ...styles.quotaBarFill,
-                width: `${pct}%`,
-              }}
-            />
-          </div>
-          {tokensUsed.toLocaleString()} /{' '}
-          {tokenLimit.toLocaleString()} tokens used ·{' '}
-          <strong>{remaining.toLocaleString()}</strong> remaining
-          {status.requestCount !== undefined && (
-            <> · {status.requestCount} requests</>
-          )}
-        </dd>
-        <dt style={styles.dt}>Expires</dt>
-        <dd style={styles.dd}>
-          {status.expiresAt
-            ? new Date(status.expiresAt).toLocaleString()
-            : '—'}
-        </dd>
-      </dl>
+      </div>
 
-      <h3 style={styles.subTitle}>Using your token</h3>
-      {!status.token && (
-        <p style={styles.muted}>
-          Your token isn&apos;t showing because it was granted before
-          we stored the plaintext value. Ask an admin to revoke and
-          re-grant your access.
-        </p>
-      )}
-      <LlmProxyUsage endpoint={status.endpoint} token={status.token ?? 'llmp_…'} />
+      <div style={styles.row}>
+        <span style={styles.label}>Key</span>
+        <code data-testid="llm-proxy-token" style={styles.tokenValue} title="Your proxy key">
+          {maskToken(status.token)}
+        </code>
+        <button
+          type="button"
+          onClick={copyToken}
+          style={styles.copyBtn}
+          aria-label="Copy key to clipboard"
+        >
+          Copy
+        </button>
+      </div>
+
+      <div style={styles.actions}>
+        <Link to="/llm-proxy" style={styles.primaryBtn} data-testid="llm-proxy-setup-link">
+          Set up and details
+        </Link>
+      </div>
     </section>
   );
 }
@@ -166,35 +147,37 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 0.75rem 0',
     color: '#1e293b',
   },
-  subTitle: {
-    fontSize: '0.95rem',
-    fontWeight: 600,
-    margin: '1rem 0 0.5rem 0',
-    color: '#334155',
-  },
   muted: {
     color: '#64748b',
     margin: '0.25rem 0',
+    fontSize: '0.85rem',
   },
-  errorText: {
-    color: '#b91c1c',
-    margin: 0,
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '0.6rem',
+    margin: '0.35rem 0',
   },
-  dl: {
-    display: 'grid',
-    gridTemplateColumns: 'max-content 1fr',
-    columnGap: '1rem',
-    rowGap: '0.4rem',
-    margin: 0,
-  },
-  dt: {
+  figures: {
     fontWeight: 600,
-    color: '#475569',
-  },
-  dd: {
-    margin: 0,
     color: '#1e293b',
   },
+  label: {
+    fontWeight: 600,
+    color: '#475569',
+    fontSize: '0.85rem',
+  },
+  pill: {
+    fontSize: '0.72rem',
+    fontWeight: 600,
+    padding: '2px 8px',
+    borderRadius: 999,
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+  },
+  pillActive: { background: '#d1fae5', color: '#065f46' },
+  pillInactive: { background: '#e2e8f0', color: '#475569' },
   copyBtn: {
     fontSize: '0.8rem',
     padding: '0.1rem 0.5rem',
@@ -209,28 +192,16 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 6px',
     background: '#f1f5f9',
     borderRadius: 4,
-    userSelect: 'all',
-    wordBreak: 'break-all',
   },
-  quotaBarBg: {
-    width: '100%',
-    height: 6,
-    background: '#e2e8f0',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: '0.3rem',
-  },
-  quotaBarFill: {
-    height: '100%',
-    background: '#2563eb',
-  },
-  snippet: {
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '0.8rem',
-    background: '#0f172a',
-    color: '#e2e8f0',
-    padding: '0.8rem',
+  actions: { marginTop: '0.9rem' },
+  primaryBtn: {
+    display: 'inline-block',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    padding: '0.4rem 0.9rem',
     borderRadius: 6,
-    overflowX: 'auto',
+    background: '#2563eb',
+    color: '#fff',
+    textDecoration: 'none',
   },
 };

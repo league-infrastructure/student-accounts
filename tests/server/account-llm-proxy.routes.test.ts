@@ -117,6 +117,8 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     // Sprint 003 ticket 003: the Anthropic surface is on by default.
     expect(res.body.anthropicEnabled).toBe(true);
     expect(res.body.anthropicEndpoint).toBe(res.body.endpoint);
+    // Sprint 003 ticket 004: the tier list rides along even when disabled.
+    expect(res.body.models).toEqual(['league-large', 'league-medium', 'league-small']);
     expect(res.body).not.toHaveProperty('token');
     expect(res.body).not.toHaveProperty('tokenHash');
   });
@@ -142,6 +144,7 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     expect(res.body.endpoint).toMatch(/\/proxy$/);
     expect(res.body.anthropicEnabled).toBe(true);
     expect(res.body.anthropicEndpoint).toBe(res.body.endpoint);
+    expect(res.body.models).toEqual(['league-large', 'league-medium', 'league-small']);
     // Plaintext token is surfaced so the student can see and use it.
     expect(res.body.token).toBe(granted);
     expect(res.body).not.toHaveProperty('tokenHash');
@@ -203,6 +206,11 @@ describe('GET /api/account/llm-proxy and GET /api/account — budget fields', ()
     expect(account.body.profile.llmProxy.anthropicEndpoint).toBe(
       account.body.profile.llmProxy.endpoint,
     );
+    expect(account.body.profile.llmProxy.models).toEqual([
+      'league-large',
+      'league-medium',
+      'league-small',
+    ]);
   });
 
   it('a legacy token (budget_usd null) reports budgetUsd null', async () => {

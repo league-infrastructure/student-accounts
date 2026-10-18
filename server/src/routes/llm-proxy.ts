@@ -44,6 +44,13 @@ import type { ForwardOptions } from '../services/llm-proxy-forwarder.service.js'
 
 export const llmProxyRouter = Router();
 
+/**
+ * The League model tiers, most capable first. Served by GET /proxy/v1/models
+ * and echoed in the student/admin account payloads (`models`) so the client
+ * setup examples never hard-code tier names.
+ */
+export const LEAGUE_MODEL_IDS: readonly string[] = ['league-large', 'league-medium', 'league-small'];
+
 /** Is the Anthropic-compatible surface switched on? Read per request (config is live). */
 export function anthropicProxyEnabled(): boolean {
   return getConfig('LLM_PROXY_ANTHROPIC_ENABLED') === 'true';
@@ -88,11 +95,7 @@ llmProxyRouter.get('/health', (_req: Request, res: Response) => {
 llmProxyRouter.get('/models', (_req: Request, res: Response) => {
   res.json({
     object: 'list',
-    data: [
-      { id: 'league-large', object: 'model', owned_by: 'league' },
-      { id: 'league-medium', object: 'model', owned_by: 'league' },
-      { id: 'league-small', object: 'model', owned_by: 'league' },
-    ],
+    data: LEAGUE_MODEL_IDS.map((id) => ({ id, object: 'model', owned_by: 'league' })),
   });
 });
 
