@@ -63,6 +63,15 @@ export function useToast(): ToastContextValue {
   return ctx;
 }
 
+/**
+ * Same as useToast, but null outside a <ToastProvider/> (component tests
+ * render pages bare), so a component can toast when it can and fall back to
+ * its own inline message when it cannot.
+ */
+export function useOptionalToast(): ToastContextValue | null {
+  return useContext(ToastContext);
+}
+
 function ToastViewport({
   toasts,
   onDismiss,

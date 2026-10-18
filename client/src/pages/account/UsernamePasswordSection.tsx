@@ -15,7 +15,8 @@
  *   409 — "Username already taken"
  */
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useOptionalToast } from '../../context/ToastContext';
 
 interface UsernamePasswordSectionProps {
   username: string | null;
@@ -52,12 +53,22 @@ export default function UsernamePasswordSection({
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  // What was just saved, named, so the acknowledgement is unmissable: a
+  // toast (when the page has a provider) AND a green panel under the form
+  // that fades on its own. The old "Saved." was easy to miss.
+  const [success, setSuccess] = useState<string | null>(null);
+  const toast = useOptionalToast();
+
+  useEffect(() => {
+    if (!success) return;
+    const t = setTimeout(() => setSuccess(null), 6000);
+    return () => clearTimeout(t);
+  }, [success]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
+    setSuccess(null);
 
     // Client-side: confirm passwords match before hitting the API.
     if (newPassword && newPassword !== confirmNewPassword) {
@@ -86,7 +97,14 @@ export default function UsernamePasswordSection({
     setSubmitting(true);
     try {
       await patchCredentials(patch);
-      setSuccess(true);
+      const what =
+        patch.username !== undefined && patch.newPassword !== undefined
+          ? 'Username and password saved.'
+          : patch.newPassword !== undefined
+            ? 'Password changed.'
+            : 'Username saved.';
+      setSuccess(what);
+      toast?.showToast(what, 'success');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
@@ -191,7 +209,7 @@ export default function UsernamePasswordSection({
         )}
         {success && (
           <p role="status" style={styles.successMsg}>
-            Saved.
+            ✓ {success}
           </p>
         )}
 
@@ -262,9 +280,16 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
   },
   successMsg: {
-    fontSize: '0.85rem',
-    color: '#16a34a',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: '#166534',
+    background: '#dcfce7',
+    border: '1px solid #86efac',
+    borderRadius: 6,
+    padding: '8px 12px',
     margin: 0,
+    maxWidth: 380,
+    boxSizing: 'border-box' as const,
   },
   submitButton: {
     alignSelf: 'flex-start',
