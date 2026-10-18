@@ -1,6 +1,8 @@
 ---
-status: pending
+status: in-progress
 sprint: '003'
+tickets:
+- 003-004
 ---
 
 # Student LLM proxy: tighter card, full page with setup examples for every tool

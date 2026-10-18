@@ -1,6 +1,8 @@
 ---
-status: pending
+status: in-progress
 sprint: '003'
+tickets:
+- 003-005
 ---
 
 # Admin: see a student's LLM key and usage, set their dollar limit

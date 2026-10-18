@@ -1,6 +1,10 @@
 ---
-status: pending
+status: in-progress
 sprint: '003'
+tickets:
+- 003-001
+- 003-002
+- 003-006
 ---
 
 # LLM proxy: budgets in dollars with a monthly reset
