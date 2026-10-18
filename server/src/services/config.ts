@@ -33,6 +33,9 @@ export const CONFIG_KEYS: ConfigKeyMeta[] = [
   { key: 'LLM_PROXY_MODEL_LARGE', group: 'LLM Proxy', label: 'Large Model', isSecret: false, requiresRestart: false },
   { key: 'LLM_PROXY_MODEL_MEDIUM', group: 'LLM Proxy', label: 'Medium Model', isSecret: false, requiresRestart: false },
   { key: 'LLM_PROXY_MODEL_SMALL', group: 'LLM Proxy', label: 'Small Model', isSecret: false, requiresRestart: false },
+  // 'true' once the Anthropic-compatible endpoint ships (sprint 003); the fleet
+  // token endpoint then advertises anthropic_base_url to the laptops.
+  { key: 'LLM_PROXY_ANTHROPIC_ENABLED', group: 'LLM Proxy', label: 'Anthropic Endpoint Enabled', isSecret: false, requiresRestart: false, defaultValue: 'false' },
   // Laptop accounts (DigitalOcean Spaces roster bucket; the same key also uploads backups)
   { key: 'DO_SPACES_ENDPOINT', group: 'Laptop accounts', label: 'Spaces Endpoint', isSecret: false, requiresRestart: true },
   { key: 'DO_SPACES_KEY', group: 'Laptop accounts', label: 'Spaces Access Key', isSecret: true, requiresRestart: true },

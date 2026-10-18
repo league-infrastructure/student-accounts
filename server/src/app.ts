@@ -9,6 +9,7 @@ import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
 import { passphraseSignupRouter } from './routes/auth/passphrase-signup';
 import { loginRouter } from './routes/auth/login';
+import { fleetRouter } from './routes/fleet';
 import { adminRouter } from './routes/admin';
 import { accountRouter } from './routes/account';
 import { staffDirectoryRouter } from './routes/staff/directory';
@@ -80,6 +81,8 @@ app.use('/api', healthRouter);
 // Public auth routes — mounted before requireAuth middleware
 app.use('/api/auth', passphraseSignupRouter);
 app.use('/api/auth', loginRouter);
+// Fleet (laptop) machine endpoints — public, credential-in-body, no cookie.
+app.use('/api/fleet', fleetRouter);
 app.use('/api', authRouter);
 app.use('/api', adminRouter);
 app.use('/api', oauthClientsRouter);

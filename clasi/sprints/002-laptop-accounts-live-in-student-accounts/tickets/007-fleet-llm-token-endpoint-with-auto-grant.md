@@ -1,7 +1,7 @@
 ---
 id: '007'
 title: Fleet LLM token endpoint with auto-grant
-status: in-progress
+status: done
 use-cases:
 - SUC-004
 depends-on:
@@ -20,13 +20,13 @@ A machine endpoint the laptops call at login (`league-helper login`, with the st
 
 ## Acceptance Criteria
 
-- [ ] `LlmProxyTokenService.ensureActive(userId, actorId, scope)` in `server/src/services/llm-proxy-token.service.ts`: returns the active token row (with plaintext) or grants one (`expiresAt: +1 year`, `tokenLimit: LLM_PROXY_DEFAULT_TOKEN_LIMIT`), also replacing an expired one; sets `allows_llm_proxy = true`.
-- [ ] `server/src/routes/fleet.ts` mounted at `/api/fleet` in `app.ts`, public (no session): `POST /llm-token` and `POST /llm-token/rotate`, body `{ username, password }`. Verification exactly like `routes/auth/login.ts` but **without** the passphrase fallback, via `verifyPassword` (scrypt or `$6$`). Conditions: user exists, `is_active`, role student or staff. If `allows_llm_proxy` is false and the user has no `username`+`laptop_password_hash` → 403 `{ error: 'llm proxy not enabled' }`; otherwise `ensureActive`. Rotate = `revoke` then `ensureActive`.
-- [ ] Response 200: `{ user_id, username, api_key, base_url: '<scheme>://<host>/proxy/v1', anthropic_base_url: '<scheme>://<host>/proxy' (only when config `LLM_PROXY_ANTHROPIC_ENABLED` is 'true'; omit otherwise), models: ['league-small','league-medium','league-large'], default_model: 'league-medium', token_limit, tokens_used, request_count, expires_at, granted_at }`; host derived as `GET /api/account` does for `endpoint`.
-- [ ] 401 `{ error: 'Invalid username or password' }` (same body as login) for any credential failure; 429 `{ error: 'too many attempts' }` after 5 failures per username or per client IP within 15 minutes (in-memory `server/src/middleware/attemptLimiter.ts`, exported for tests with a reset hook); never log the password.
-- [ ] Audit `fleet_llm_token_issued` (and `fleet_llm_token_rotated`) with `{ host: req.get('X-League-Host') ?? null }`.
-- [ ] Config: `LLM_PROXY_ANTHROPIC_ENABLED` registered in `CONFIG_KEYS` (default false; sprint 003 turns it on).
-- [ ] Tests (`tests/server/routes/fleet.test.ts`, supertest): 200 shape; same `api_key` on a second call; rotate changes it and the old one is rejected by `/proxy/v1/chat/completions` auth middleware (401); wrong password 401; 6th failure 429 and even a correct password is 429 while blocked; inactive user 401; user with `allows_llm_proxy=false` and no laptop credentials 403; a user with a `$6$` `password_hash` (imported) authenticates; `X-League-Host` lands in the audit row.
+- [x] `LlmProxyTokenService.ensureActive(userId, actorId, scope)` in `server/src/services/llm-proxy-token.service.ts`: returns the active token row (with plaintext) or grants one (`expiresAt: +1 year`, `tokenLimit: LLM_PROXY_DEFAULT_TOKEN_LIMIT`), also replacing an expired one; sets `allows_llm_proxy = true`.
+- [x] `server/src/routes/fleet.ts` mounted at `/api/fleet` in `app.ts`, public (no session): `POST /llm-token` and `POST /llm-token/rotate`, body `{ username, password }`. Verification exactly like `routes/auth/login.ts` but **without** the passphrase fallback, via `verifyPassword` (scrypt or `$6$`). Conditions: user exists, `is_active`, role student or staff. If `allows_llm_proxy` is false and the user has no `username`+`laptop_password_hash` → 403 `{ error: 'llm proxy not enabled' }`; otherwise `ensureActive`. Rotate = `revoke` then `ensureActive`.
+- [x] Response 200: `{ user_id, username, api_key, base_url: '<scheme>://<host>/proxy/v1', anthropic_base_url: '<scheme>://<host>/proxy' (only when config `LLM_PROXY_ANTHROPIC_ENABLED` is 'true'; omit otherwise), models: ['league-small','league-medium','league-large'], default_model: 'league-medium', token_limit, tokens_used, request_count, expires_at, granted_at }`; host derived as `GET /api/account` does for `endpoint`.
+- [x] 401 `{ error: 'Invalid username or password' }` (same body as login) for any credential failure; 429 `{ error: 'too many attempts' }` after 5 failures per username or per client IP within 15 minutes (in-memory `server/src/middleware/attemptLimiter.ts`, exported for tests with a reset hook); never log the password.
+- [x] Audit `fleet_llm_token_issued` (and `fleet_llm_token_rotated`) with `{ host: req.get('X-League-Host') ?? null }`.
+- [x] Config: `LLM_PROXY_ANTHROPIC_ENABLED` registered in `CONFIG_KEYS` (default false; sprint 003 turns it on).
+- [x] Tests (`tests/server/routes/fleet.test.ts`, supertest): 200 shape; same `api_key` on a second call; rotate changes it and the old one is rejected by `/proxy/v1/chat/completions` auth middleware (401); wrong password 401; 6th failure 429 and even a correct password is 429 while blocked; inactive user 401; user with `allows_llm_proxy=false` and no laptop credentials 403; a user with a `$6$` `password_hash` (imported) authenticates; `X-League-Host` lands in the audit row.
 
 ## Testing
 

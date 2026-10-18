@@ -4,6 +4,7 @@ import { requireAuth } from '../../middleware/requireAuth.js';
 import { AppError } from '../../errors.js';
 import { adminBus, userBus } from '../../services/change-bus.js';
 import { provisionUserIfNeeded } from '../../services/group.service.js';
+import { LLM_PROXY_DEFAULT_TOKEN_LIMIT } from '../../services/llm-proxy-token.service.js';
 
 export const adminUsersRouter = Router();
 
@@ -346,7 +347,6 @@ adminUsersRouter.get('/pending-users', async (_req, res, next) => {
 // affects the approval. The response reports what happened.
 // ---------------------------------------------------------------------------
 
-const LLM_PROXY_DEFAULT_TOKEN_LIMIT = 1_000_000;
 const LLM_PROXY_DEFAULT_EXPIRY_DAYS = 30;
 
 adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
