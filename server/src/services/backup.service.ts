@@ -1,29 +1,13 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { buildS3Client } from './spaces/s3-client';
 
 /** Resolve the SQLite database file path from DATABASE_URL. */
 function sqliteDbPath(): string {
   const url = process.env.DATABASE_URL || '';
   // file:./data/dev.db → ./data/dev.db
   return url.replace(/^file:/, '');
-}
-
-/** Build an S3 client for DigitalOcean Spaces, or null if not configured. */
-function buildS3Client(): S3Client | null {
-  const endpoint = process.env.DO_SPACES_ENDPOINT;
-  const key = process.env.DO_SPACES_KEY;
-  const secret = process.env.DO_SPACES_SECRET;
-  const region = process.env.DO_SPACES_REGION || 'sfo3';
-
-  if (!endpoint || !key || !secret) return null;
-
-  return new S3Client({
-    endpoint,
-    region,
-    credentials: { accessKeyId: key, secretAccessKey: secret },
-    forcePathStyle: false,
-  });
 }
 
 export class BackupService {

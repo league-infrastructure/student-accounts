@@ -6,6 +6,8 @@ export interface ConfigKeyMeta {
   label: string;
   isSecret: boolean;
   requiresRestart: boolean;
+  /** Value getConfig returns when neither env nor database sets the key. */
+  defaultValue?: string;
 }
 
 export const CONFIG_KEYS: ConfigKeyMeta[] = [
@@ -31,6 +33,12 @@ export const CONFIG_KEYS: ConfigKeyMeta[] = [
   { key: 'LLM_PROXY_MODEL_LARGE', group: 'LLM Proxy', label: 'Large Model', isSecret: false, requiresRestart: false },
   { key: 'LLM_PROXY_MODEL_MEDIUM', group: 'LLM Proxy', label: 'Medium Model', isSecret: false, requiresRestart: false },
   { key: 'LLM_PROXY_MODEL_SMALL', group: 'LLM Proxy', label: 'Small Model', isSecret: false, requiresRestart: false },
+  // Laptop accounts (DigitalOcean Spaces roster bucket; the same key also uploads backups)
+  { key: 'DO_SPACES_ENDPOINT', group: 'Laptop accounts', label: 'Spaces Endpoint', isSecret: false, requiresRestart: true },
+  { key: 'DO_SPACES_KEY', group: 'Laptop accounts', label: 'Spaces Access Key', isSecret: true, requiresRestart: true },
+  { key: 'DO_SPACES_SECRET', group: 'Laptop accounts', label: 'Spaces Secret Key', isSecret: true, requiresRestart: true },
+  { key: 'DO_SPACES_REGION', group: 'Laptop accounts', label: 'Spaces Region', isSecret: false, requiresRestart: true, defaultValue: 'sfo3' },
+  { key: 'LAPTOP_ROSTER_BUCKET', group: 'Laptop accounts', label: 'Roster Bucket', isSecret: false, requiresRestart: false, defaultValue: 'jtl-student-unix-accounts' },
 ];
 
 const CONFIG_KEY_SET = new Set(CONFIG_KEYS.map((k) => k.key));
@@ -50,9 +58,9 @@ export async function initConfigCache(): Promise<void> {
   }
 }
 
-/** Get a config value. Env var takes precedence over database. */
+/** Get a config value. Env var takes precedence over database, then the key's defaultValue. */
 export function getConfig(key: string): string | undefined {
-  return process.env[key] || cache.get(key) || undefined;
+  return process.env[key] || cache.get(key) || CONFIG_KEYS.find((k) => k.key === key)?.defaultValue || undefined;
 }
 
 /** Mask a secret value, showing only the last 4 characters. */

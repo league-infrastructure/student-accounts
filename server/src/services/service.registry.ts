@@ -49,6 +49,12 @@ import {
 } from './pike13/pike13-api.client';
 import { Pike13SyncService } from './pike13/pike13-sync.service';
 import { mergeScan } from './auth/merge-scan.stub';
+import {
+  LaptopRosterClient,
+  UnconfiguredLaptopRosterClient,
+  DEFAULT_LAPTOP_ROSTER_BUCKET,
+  type RosterClient,
+} from './laptop/laptop-roster.client';
 
 // Infrastructure services
 import { SchedulerService } from './scheduler.service';
@@ -102,6 +108,11 @@ export class ServiceRegistry {
   readonly oauthConsents: OAuthConsentService;
   /** Outbound SMTP mail wrapper (Sprint 028). */
   readonly mail: MailService;
+  /**
+   * Laptop roster in Spaces (sprint 002 "laptop accounts"). A stub that
+   * throws LaptopRosterNotConfiguredError when DO_SPACES_KEY is unset.
+   */
+  readonly laptopRoster: RosterClient;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -261,6 +272,15 @@ export class ServiceRegistry {
 
     // OAuthConsentService — Sprint 019.
     this.oauthConsents = new OAuthConsentService(defaultPrisma);
+
+    // LaptopRosterClient — sprint 002 (laptop accounts) T002. Like
+    // BackupService, reads DO_SPACES_* from env at construction (the config
+    // cache is not loaded yet). Without a key, a stub throws on first use.
+    this.laptopRoster = process.env.DO_SPACES_KEY
+      ? new LaptopRosterClient({
+          bucket: process.env.LAPTOP_ROSTER_BUCKET || DEFAULT_LAPTOP_ROSTER_BUCKET,
+        })
+      : new UnconfiguredLaptopRosterClient();
   }
 
   static create(
