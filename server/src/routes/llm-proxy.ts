@@ -15,9 +15,12 @@
  *   2. Returns 503 up-front when the server has no API key configured (so
  *      the token holder sees a clear error instead of a network-timeout).
  *   3. Delegates the forward to LlmProxyForwarderService, which preserves
- *      streaming and reports token usage via the onUsage callback.
- *   4. Updates LlmProxyToken counters via recordUsage (fire-and-forget —
- *      accounting drift is acceptable; see T002 rationale).
+ *      streaming and reports usage (tokens, OpenRouter cost, model, status)
+ *      via the onUsage callback.
+ *   4. Hands that report to recordUsage, which updates the LlmProxyToken
+ *      counters and dollar totals and writes one LlmProxyRequest row
+ *      (fire-and-forget — accounting drift is acceptable; see T002
+ *      rationale).
  */
 
 import express, { Router } from 'express';
@@ -91,10 +94,10 @@ llmProxyRouter.post(
     }
 
     await forwarder.forwardMessages(req, res, {
-      onUsage: (input, output) => {
+      onUsage: (report) => {
         if (row) {
           // Fire-and-forget — errors are swallowed by recordUsage itself.
-          void tokens.recordUsage(row.id, input, output);
+          void tokens.recordUsage(row.id, report);
         }
       },
     });

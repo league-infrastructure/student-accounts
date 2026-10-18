@@ -373,8 +373,8 @@ describe('LlmProxyTokenService.recordUsage', () => {
       actor.id,
     );
 
-    await service.recordUsage(row.id, 200, 300);
-    await service.recordUsage(row.id, 50, 70);
+    await service.recordUsage(row.id, { inputTokens: 200, outputTokens: 300 });
+    await service.recordUsage(row.id, { inputTokens: 50, outputTokens: 70 });
 
     const reloaded = await (prisma as any).llmProxyToken.findUnique({
       where: { id: row.id },
@@ -387,7 +387,7 @@ describe('LlmProxyTokenService.recordUsage', () => {
     // An unknown id surfaces a Prisma P2025 error, which recordUsage must
     // catch and log (best-effort accounting — see the service comment).
     await expect(
-      service.recordUsage(9_999_999, 10, 20),
+      service.recordUsage(9_999_999, { inputTokens: 10, outputTokens: 20 }),
     ).resolves.toBeUndefined();
   });
 
@@ -399,7 +399,7 @@ describe('LlmProxyTokenService.recordUsage', () => {
       { expiresAt: futureDate(), tokenLimit: 1_000_000 },
       actor.id,
     );
-    await service.recordUsage(row.id, -5, -10);
+    await service.recordUsage(row.id, { inputTokens: -5, outputTokens: -10 });
     const reloaded = await (prisma as any).llmProxyToken.findUnique({
       where: { id: row.id },
     });

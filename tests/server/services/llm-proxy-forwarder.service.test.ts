@@ -11,6 +11,8 @@
  *  4. Streaming path — stream_options injection, usage from final chunk
  *  5. Client disconnect — AbortController fires
  *  6. isConfigured() — key present vs absent
+ *  7. Cost accounting (sprint 003) — usage.include injection, usage.cost
+ *     parsing (JSON body and final SSE chunk), UsageReport shape
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
@@ -18,6 +20,7 @@ import {
   LlmProxyForwarderService,
   LlmProxyNotConfiguredError,
   resolveLlmProxyApiKey,
+  type UsageReport,
 } from '../../../server/src/services/llm-proxy-forwarder.service.js';
 
 // ---------------------------------------------------------------------------
@@ -345,7 +348,7 @@ describe('forwardMessages — non-streaming', () => {
 
     const usages: Array<[number, number]> = [];
     await svc.forwardMessages(req as any, res as any, {
-      onUsage: (i, o) => usages.push([i, o]),
+      onUsage: (u) => usages.push([u.inputTokens, u.outputTokens]),
     });
 
     expect(usages).toEqual([[42, 17]]);
@@ -375,7 +378,7 @@ describe('forwardMessages — non-streaming', () => {
 
     const usages: Array<[number, number]> = [];
     await svc.forwardMessages(req as any, res as any, {
-      onUsage: (i, o) => usages.push([i, o]),
+      onUsage: (u) => usages.push([u.inputTokens, u.outputTokens]),
     });
     expect(res.statusCode).toBe(429);
     expect(usages).toEqual([[0, 0]]);
@@ -389,7 +392,7 @@ describe('forwardMessages — non-streaming', () => {
 
     let reported: [number, number] | null = null;
     await svc.forwardMessages(req as any, res as any, {
-      onUsage: (i, o) => { reported = [i, o]; },
+      onUsage: (u) => { reported = [u.inputTokens, u.outputTokens]; },
     });
     expect(res.statusCode).toBe(502);
     expect(reported).toEqual([0, 0]);
@@ -473,7 +476,7 @@ describe('forwardMessages — streaming', () => {
 
     let usage: [number, number] | null = null;
     await svc.forwardMessages(req as any, res as any, {
-      onUsage: (i, o) => { usage = [i, o]; },
+      onUsage: (u) => { usage = [u.inputTokens, u.outputTokens]; },
     });
 
     expect(usage).toEqual([25, 8]);
@@ -543,7 +546,7 @@ describe('forwardMessages — streaming', () => {
 
     let usage: [number, number] | null = null;
     await svc.forwardMessages(req as any, res as any, {
-      onUsage: (i, o) => { usage = [i, o]; },
+      onUsage: (u) => { usage = [u.inputTokens, u.outputTokens]; },
     });
     expect(usage).toEqual([100, 50]);
   });
@@ -641,5 +644,180 @@ describe('isConfigured()', () => {
     // All env keys cleared in beforeEach
     const svc = new LlmProxyForwarderService();
     expect(svc.isConfigured()).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Cost accounting (sprint 003) — usage.include, usage.cost, report shape
+// ---------------------------------------------------------------------------
+
+describe('forwardMessages — cost accounting (sprint 003)', () => {
+  /** Run one forward and return the sent body plus the single usage report. */
+  async function forward(body: any, upstream: any) {
+    const svc = new LlmProxyForwarderService('sk-fake');
+    const req = makeFakeReq(body);
+    const res = new FakeResponse();
+    const fetchMock = vi.fn().mockResolvedValue(upstream);
+    globalThis.fetch = fetchMock as any;
+    const reports: UsageReport[] = [];
+    await svc.forwardMessages(req as any, res as any, {
+      onUsage: (u) => reports.push(u),
+    });
+    const [, init] = fetchMock.mock.calls[0];
+    return { res, sentBody: JSON.parse(init.body as string), reports };
+  }
+
+  const sseUsageChunk = (usage: Record<string, unknown>) =>
+    `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', choices: [], usage })}\n\n`;
+  const sseContentChunk = 'data: {"id":"c1","choices":[{"delta":{"content":"Hi"}}]}\n\n';
+  const doneFrame = 'data: [DONE]\n\n';
+
+  it('injects usage: { include: true } on non-streaming requests', async () => {
+    const { sentBody } = await forward({ messages: [] }, jsonResponse(200, { usage: {} }));
+    expect(sentBody.usage).toEqual({ include: true });
+    expect(sentBody.stream_options).toBeUndefined();
+  });
+
+  it('injects usage: { include: true } on streaming requests alongside stream_options', async () => {
+    const { sentBody } = await forward({ stream: true, messages: [] }, sseResponse([doneFrame]));
+    expect(sentBody.usage).toEqual({ include: true });
+    expect(sentBody.stream_options).toEqual({ include_usage: true });
+  });
+
+  it('merges include: true into a client-supplied usage object without clobbering its fields', async () => {
+    const { sentBody } = await forward(
+      { messages: [], usage: { include: false, detail: 'full' } },
+      jsonResponse(200, { usage: {} }),
+    );
+    expect(sentBody.usage).toEqual({ include: true, detail: 'full' });
+  });
+
+  it('replaces a non-object client usage value', async () => {
+    const { sentBody } = await forward(
+      { messages: [], usage: 'yes' },
+      jsonResponse(200, { usage: {} }),
+    );
+    expect(sentBody.usage).toEqual({ include: true });
+  });
+
+  it('non-streaming: reports usage.cost from the JSON body', async () => {
+    const { reports } = await forward(
+      { messages: [] },
+      jsonResponse(200, { usage: { prompt_tokens: 42, completion_tokens: 17, cost: 0.00123 } }),
+    );
+    expect(reports).toHaveLength(1);
+    expect(reports[0].inputTokens).toBe(42);
+    expect(reports[0].outputTokens).toBe(17);
+    expect(reports[0].costUsd).toBe(0.00123);
+  });
+
+  it('non-streaming: costUsd is null when the body has no cost', async () => {
+    const { reports } = await forward(
+      { messages: [] },
+      jsonResponse(200, { usage: { prompt_tokens: 42, completion_tokens: 17 } }),
+    );
+    expect(reports[0]).toMatchObject({ inputTokens: 42, outputTokens: 17, costUsd: null });
+  });
+
+  it('non-streaming: a non-numeric cost is reported as null', async () => {
+    const { reports } = await forward(
+      { messages: [] },
+      jsonResponse(200, { usage: { prompt_tokens: 1, completion_tokens: 1, cost: '0.5' } }),
+    );
+    expect(reports[0].costUsd).toBeNull();
+  });
+
+  it('streaming: reports usage.cost from the final usage-bearing chunk', async () => {
+    const { reports, res } = await forward(
+      { stream: true, messages: [] },
+      sseResponse([
+        sseContentChunk,
+        sseUsageChunk({ prompt_tokens: 25, completion_tokens: 8, cost: 0.0007 }),
+        doneFrame,
+      ]),
+    );
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({ inputTokens: 25, outputTokens: 8, costUsd: 0.0007 });
+    // Passthrough is untouched by the parsing.
+    expect(Buffer.concat(res.chunks).toString('utf8')).toBe(
+      sseContentChunk + sseUsageChunk({ prompt_tokens: 25, completion_tokens: 8, cost: 0.0007 }) + doneFrame,
+    );
+  });
+
+  it('streaming: costUsd is null when no chunk carries a cost', async () => {
+    const { reports } = await forward(
+      { stream: true, messages: [] },
+      sseResponse([sseUsageChunk({ prompt_tokens: 25, completion_tokens: 8 }), doneFrame]),
+    );
+    expect(reports[0]).toMatchObject({ inputTokens: 25, outputTokens: 8, costUsd: null });
+  });
+
+  it('report carries model requested/sent, protocol openai and the upstream status', async () => {
+    const { reports } = await forward(
+      { model: 'league-small', messages: [] },
+      jsonResponse(200, { usage: { prompt_tokens: 3, completion_tokens: 4, cost: 0.1 } }),
+    );
+    expect(reports[0]).toEqual({
+      inputTokens: 3,
+      outputTokens: 4,
+      costUsd: 0.1,
+      modelRequested: 'league-small',
+      modelSent: 'deepseek/deepseek-v3.2',
+      protocol: 'openai',
+      status: 200,
+    });
+  });
+
+  it('modelRequested is null when the client sent no model', async () => {
+    const { reports } = await forward({ messages: [] }, jsonResponse(200, { usage: {} }));
+    expect(reports[0].modelRequested).toBeNull();
+    expect(reports[0].modelSent).toBe('deepseek/deepseek-v4-flash');
+  });
+
+  it('upstream 4xx without usage reports the status with zero tokens and null cost', async () => {
+    const { reports, res } = await forward(
+      { model: 'league-large', messages: [] },
+      jsonResponse(429, { error: 'rate limited' }),
+    );
+    expect(res.statusCode).toBe(429);
+    expect(reports).toEqual([
+      {
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: null,
+        modelRequested: 'league-large',
+        modelSent: 'deepseek/deepseek-v4-pro',
+        protocol: 'openai',
+        status: 429,
+      },
+    ]);
+  });
+
+  it('upstream 5xx on a streaming request reports the status via the JSON fallback', async () => {
+    const { reports } = await forward(
+      { stream: true, messages: [] },
+      jsonResponse(502, { error: 'upstream down' }),
+    );
+    expect(reports[0]).toMatchObject({ inputTokens: 0, outputTokens: 0, costUsd: null, status: 502 });
+  });
+
+  it('fetch failure reports status 502 with zero tokens and null cost', async () => {
+    const svc = new LlmProxyForwarderService('sk-fake');
+    const req = makeFakeReq({ model: 'sonnet', messages: [] });
+    const res = new FakeResponse();
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('boom')) as any;
+    const reports: UsageReport[] = [];
+    await svc.forwardMessages(req as any, res as any, { onUsage: (u) => reports.push(u) });
+    expect(reports).toEqual([
+      {
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: null,
+        modelRequested: 'sonnet',
+        modelSent: 'deepseek/deepseek-v4-flash',
+        protocol: 'openai',
+        status: 502,
+      },
+    ]);
   });
 });

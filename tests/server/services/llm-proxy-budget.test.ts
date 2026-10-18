@@ -360,9 +360,9 @@ describe('recordUsage', () => {
     expect(req.cost_usd).toBeGreaterThan(0);
   });
 
-  it('keeps the positional (tokenId, input, output) form working, priced as MEDIUM', async () => {
+  it('prices a report with only token counts as MEDIUM and records no model', async () => {
     const { row } = await grantFor();
-    await service.recordUsage(row.id, 1000, 500);
+    await service.recordUsage(row.id, { inputTokens: 1000, outputTokens: 500 });
     const after = await reload(row.id);
     expect(after.tokens_used).toBe(1500);
     expect(after.request_count).toBe(1);

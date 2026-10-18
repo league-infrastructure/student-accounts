@@ -6,8 +6,11 @@
  *  - Forward POST /proxy/v1/messages → LLM_PROXY_BASE_URL (default:
  *    https://openrouter.ai/api/v1/chat/completions) using the OpenAI Chat
  *    Completions protocol, preserving streaming (SSE).
- *  - Report token usage to the caller via an `onUsage` callback after the
- *    request completes so the caller can update `LlmProxyToken` counters.
+ *  - Report usage to the caller via an `onUsage(report)` callback after the
+ *    request completes so the caller can update `LlmProxyToken` counters and
+ *    write the request log. The report carries token counts, OpenRouter's
+ *    USD cost (or null when it did not supply one — the token service then
+ *    estimates it), the model requested / sent, and the upstream status.
  *
  * Security invariants:
  *  - The client-supplied Authorization header is stripped. The real API key
@@ -20,9 +23,15 @@
  *  - When `body.stream === true`, `stream_options: { include_usage: true }`
  *    is injected into the forwarded body so OpenRouter returns token counts
  *    in the final SSE chunk.
- *  - SSE events are parsed in-flight to extract `usage.prompt_tokens` and
- *    `usage.completion_tokens` from the final chunk. These drive the
- *    `onUsage` callback after the stream finishes.
+ *  - SSE events are parsed in-flight to extract `usage.prompt_tokens`,
+ *    `usage.completion_tokens` and `usage.cost` from the final chunk. These
+ *    drive the `onUsage` callback after the stream finishes.
+ *
+ * Cost accounting (sprint 003):
+ *  - `usage: { include: true }` is merged into every forwarded body (any
+ *    client-supplied `usage` fields are preserved) so OpenRouter reports the
+ *    request's cost in USD as `usage.cost` — in the JSON body for
+ *    non-streaming calls, in the final usage-bearing chunk for streams.
  *  - Client disconnects (`res.once('close', …)`) abort the upstream fetch via
  *    AbortController so we stop consuming OpenRouter tokens when the client
  *    has gone.
@@ -66,13 +75,39 @@ export class LlmProxyNotConfiguredError extends AppError {
 // Public option types
 // ---------------------------------------------------------------------------
 
+/**
+ * What one forwarded call cost. Passed to `ForwardOptions.onUsage` exactly
+ * once per call, including upstream errors (zero tokens, null cost, the
+ * upstream status) and fetch failures (status 502).
+ */
+export type UsageReport = {
+  inputTokens: number;
+  outputTokens: number;
+  /** OpenRouter's `usage.cost` in USD, or null when the response had none. */
+  costUsd: number | null;
+  /** The model string the client sent (e.g. "league-small"), or null. */
+  modelRequested: string | null;
+  /** The OpenRouter slug actually sent upstream after tier mapping. */
+  modelSent: string;
+  /** Wire protocol of the proxied call. This forwarder speaks OpenAI. */
+  protocol: 'openai' | 'anthropic';
+  /** HTTP status returned to the client (upstream's, or 502 on fetch failure). */
+  status: number;
+};
+
 export type ForwardOptions = {
   /**
    * Called once after the upstream request (and, for streaming, after the
-   * stream completes) with the usage numbers extracted from the response.
-   * Callers use this to update LlmProxyToken counters.
+   * stream completes) with the usage extracted from the response. Callers
+   * use this to update LlmProxyToken counters and the request log.
    */
-  onUsage: (inputTokens: number, outputTokens: number) => void;
+  onUsage: (usage: UsageReport) => void;
+};
+
+/** Model identity captured before the fetch; every report carries it. */
+type ModelContext = {
+  modelRequested: string | null;
+  modelSent: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -165,6 +200,28 @@ export function parseSseEvents(
   return remainder;
 }
 
+/**
+ * Read token counts and cost from an OpenAI/OpenRouter `usage` object.
+ * Missing or non-numeric fields leave the defaults (0 tokens, null cost).
+ */
+function readUsage(usage: unknown): {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number | null;
+} {
+  const out = { inputTokens: 0, outputTokens: 0, costUsd: null as number | null };
+  if (!usage || typeof usage !== 'object') return out;
+  const u = usage as Record<string, unknown>;
+  const input = Number(u.prompt_tokens ?? 0);
+  const output = Number(u.completion_tokens ?? 0);
+  out.inputTokens = Number.isFinite(input) ? input : 0;
+  out.outputTokens = Number.isFinite(output) ? output : 0;
+  if (typeof u.cost === 'number' && Number.isFinite(u.cost)) {
+    out.costUsd = u.cost;
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -199,16 +256,34 @@ export class LlmProxyForwarderService {
     }
 
     const body = req.body ?? {};
-    const isStream = body && typeof body === 'object' && body.stream === true;
+    const isObjectBody = body && typeof body === 'object';
+    const isStream = isObjectBody && body.stream === true;
 
-    // Map the model to an allowed League tier. Defaults to MEDIUM.
-    if (body && typeof body === 'object') {
-      (body as any).model = mapModel((body as any).model);
+    // Remember what the client asked for, then map the model to an allowed
+    // League tier. Defaults to MEDIUM.
+    const requested = isObjectBody ? (body as any).model : undefined;
+    const modelRequested = typeof requested === 'string' ? requested : null;
+    const modelSent = mapModel(requested);
+    if (isObjectBody) {
+      (body as any).model = modelSent;
     }
+    const model: ModelContext = { modelRequested, modelSent };
 
     // Inject stream_options so OpenRouter includes usage in the final chunk.
-    if (isStream && body && typeof body === 'object') {
+    if (isStream) {
       (body as any).stream_options = { include_usage: true };
+    }
+
+    // Ask OpenRouter to report the request's cost (`usage.cost`, USD).
+    // Preserve any other `usage` fields the client set.
+    if (isObjectBody) {
+      const clientUsage = (body as any).usage;
+      (body as any).usage = {
+        ...(clientUsage && typeof clientUsage === 'object' && !Array.isArray(clientUsage)
+          ? clientUsage
+          : {}),
+        include: true,
+      };
     }
 
     // Build upstream headers. Strip any client-supplied auth.
@@ -281,7 +356,14 @@ export class LlmProxyForwarderService {
         }
       }
       try {
-        opts.onUsage(0, 0);
+        opts.onUsage({
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: null,
+          ...model,
+          protocol: 'openai',
+          status: 502,
+        });
       } catch {
         /* ignore */
       }
@@ -290,9 +372,9 @@ export class LlmProxyForwarderService {
 
     try {
       if (isStream) {
-        await this.pipeStreaming(upstream, res, opts);
+        await this.pipeStreaming(upstream, res, opts, model);
       } else {
-        await this.pipeJson(upstream, res, opts);
+        await this.pipeJson(upstream, res, opts, model);
       }
     } finally {
       res.off('close', abortOnClose);
@@ -307,6 +389,7 @@ export class LlmProxyForwarderService {
     upstream: Response,
     res: ExpressResponse,
     opts: ForwardOptions,
+    model: ModelContext,
   ): Promise<void> {
     const text = await upstream.text();
     const status = upstream.status;
@@ -323,23 +406,19 @@ export class LlmProxyForwarderService {
     if (ct) res.set('content-type', ct);
     res.send(text);
 
-    let inputTokens = 0;
-    let outputTokens = 0;
-    if (upstream.ok) {
-      try {
-        const parsed = JSON.parse(text) as any;
-        const usage = parsed?.usage;
-        if (usage && typeof usage === 'object') {
-          // OpenAI Chat Completions format: prompt_tokens / completion_tokens
-          inputTokens = Number(usage.prompt_tokens ?? 0) || 0;
-          outputTokens = Number(usage.completion_tokens ?? 0) || 0;
-        }
-      } catch {
-        // Non-JSON body — report zero tokens.
-      }
+    // OpenAI Chat Completions format: usage.prompt_tokens /
+    // usage.completion_tokens, plus OpenRouter's usage.cost (USD) when the
+    // request asked for it. Error bodies normally carry no usage, so they
+    // report zero tokens and a null cost with the upstream status.
+    let usage = readUsage(null);
+    try {
+      const parsed = JSON.parse(text) as any;
+      usage = readUsage(parsed?.usage);
+    } catch {
+      // Non-JSON body — report zero tokens.
     }
     try {
-      opts.onUsage(inputTokens, outputTokens);
+      opts.onUsage({ ...usage, ...model, protocol: 'openai', status });
     } catch (err) {
       logger.warn({ err }, '[llm-proxy-forwarder] onUsage threw (non-streaming path)');
     }
@@ -353,11 +432,12 @@ export class LlmProxyForwarderService {
     upstream: Response,
     res: ExpressResponse,
     opts: ForwardOptions,
+    model: ModelContext,
   ): Promise<void> {
     // Upstream might fail with a non-2xx before any SSE bytes land. In
     // that case pass the body through as-is (OpenRouter returns JSON).
     if (!upstream.ok || !upstream.body) {
-      await this.pipeJson(upstream, res, opts);
+      await this.pipeJson(upstream, res, opts, model);
       return;
     }
 
@@ -372,11 +452,13 @@ export class LlmProxyForwarderService {
 
     let inputTokens = 0;
     let outputTokens = 0;
+    let costUsd: number | null = null;
     const decoder = new TextDecoder();
     let buffer = '';
 
     // OpenAI SSE: usage appears in the final chunk when
-    // stream_options.include_usage is true.
+    // stream_options.include_usage is true; OpenRouter puts `cost` (USD) in
+    // that same chunk when the body asked for `usage: { include: true }`.
     const onSseEvent = (payload: Record<string, unknown>) => {
       const usage = (payload as any).usage;
       if (usage && typeof usage === 'object') {
@@ -385,6 +467,9 @@ export class LlmProxyForwarderService {
         }
         if (typeof usage.completion_tokens === 'number') {
           outputTokens = usage.completion_tokens;
+        }
+        if (typeof usage.cost === 'number' && Number.isFinite(usage.cost)) {
+          costUsd = usage.cost;
         }
       }
     };
@@ -425,7 +510,14 @@ export class LlmProxyForwarderService {
         /* ignore */
       }
       try {
-        opts.onUsage(inputTokens, outputTokens);
+        opts.onUsage({
+          inputTokens,
+          outputTokens,
+          costUsd,
+          ...model,
+          protocol: 'openai',
+          status: upstream.status,
+        });
       } catch (err) {
         logger.warn({ err }, '[llm-proxy-forwarder] onUsage threw (streaming path)');
       }

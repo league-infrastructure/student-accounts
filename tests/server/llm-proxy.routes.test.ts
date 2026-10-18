@@ -8,6 +8,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import request from 'supertest';
 import app, { registry } from '../../server/src/app';
 import { prisma } from '../../server/src/services/prisma';
+import { TierPricing } from '../../server/src/services/llm-proxy-pricing';
+import type { UsageReport } from '../../server/src/services/llm-proxy-forwarder.service';
 import { makeUser } from './helpers/factories';
 
 // ---------------------------------------------------------------------------
@@ -20,18 +22,30 @@ const forwarderState = {
   onForward: (_req: any, res: any, _opts: any) => {
     res.status(200).json({ ok: true, usage: { input_tokens: 5, output_tokens: 7 } });
   },
-  lastUsage: null as null | { input: number; output: number },
+  /** Fields overriding the default usage report the fake hands to onUsage. */
+  lastUsage: null as null | Partial<UsageReport>,
 };
+
+/** The report a real forwarder would produce for `req`, with test overrides. */
+function fakeReport(req: any): UsageReport {
+  return {
+    inputTokens: 5,
+    outputTokens: 7,
+    costUsd: null,
+    modelRequested: typeof req.body?.model === 'string' ? req.body.model : null,
+    modelSent: 'deepseek/deepseek-v4-flash',
+    protocol: 'openai',
+    status: 200,
+    ...(forwarderState.lastUsage ?? {}),
+  };
+}
 
 const fakeForwarder = {
   isConfigured: vi.fn(() => forwarderState.configured),
   forwardMessages: vi.fn(async (req: any, res: any, opts: any) => {
     forwarderState.onForward(req, res, opts);
     // Call onUsage from the fake so the recordUsage path is exercised.
-    opts.onUsage(
-      forwarderState.lastUsage?.input ?? 5,
-      forwarderState.lastUsage?.output ?? 7,
-    );
+    opts.onUsage(fakeReport(req));
   }),
 };
 
@@ -281,7 +295,7 @@ describe('POST /proxy/v1/chat/completions — forwarding', () => {
 
   it('invokes recordUsage via onUsage and increments counters', async () => {
     const { token, tokenId } = await grantTokenForStudent();
-    forwarderState.lastUsage = { input: 42, output: 58 };
+    forwarderState.lastUsage = { inputTokens: 42, outputTokens: 58 };
     await request(app)
       .post('/proxy/v1/chat/completions')
       .set('Authorization', `Bearer ${token}`)
@@ -296,6 +310,111 @@ describe('POST /proxy/v1/chat/completions — forwarding', () => {
     });
     expect(row.tokens_used).toBe(42 + 58);
     expect(row.request_count).toBe(1);
+  });
+
+  it('passes the forwarder usage report to recordUsage unchanged (sprint 003)', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    forwarderState.lastUsage = {
+      inputTokens: 11,
+      outputTokens: 22,
+      costUsd: 0.0042,
+      modelSent: 'deepseek/deepseek-v4-pro',
+    };
+    const spy = vi.spyOn(registry.llmProxyTokens, 'recordUsage');
+    try {
+      await request(app)
+        .post('/proxy/v1/chat/completions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ model: 'league-large', messages: [] })
+        .expect(200);
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith(tokenId, {
+        inputTokens: 11,
+        outputTokens: 22,
+        costUsd: 0.0042,
+        modelRequested: 'league-large',
+        modelSent: 'deepseek/deepseek-v4-pro',
+        protocol: 'openai',
+        status: 200,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('records the reported cost and a request row when the forwarder supplies cost', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    forwarderState.lastUsage = { inputTokens: 100, outputTokens: 50, costUsd: 0.0042 };
+    await request(app)
+      .post('/proxy/v1/chat/completions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ model: 'league-medium', messages: [] })
+      .expect(200);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const row = await (prisma as any).llmProxyToken.findUnique({ where: { id: tokenId } });
+    expect(row.spent_usd).toBeCloseTo(0.0042, 12);
+    const requests = await (prisma as any).llmProxyRequest.findMany({ where: { token_id: tokenId } });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      protocol: 'openai',
+      model_requested: 'league-medium',
+      model_sent: 'deepseek/deepseek-v4-flash',
+      input_tokens: 100,
+      output_tokens: 50,
+      cost_usd: 0.0042,
+      status: 200,
+    });
+  });
+
+  it('falls back to TierPricing for cost_usd when the forwarder reports a null cost', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    forwarderState.lastUsage = {
+      inputTokens: 1000,
+      outputTokens: 500,
+      costUsd: null,
+      modelSent: 'deepseek/deepseek-v3.2',
+    };
+    await request(app)
+      .post('/proxy/v1/chat/completions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ model: 'league-small', messages: [] })
+      .expect(200);
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Same config path the registry's pricing uses, so the estimate matches.
+    const pricing = new TierPricing();
+    const expected = pricing.costUsd(pricing.tierFor('deepseek/deepseek-v3.2'), 1000, 500);
+    expect(expected).toBeGreaterThan(0);
+
+    const requests = await (prisma as any).llmProxyRequest.findMany({ where: { token_id: tokenId } });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].cost_usd).toBeCloseTo(expected, 12);
+    expect(requests[0].model_sent).toBe('deepseek/deepseek-v3.2');
+    const row = await (prisma as any).llmProxyToken.findUnique({ where: { id: tokenId } });
+    expect(row.spent_usd).toBeCloseTo(expected, 12);
+  });
+
+  it('records an upstream error as a request row with its status and zero tokens/cost', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    forwarderState.onForward = (_req, res) => {
+      res.status(429).json({ error: 'rate limited' });
+    };
+    forwarderState.lastUsage = { inputTokens: 0, outputTokens: 0, costUsd: null, status: 429 };
+    await request(app)
+      .post('/proxy/v1/chat/completions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ model: 'x', messages: [] })
+      .expect(429);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const requests = await (prisma as any).llmProxyRequest.findMany({ where: { token_id: tokenId } });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ status: 429, input_tokens: 0, output_tokens: 0, cost_usd: 0 });
+    const row = await (prisma as any).llmProxyToken.findUnique({ where: { id: tokenId } });
+    expect(row.request_count).toBe(1);
+    expect(row.spent_usd).toBe(0);
   });
 
   it('returns 503 when the forwarder reports not configured', async () => {

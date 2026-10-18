@@ -683,23 +683,8 @@ export class LlmProxyTokenService {
    * Swallows and logs errors so a transient DB hiccup does not surface to
    * the student (their upstream call already succeeded by the time we get
    * here). Callers fire-and-forget.
-   *
-   * The positional form `(tokenId, inputTokens, outputTokens)` is kept for
-   * the current forwarder and is priced as an 'openai' call on the MEDIUM
-   * tier.
    */
-  async recordUsage(tokenId: number, usage: UsageReport): Promise<void>;
-  async recordUsage(tokenId: number, inputTokens: number, outputTokens: number): Promise<void>;
-  async recordUsage(
-    tokenId: number,
-    usageOrInput: UsageReport | number,
-    outputTokens = 0,
-  ): Promise<void> {
-    const usage: UsageReport =
-      typeof usageOrInput === 'number'
-        ? { inputTokens: usageOrInput, outputTokens }
-        : usageOrInput;
-
+  async recordUsage(tokenId: number, usage: UsageReport): Promise<void> {
     const inputTokens = clampTokens(usage.inputTokens);
     const outputCount = clampTokens(usage.outputTokens);
     const modelSent = usage.modelSent ?? null;

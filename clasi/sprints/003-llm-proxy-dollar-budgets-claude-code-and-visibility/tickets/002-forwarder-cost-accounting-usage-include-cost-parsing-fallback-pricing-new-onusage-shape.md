@@ -2,7 +2,7 @@
 id: '002'
 title: 'Forwarder cost accounting: usage.include, cost parsing, fallback pricing,
   new onUsage shape'
-status: in-progress
+status: done
 use-cases:
 - SUC-001
 depends-on:
@@ -21,12 +21,12 @@ Make the forwarder report dollars. Ask OpenRouter to include cost (`usage: {incl
 
 ## Acceptance Criteria
 
-- [ ] `server/src/services/llm-proxy-forwarder.service.ts`: `onUsage` becomes `(usage: UsageReport) => void` with `UsageReport = { inputTokens, outputTokens, costUsd: number | null, modelRequested: string | null, modelSent: string, protocol: 'openai' | 'anthropic', status: number }` (exported). The OpenAI path sets `protocol: 'openai'`.
-- [ ] Request body gets `usage: { include: true }` merged in (preserve any client-supplied `usage` object fields) for both streaming and non-streaming; `stream_options.include_usage` injection unchanged.
-- [ ] Non-streaming: `costUsd = body.usage?.cost ?? null` (OpenRouter returns cost in USD credits in `usage.cost`). Streaming: read `usage.cost` from the chunk that carries `usage` (the last one), else null. Tokens parsed as today.
-- [ ] `routes/llm-proxy.ts` passes the report to `tokens.recordUsage(row.id, report)` (ticket 001's shape); the legacy positional overload can now be removed if nothing else uses it.
-- [ ] Error responses from upstream (4xx/5xx) still record a request row with `status` and zero tokens/cost when the body has no usage.
-- [ ] Tests (`tests/server/services/llm-proxy-forwarder.service.test.ts`): `usage.include` injected (non-stream and stream), cost parsed from both shapes, null cost when absent, client `usage` object merged not clobbered, report shape; route test asserts `recordUsage` receives the report and that a request row lands with `cost_usd` from the fallback when cost is null.
+- [x] `server/src/services/llm-proxy-forwarder.service.ts`: `onUsage` becomes `(usage: UsageReport) => void` with `UsageReport = { inputTokens, outputTokens, costUsd: number | null, modelRequested: string | null, modelSent: string, protocol: 'openai' | 'anthropic', status: number }` (exported). The OpenAI path sets `protocol: 'openai'`.
+- [x] Request body gets `usage: { include: true }` merged in (preserve any client-supplied `usage` object fields) for both streaming and non-streaming; `stream_options.include_usage` injection unchanged.
+- [x] Non-streaming: `costUsd = body.usage?.cost ?? null` (OpenRouter returns cost in USD credits in `usage.cost`). Streaming: read `usage.cost` from the chunk that carries `usage` (the last one), else null. Tokens parsed as today.
+- [x] `routes/llm-proxy.ts` passes the report to `tokens.recordUsage(row.id, report)` (ticket 001's shape); the legacy positional overload can now be removed if nothing else uses it.
+- [x] Error responses from upstream (4xx/5xx) still record a request row with `status` and zero tokens/cost when the body has no usage.
+- [x] Tests (`tests/server/services/llm-proxy-forwarder.service.test.ts`): `usage.include` injected (non-stream and stream), cost parsed from both shapes, null cost when absent, client `usage` object merged not clobbered, report shape; route test asserts `recordUsage` receives the report and that a request row lands with `cost_usd` from the fallback when cost is null.
 
 ## Testing
 
