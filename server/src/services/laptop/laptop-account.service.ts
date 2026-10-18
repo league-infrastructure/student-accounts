@@ -21,6 +21,10 @@
  * `password_hash` or `display_name` differ, and NEVER throws: a Spaces
  * failure logs, sets `User.laptop_roster_dirty = true` for the job to retry,
  * and returns 'failed'. Spaces being down must not block a password change.
+ *
+ * `stateFor(user)` (T006, SUC-006 / SUC-007) is the pure read-side companion:
+ * it classifies a user row into the laptop-login state the Account page and
+ * the admin detail panel show, without touching the roster.
  */
 
 import { createLogger } from '../logger.js';
@@ -82,6 +86,66 @@ export interface PushAllResult {
   failed: number;
 }
 
+/**
+ * What a user sees about their laptop login (T006). Derived from the row alone
+ * — the server cannot read the laptops' view, so this is "what the roster
+ * entry should be", not "what it is"; `dirty` says whether the two may differ.
+ *
+ *  - ready            — eligible: an unlocked entry with the crypt hash
+ *  - locked           — role admin: admins never get a roster entry, whatever
+ *                       the flags say, so nothing the user does changes this
+ *  - disabled         — `allows_laptop_account` off or `is_active` false
+ *                       (admin switched it off / account deactivated or
+ *                       denied); the entry, if any, is locked with `!`
+ *  - needs_password   — no `laptop_password_hash`: social-login or
+ *                       passphrase-only users until they set a password here
+ *  - invalid_username — no username, or one the laptops cannot use
+ *                       (`isValidRosterId` fails: mixed case, too short,
+ *                       reserved…)
+ *
+ * Checks run in that order (disabled, locked, needs_password,
+ * invalid_username) so the user is told about the first thing that blocks
+ * them; the remaining case is exactly `isEligible(user)`.
+ */
+export type LaptopLoginState = 'ready' | 'locked' | 'disabled' | 'needs_password' | 'invalid_username';
+
+export interface LaptopLoginView {
+  /** True when the laptop login works right now (state === 'ready'). */
+  enabled: boolean;
+  state: LaptopLoginState;
+  username: string | null;
+  /** True when the last roster write failed and the hourly job will retry. */
+  dirty: boolean;
+  /** ISO timestamp of the last successful roster write or lock, when known. */
+  lastWritten?: string;
+}
+
+/** The User columns `stateFor` looks at. */
+export type LaptopStateUser = LaptopUser & { laptop_roster_dirty: boolean };
+
+/** Classify a user row; see `LaptopLoginState` for the mapping. Pure. */
+export function laptopLoginState(user: LaptopUser): LaptopLoginState {
+  if (!user.allows_laptop_account || !user.is_active) return 'disabled';
+  if (user.role === 'admin') return 'locked';
+  if (!user.laptop_password_hash) return 'needs_password';
+  if (!user.username || !isValidRosterId(user.username)) return 'invalid_username';
+  return 'ready';
+}
+
+/** The laptop-login view of a user row. Pure; `lastWritten` is left to the caller. */
+export function stateFor(user: LaptopStateUser): LaptopLoginView {
+  const state = laptopLoginState(user);
+  return {
+    enabled: state === 'ready',
+    state,
+    username: user.username ?? null,
+    dirty: !!user.laptop_roster_dirty,
+  };
+}
+
+/** Audit actions that mean the roster entry was (re)written. */
+const ROSTER_WRITE_ACTIONS = ['laptop_roster_written', 'laptop_roster_locked'];
+
 /** Compact ISO-8601 UTC, `20260825T170542Z`, as `league-helper` writes it. */
 export function rosterTimestamp(date: Date = new Date()): string {
   return `${date.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
@@ -108,6 +172,30 @@ export class LaptopAccountService {
       !!user.laptop_password_hash &&
       isValidRosterId(user.username)
     );
+  }
+
+  /** See the module-level `stateFor`; exposed on the service for callers holding `req.services`. */
+  stateFor(user: LaptopStateUser): LaptopLoginView {
+    return stateFor(user);
+  }
+
+  /**
+   * ISO timestamp of the last `laptop_roster_written` / `laptop_roster_locked`
+   * audit event for `userId`, or null when the entry was never written from
+   * here (or the lookup fails — this is informational only).
+   */
+  async lastWrittenAt(userId: number): Promise<string | null> {
+    try {
+      const event = await this.prisma.auditEvent.findFirst({
+        where: { target_user_id: userId, action: { in: ROSTER_WRITE_ACTIONS } },
+        orderBy: { created_at: 'desc' },
+        select: { created_at: true },
+      });
+      return event ? new Date(event.created_at).toISOString() : null;
+    } catch (err) {
+      logger.warn({ err, userId }, '[laptop-account] Could not look up the last roster write.');
+      return null;
+    }
   }
 
   /**

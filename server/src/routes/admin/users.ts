@@ -31,6 +31,12 @@ adminUsersRouter.get('/users/:id', async (req, res, next) => {
       cohort: user.cohort ? { id: user.cohort.id, name: user.cohort.name } : null,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
+      // Laptop login (sprint 002 "laptop accounts" T006): what the admin
+      // detail card shows. laptop_login_state is LaptopAccountService.stateFor.
+      username: (user as any).username ?? null,
+      allows_laptop_account: (user as any).allows_laptop_account ?? false,
+      laptop_roster_dirty: (user as any).laptop_roster_dirty ?? false,
+      laptop_login_state: req.services.laptopAccounts.stateFor(user as any).state,
       logins: user.logins.map((l: any) => ({
         id: l.id,
         provider: l.provider,

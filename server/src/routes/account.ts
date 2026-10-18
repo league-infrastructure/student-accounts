@@ -10,6 +10,10 @@
  * GET /account/llm-proxy retains requireRole('student') — the LLM proxy
  * feature is student-only.
  *
+ * GET /account/laptop (sprint 002 "laptop accounts" T006) returns the user's
+ * laptop-login state; the same object rides along on GET /account as
+ * `profile.laptopLogin` so the Account page needs no second round-trip.
+ *
  * Provisioning (workspace, Claude, LLM proxy) is admin-initiated only;
  * users cannot request services from this surface.
  */
@@ -23,6 +27,7 @@ import { adminBus } from '../services/change-bus.js';
 import { accountEventsRouter } from './account-events.js';
 import { LoginRepository } from '../services/repositories/login.repository.js';
 import { classifyEmailOwnership } from '../services/auth/email-ownership.js';
+import type { LaptopLoginView } from '../services/laptop/laptop-account.service.js';
 
 export const accountRouter = Router();
 
@@ -44,20 +49,21 @@ accountRouter.get(
   requireAuth,
   async (req: Request, res: Response, next: NextFunction) => {
     const userId: number = (req.session as any).userId;
-    const { users, cohorts, logins, externalAccounts, llmProxyTokens } = req.services;
+    const { users, cohorts, logins, externalAccounts, llmProxyTokens, laptopAccounts } = req.services;
 
     // Fetch account data in parallel. If the user has been deleted out from
     // under the session, findById throws NotFoundError — destroy the session
     // and reply 401 so the client logs them out cleanly instead of leaking
     // an uncaught crash up to the dev-server proxy.
-    let user, userLogins, userAccounts, llmActive, oauthClientCount;
+    let user, userLogins, userAccounts, llmActive, oauthClientCount, laptopLastWritten;
     try {
-      [user, userLogins, userAccounts, llmActive, oauthClientCount] = await Promise.all([
+      [user, userLogins, userAccounts, llmActive, oauthClientCount, laptopLastWritten] = await Promise.all([
         users.findById(userId),
         logins.findAllByUser(userId),
         externalAccounts.findAllByUser(userId),
         llmProxyTokens.getActiveForUser(userId),
         prisma.oAuthClient.count({ where: { created_by: userId, disabled_at: null } }),
+        laptopAccounts.lastWrittenAt(userId),
       ]);
     } catch (err) {
       if (err instanceof NotFoundError) {
@@ -147,6 +153,8 @@ accountRouter.get(
         allowsLlmProxy: (user as any).allows_llm_proxy ?? false,
         allowsLeagueAccount: (user as any).allows_league_account ?? false,
         onboarding_completed: (user as any).onboarding_completed ?? true,
+        // Laptop login state (sprint 002 T006); same shape as GET /account/laptop.
+        laptopLogin: laptopLoginBody(laptopAccounts.stateFor(user as any), laptopLastWritten),
       },
       logins: userLogins.map((l) => ({
         id: l.id,
@@ -365,6 +373,43 @@ accountRouter.post(
       // The laptop roster entry carries the display name; never throws.
       await req.services.laptopAccounts.reconcile(userId, userId);
       res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/account/laptop — the signed-in user's laptop login state
+// ---------------------------------------------------------------------------
+//
+// Sprint 002 "laptop accounts" T006 (SUC-006).
+//
+// Returns { enabled, state, username, dirty, lastWritten? } computed by
+// LaptopAccountService.stateFor over the user row (see LaptopLoginState for
+// the mapping). Accessible to every authenticated role. Never touches the
+// roster bucket.
+
+/** The wire shape shared by GET /account (profile.laptopLogin) and GET /account/laptop. */
+function laptopLoginBody(view: LaptopLoginView, lastWritten: string | null): LaptopLoginView {
+  return lastWritten ? { ...view, lastWritten } : view;
+}
+
+accountRouter.get(
+  '/account/laptop',
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId: number = (req.session as any).userId;
+      const { laptopAccounts } = req.services;
+      const [user, lastWritten] = await Promise.all([
+        (prisma as any).user.findUnique({ where: { id: userId } }),
+        laptopAccounts.lastWrittenAt(userId),
+      ]);
+      if (!user) {
+        return res.status(401).json({ error: 'Session user not found' });
+      }
+      res.json(laptopLoginBody(laptopAccounts.stateFor(user), lastWritten));
     } catch (err) {
       next(err);
     }

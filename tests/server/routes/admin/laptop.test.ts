@@ -17,6 +17,14 @@
  *    true → real hash again; response carries allowsLaptopAccount
  *  - DELETE /users/:id and POST /users/:id/deny-approval lock the entry
  *  - PUT /users/:id displayName → entry display_name updated
+ *
+ * T006 (per-user "Push now" and the detail payload):
+ *  - POST /users/:id/laptop/push: 401/403, 400 bad id, 404 unknown user,
+ *    503 not configured; 200 { outcome, laptopLogin } for written / locked /
+ *    unchanged / skipped; a write failure is outcome 'failed' with
+ *    dirty: true; the admin is the audit actor
+ *  - GET /users/:id carries username, allows_laptop_account,
+ *    laptop_roster_dirty and laptop_login_state
  */
 
 import request from 'supertest';
@@ -335,5 +343,147 @@ describe('PUT /api/admin/users/:id — display name reaches the roster', () => {
     await agent.put(`/api/admin/users/${user.id}`).send({ role: 'staff' }).expect(200);
 
     expect(roster.writes).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/users/:id/laptop/push (T006)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/admin/users/:id/laptop/push — auth and validation', () => {
+  it('returns 401 when not authenticated', async () => {
+    const user = await makeLaptopUser('alice');
+    const res = await request(app).post(`/api/admin/users/${user.id}/laptop/push`).send({});
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 for a student session', async () => {
+    const user = await makeLaptopUser('alice');
+    const { agent } = await loginAs('student@example.com', 'student');
+    const res = await agent.post(`/api/admin/users/${user.id}/laptop/push`).send({});
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 for a non-numeric id and 404 for an unknown user', async () => {
+    const { agent } = await loginAs('admin@example.com');
+    expect((await agent.post('/api/admin/users/abc/laptop/push').send({})).status).toBe(400);
+    expect((await agent.post('/api/admin/users/999999/laptop/push').send({})).status).toBe(404);
+  });
+
+  it('returns 503 when the roster is not configured and marks nobody dirty', async () => {
+    install(new UnconfiguredLaptopRosterClient());
+    const user = await makeLaptopUser('alice');
+    const { agent } = await loginAs('admin@example.com');
+
+    const res = await agent.post(`/api/admin/users/${user.id}/laptop/push`).send({});
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/not configured/i);
+    expect((await reload(user.id)).laptop_roster_dirty).toBe(false);
+  });
+});
+
+describe('POST /api/admin/users/:id/laptop/push — outcomes', () => {
+  it('writes the entry and returns outcome written with the ready state and lastWritten', async () => {
+    const user = await makeLaptopUser('alice', { laptop_roster_dirty: true });
+    const { agent, id: adminId } = await loginAs('admin@example.com');
+
+    const res = await agent.post(`/api/admin/users/${user.id}/laptop/push`).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe('written');
+    expect(res.body.laptopLogin).toMatchObject({ enabled: true, state: 'ready', username: 'alice', dirty: false });
+    expect(typeof res.body.laptopLogin.lastWritten).toBe('string');
+    expect(roster.entries.get('alice')!.password_hash).toBe(HASH);
+    expect((await reload(user.id)).laptop_roster_dirty).toBe(false);
+
+    const events = await (prisma as any).auditEvent.findMany({ where: { action: 'laptop_roster_written' } });
+    expect(events).toHaveLength(1);
+    expect(events[0].actor_user_id).toBe(adminId);
+    expect(events[0].target_user_id).toBe(user.id);
+  });
+
+  it('locks the entry for a flag-off user and reports disabled', async () => {
+    const user = await makeLaptopUser('alice', { allows_laptop_account: false });
+    roster.seed(entry('alice'));
+    const { agent } = await loginAs('admin@example.com');
+
+    const res = await agent.post(`/api/admin/users/${user.id}/laptop/push`).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe('locked');
+    expect(res.body.laptopLogin).toMatchObject({ enabled: false, state: 'disabled', dirty: false });
+    expect(roster.entries.get('alice')!.password_hash).toBe('!');
+  });
+
+  it('reports unchanged when the roster already matches, and skipped when there is nothing to write', async () => {
+    const same = await makeLaptopUser('bob');
+    roster.seed(entry('bob'));
+    const noPassword = await makeLaptopUser('carol', { laptop_password_hash: null });
+    const { agent } = await loginAs('admin@example.com');
+
+    const unchanged = await agent.post(`/api/admin/users/${same.id}/laptop/push`).send({});
+    expect(unchanged.status).toBe(200);
+    expect(unchanged.body.outcome).toBe('unchanged');
+    expect(unchanged.body.laptopLogin.state).toBe('ready');
+
+    const skipped = await agent.post(`/api/admin/users/${noPassword.id}/laptop/push`).send({});
+    expect(skipped.status).toBe(200);
+    expect(skipped.body.outcome).toBe('skipped');
+    expect(skipped.body.laptopLogin).toMatchObject({ state: 'needs_password', dirty: false });
+    expect(skipped.body.laptopLogin).not.toHaveProperty('lastWritten');
+    expect(roster.writes).toHaveLength(0);
+  });
+
+  it('a write failure is a 200 with outcome failed and the user left dirty', async () => {
+    const user = await makeLaptopUser('alice');
+    roster.failWrites = true;
+    const { agent } = await loginAs('admin@example.com');
+
+    const res = await agent.post(`/api/admin/users/${user.id}/laptop/push`).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe('failed');
+    expect(res.body.laptopLogin).toMatchObject({ state: 'ready', dirty: true });
+    expect((await reload(user.id)).laptop_roster_dirty).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/users/:id — laptop fields (T006)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/admin/users/:id — laptop login fields', () => {
+  it('includes username, the flag, the dirty bit and the computed state', async () => {
+    const user = await makeLaptopUser('alice', { laptop_roster_dirty: true });
+    const { agent } = await loginAs('admin@example.com');
+
+    const res = await agent.get(`/api/admin/users/${user.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: user.id,
+      username: 'alice',
+      allows_laptop_account: true,
+      laptop_roster_dirty: true,
+      laptop_login_state: 'ready',
+    });
+  });
+
+  it('reflects the flag and the password in the state', async () => {
+    const off = await makeLaptopUser('bob', { allows_laptop_account: false });
+    const noPw = await makeLaptopUser('carol', { laptop_password_hash: null });
+    const badName = await makeLaptopUser('Dave');
+    const { agent } = await loginAs('admin@example.com');
+
+    expect((await agent.get(`/api/admin/users/${off.id}`)).body).toMatchObject({
+      allows_laptop_account: false,
+      laptop_login_state: 'disabled',
+    });
+    expect((await agent.get(`/api/admin/users/${noPw.id}`)).body.laptop_login_state).toBe('needs_password');
+    expect((await agent.get(`/api/admin/users/${badName.id}`)).body).toMatchObject({
+      username: 'Dave',
+      laptop_login_state: 'invalid_username',
+    });
   });
 });

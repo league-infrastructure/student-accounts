@@ -10,6 +10,9 @@
  * Sprint 020: ServicesSection, ClaudeCodeSection, and AccountLlmProxyCard
  * have been removed. Those UIs are moving to the Services page (ticket 005).
  * The tile launchpad (AppsZone) was removed in ticket 001.
+ *
+ * Sprint 002 "laptop accounts" T006: AccountLaptopCard shows the laptop
+ * login state (`profile.laptopLogin`) for students and staff.
  */
 
 import { useState } from 'react';
@@ -20,6 +23,7 @@ import { hasStaffAccess } from '../lib/roles';
 import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import UsernamePasswordSection from './account/UsernamePasswordSection';
 import AddCredentialsModal from './account/AddCredentialsModal';
+import AccountLaptopCard, { type LaptopLoginState } from './account/AccountLaptopCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 // ---------------------------------------------------------------------------
@@ -62,6 +66,9 @@ export interface AccountProfile {
    *  completed the one-time onboarding step (full name + email). True for
    *  all other users. */
   onboarding_completed?: boolean;
+  /** Laptop login state (sprint 002 "laptop accounts"); same shape as
+   *  GET /api/account/laptop. Absent on older servers. */
+  laptopLogin?: LaptopLoginState | null;
 }
 
 export interface AccountLogin {
@@ -1015,6 +1022,19 @@ export default function Account() {
               onSuccess={() => {
                 void queryClient.invalidateQueries({ queryKey: ['account'] });
               }}
+            />
+          </>
+        )}
+
+        {/* Laptop login (sprint 002 T006). Admins never get a laptop login,
+            so the card would only ever say "turned off" for them: hidden. */}
+        {data.profile.laptopLogin && data.profile.role !== 'admin' && (
+          <>
+            <div style={styles.spacer} />
+            <AccountLaptopCard
+              laptop={data.profile.laptopLogin}
+              hasCredentials={hasCredentials}
+              onAddCredentials={() => setAddCredentialsOpen(true)}
             />
           </>
         )}

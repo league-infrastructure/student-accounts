@@ -22,7 +22,9 @@
  * Bulk actions: Delete (existing), Suspend accounts, Revoke LLM Proxy.
  *
  * Page header (admins only): "Import laptop roster…" opens the one-time
- * laptop roster import dialog (sprint 002 "laptop accounts").
+ * laptop roster import dialog (sprint 002 "laptop accounts"); "Push all
+ * laptop logins" confirms, then POSTs /api/admin/laptop/push-all and shows
+ * the counts in a toast (T006).
  *
  * Make-admin guards (also enforced server-side):
  *   - self-demotion is blocked (server 403, button disabled client-side)
@@ -38,6 +40,7 @@ import { prettifyName } from './utils/prettifyName';
 import { isRecent, NEW_USER_BG } from '../../lib/recent-user';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import ImportLaptopRosterDialog from './ImportLaptopRosterDialog';
+import { useToast } from '../../context/ToastContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,6 +56,23 @@ interface UserExternalAccount {
   type: string;
   externalId: string | null;
   status: string;
+}
+
+/** Counts returned by POST /api/admin/laptop/push-all (sprint 002 T004). */
+export interface PushAllCounts {
+  written: number;
+  locked: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+}
+
+/** One-line toast text for the push-all counts. */
+export function summarizePushAll(c: PushAllCounts): string {
+  return (
+    `Laptop logins pushed: ${c.written} written, ${c.locked} locked, ` +
+    `${c.unchanged} unchanged, ${c.skipped} skipped, ${c.failed} failed.`
+  );
 }
 
 interface AdminUser {
@@ -725,7 +745,9 @@ export default function AdminUsersPanel() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState('');
   const [importOpen, setImportOpen] = useState(false);
+  const [pushingAll, setPushingAll] = useState(false);
   const isAdmin = (currentUser?.role ?? '').toLowerCase() === 'admin';
+  const { showToast } = useToast();
 
   // Confirm dialog state
   const [confirmState, setConfirmState] = useState<ConfirmState>({ open: false });
@@ -886,6 +908,39 @@ export default function AdminUsersPanel() {
     });
   }
 
+  /** "Push all laptop logins": confirm, POST /api/admin/laptop/push-all, toast the counts. */
+  function openPushAllConfirm() {
+    setConfirmState({
+      open: true,
+      title: 'Push all laptop logins',
+      message:
+        'Rewrite the laptop roster entry for every user with a username? ' +
+        'Eligible users get their current password hash; everyone else is locked. ' +
+        'This is safe to repeat.',
+      confirmLabel: 'Push all',
+      onConfirm: () => {
+        setConfirmState({ open: false });
+        void pushAllLaptopLogins();
+      },
+    });
+  }
+
+  async function pushAllLaptopLogins() {
+    setPushingAll(true);
+    try {
+      const res = await fetch('/api/admin/laptop/push-all', { method: 'POST' });
+      const body = (await res.json().catch(() => ({}))) as Partial<PushAllCounts> & { error?: string };
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      const counts = body as PushAllCounts;
+      showToast(summarizePushAll(counts), counts.failed > 0 ? 'error' : 'success');
+      refetchUsers();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Push all failed', 'error');
+    } finally {
+      setPushingAll(false);
+    }
+  }
+
   function openRevokeConfirm() {
     const eligibleCount = selectedUsers.filter((u) => u.llmProxyEnabled).length;
     setConfirmState({
@@ -906,13 +961,23 @@ export default function AdminUsersPanel() {
       <div style={pageHeaderStyle}>
         <h2 style={{ margin: 0, fontSize: 20 }}>Users</h2>
         {isAdmin && (
-          <button
-            type="button"
-            style={bulkButtonStyle('secondary')}
-            onClick={() => setImportOpen(true)}
-          >
-            Import laptop roster…
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              style={bulkButtonStyle('secondary')}
+              disabled={pushingAll}
+              onClick={openPushAllConfirm}
+            >
+              {pushingAll ? 'Pushing…' : 'Push all laptop logins'}
+            </button>
+            <button
+              type="button"
+              style={bulkButtonStyle('secondary')}
+              onClick={() => setImportOpen(true)}
+            >
+              Import laptop roster…
+            </button>
+          </div>
         )}
       </div>
 
