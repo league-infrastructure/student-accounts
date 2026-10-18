@@ -432,8 +432,57 @@ describe('Account page — student', () => {
 
     expect(screen.queryByText('Services')).not.toBeInTheDocument();
     expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
-    // LLM Proxy heading should not appear (AccountLlmProxyCard is removed)
+    // No LLM Proxy card without an active token (profile.llmProxy absent).
     expect(screen.queryByText('LLM Proxy')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('account-llm-proxy-card')).not.toBeInTheDocument();
+  });
+
+  it('mounts AccountLlmProxyCard (figures, masked key, "Set up and details" link) when the student has a token', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const token = 'llmp_testtoken_0123456789abcdef';
+    const llmProxy = {
+      token,
+      endpoint: 'http://localhost/proxy',
+      budgetUsd: 5,
+      spentUsd: 0.75,
+      periodResetsAt: '2026-11-01T00:00:00.000Z',
+      tokensUsed: 100,
+      tokenLimit: 1000,
+    };
+    const base = makeFetch(true, { profile: { llmProxyEnabled: true, llmProxy } });
+    (globalThis as any).fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/account/llm-proxy') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            enabled: true,
+            ...llmProxy,
+            requestCount: 3,
+            spentUsdTotal: 0.75,
+            expiresAt: '2027-07-01T12:00:00Z',
+            models: ['league-large', 'league-medium', 'league-small'],
+            anthropicEnabled: true,
+            anthropicEndpoint: 'http://localhost/proxy',
+          }),
+        };
+      }
+      return base(url, init);
+    });
+
+    renderAccount();
+
+    const card = await screen.findByTestId('account-llm-proxy-card');
+    await waitFor(() => expect(within(card).getByTestId('llm-proxy-usage')).toBeInTheDocument());
+    expect(within(card).getByRole('heading', { name: 'LLM Proxy' })).toBeInTheDocument();
+    expect(within(card).getByTestId('llm-proxy-usage')).toHaveTextContent('$0.75 of $5.00 this month · resets Nov 1');
+    expect(within(card).getByTestId('llm-proxy-status')).toHaveTextContent(/active/i);
+    expect(within(card).getByTestId('llm-proxy-token')).toHaveTextContent('llmp_test…cdef');
+    expect(within(card).queryByText(token)).not.toBeInTheDocument();
+    expect(within(card).getByTestId('llm-proxy-setup-link')).toHaveAttribute('href', '/llm-proxy');
+    expect(within(card).getByTestId('llm-proxy-setup-link')).toHaveTextContent('Set up and details');
+    // The old Features-row text is gone; the card replaces it.
+    expect(screen.queryByTestId('feature-llm-proxy')).not.toBeInTheDocument();
   });
 });
 

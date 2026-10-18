@@ -192,6 +192,23 @@ export const LlmProxyTokenRepository = {
     return (db as any).llmProxyRequest.create({ data });
   },
 
+  /**
+   * The user's most recent request rows, newest first (ties broken by id so
+   * two rows in the same millisecond keep insertion order). Admin "Recent
+   * requests" table (sprint 003 ticket 005).
+   */
+  async listRequestsForUser(
+    db: DbClient,
+    userId: number,
+    limit: number,
+  ): Promise<LlmProxyRequest[]> {
+    return (db as any).llmProxyRequest.findMany({
+      where: { user_id: userId },
+      orderBy: [{ ts: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+  },
+
   /** Delete request rows with `ts` strictly before `cutoff`. Returns the count. */
   async deleteRequestsBefore(db: DbClient, cutoff: Date): Promise<number> {
     const result = await (db as any).llmProxyRequest.deleteMany({

@@ -28,22 +28,7 @@ import { accountEventsRouter } from './account-events.js';
 import { LoginRepository } from '../services/repositories/login.repository.js';
 import { classifyEmailOwnership } from '../services/auth/email-ownership.js';
 import type { LaptopLoginView } from '../services/laptop/laptop-account.service.js';
-import { anthropicProxyEnabled, LEAGUE_MODEL_IDS } from './llm-proxy.js';
-
-/**
- * Anthropic-compatible surface advertised to the student (sprint 003 ticket
- * 003). `anthropicEndpoint` is the ANTHROPIC_BASE_URL value — the same
- * `<scheme>://<host>/proxy` base as `endpoint`; the Anthropic SDK appends
- * /v1/messages itself. Null while LLM_PROXY_ANTHROPIC_ENABLED is off so the
- * client can hide the Claude Code example.
- */
-function anthropicFields(endpoint: string): {
-  anthropicEnabled: boolean;
-  anthropicEndpoint: string | null;
-} {
-  const anthropicEnabled = anthropicProxyEnabled();
-  return { anthropicEnabled, anthropicEndpoint: anthropicEnabled ? endpoint : null };
-}
+import { anthropicFields, LEAGUE_MODEL_IDS } from './llm-proxy.js';
 
 export const accountRouter = Router();
 

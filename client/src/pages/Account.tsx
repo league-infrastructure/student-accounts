@@ -24,8 +24,8 @@ import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import UsernamePasswordSection from './account/UsernamePasswordSection';
 import AddCredentialsModal from './account/AddCredentialsModal';
 import AccountLaptopCard, { type LaptopLoginState } from './account/AccountLaptopCard';
+import AccountLlmProxyCard from './account/AccountLlmProxyCard';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { usageLine } from '../lib/llm-proxy-format';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -727,16 +727,16 @@ function WorkspaceSection({ data }: { data: AccountData }) {
 
 // ---------------------------------------------------------------------------
 // FeaturesSection — quick-glance at the user's enabled features (OAuth
-// Clients count + LLM Proxy access). Each row links to the full page.
-// Hidden rows mean the feature isn't enabled for this user.
+// Clients). Each row links to the full page. Hidden rows mean the feature
+// isn't enabled for this user. The LLM proxy has its own card
+// (AccountLlmProxyCard, sprint 003 ticket 005) rendered right below.
 // ---------------------------------------------------------------------------
 
 function FeaturesSection({ profile }: { profile: AccountProfile }) {
   const oauthCount = profile.oauthClientCount ?? 0;
   const showOauth = profile.allowsOauthClient || oauthCount > 0;
-  const showLlm = !!profile.llmProxy;
 
-  if (!showOauth && !showLlm) return null;
+  if (!showOauth) return null;
 
   return (
     <div style={styles.card} data-testid="features-section">
@@ -755,22 +755,6 @@ function FeaturesSection({ profile }: { profile: AccountProfile }) {
                 Create an OAuth client
               </Link>
             )}
-          </div>
-        </div>
-      )}
-
-      {showLlm && profile.llmProxy && (
-        <div style={styles.featureRow} data-testid="feature-llm-proxy">
-          <div style={styles.featureLabel}>LLM Proxy</div>
-          <div style={styles.featureBody}>
-            <Link to="/llm-proxy" style={styles.featureLink}>
-              Set up and details
-            </Link>
-            <div style={styles.featureMeta}>
-              {usageLine({ enabled: true, ...profile.llmProxy })} · your key, endpoint and
-              setup examples for Claude Code, Continue, curl and more are on the LLM Proxy
-              page.
-            </div>
           </div>
         </div>
       )}
@@ -965,6 +949,16 @@ export default function Account() {
         <div style={styles.spacer} />
 
         <FeaturesSection profile={data.profile} />
+
+        {/* LLM proxy card (sprint 003 ticket 005): figures, masked key and the
+            "Set up and details" link to /llm-proxy. Only for users with an
+            active token — the server omits `llmProxy` otherwise. */}
+        {data.profile.llmProxy && (
+          <>
+            <div style={styles.spacer} />
+            <AccountLlmProxyCard />
+          </>
+        )}
 
         <div style={styles.spacer} />
 
@@ -1214,12 +1208,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#2563eb',
     textDecoration: 'none',
     fontWeight: 500,
-  },
-  featureMeta: {
-    fontSize: '0.78rem',
-    color: '#64748b',
-    marginTop: 4,
-    wordBreak: 'break-all' as const,
   },
   profileMeta: {
     fontSize: '0.9rem',

@@ -56,6 +56,38 @@ export function anthropicProxyEnabled(): boolean {
   return getConfig('LLM_PROXY_ANTHROPIC_ENABLED') === 'true';
 }
 
+/**
+ * Anthropic-compatible surface advertised in the student and admin payloads
+ * (sprint 003 tickets 003/005). `anthropicEndpoint` is the ANTHROPIC_BASE_URL
+ * value — the same `<scheme>://<host>/proxy` base as `endpoint`; the Anthropic
+ * SDK appends /v1/messages itself. Null while LLM_PROXY_ANTHROPIC_ENABLED is
+ * off so the client can hide the Claude Code example.
+ */
+export function anthropicFields(endpoint: string): {
+  anthropicEnabled: boolean;
+  anthropicEndpoint: string | null;
+} {
+  const anthropicEnabled = anthropicProxyEnabled();
+  return { anthropicEnabled, anthropicEndpoint: anthropicEnabled ? endpoint : null };
+}
+
+/**
+ * `<scheme>://<host>/proxy` derived from the request (not from config) so
+ * any origin that serves the app also serves a working proxy URL. Returned
+ * without /v1: the OpenAI examples append /v1 themselves and the Anthropic
+ * SDK appends /v1/messages, so a /v1 here would double up.
+ */
+export function proxyEndpointFor(req: Request): string {
+  const forwardedProto = req.header('x-forwarded-proto');
+  const scheme = forwardedProto
+    ? forwardedProto.split(',')[0].trim()
+    : req.secure
+      ? 'https'
+      : 'http';
+  const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
+  return `${scheme}://${host}/proxy`;
+}
+
 // ---------------------------------------------------------------------------
 // CORS for all /proxy routes — the LLM proxy is accessed from browser-based
 // SDKs, which need to make cross-origin requests. The Anthropic SDK sends

@@ -63,7 +63,7 @@ import { getConfig } from './config.js';
 import type { AuditService } from './audit.service.js';
 import { LlmProxyTokenRepository } from './repositories/llm-proxy-token.repository.js';
 import { TierPricing, type ConfigReader } from './llm-proxy-pricing.js';
-import type { LlmProxyToken } from '../generated/prisma/client.js';
+import type { LlmProxyRequest, LlmProxyToken } from '../generated/prisma/client.js';
 
 const logger = createLogger('llm-proxy-token-service');
 
@@ -456,6 +456,21 @@ export class LlmProxyTokenService {
 
   async getById(tokenId: number): Promise<LlmProxyToken | null> {
     return LlmProxyTokenRepository.findById(this.prisma, tokenId);
+  }
+
+  /**
+   * The user's most recently granted token regardless of state, or null if
+   * they never had one. Lets the admin view say "revoked" / "expired" rather
+   * than a bare "disabled" when there is no active token.
+   */
+  async latestForUser(userId: number): Promise<LlmProxyToken | null> {
+    const rows = await LlmProxyTokenRepository.listForUser(this.prisma, userId);
+    return rows[0] ?? null;
+  }
+
+  /** The user's most recent request-log rows, newest first (sprint 003 ticket 005). */
+  async recentRequestsForUser(userId: number, limit: number): Promise<LlmProxyRequest[]> {
+    return LlmProxyTokenRepository.listRequestsForUser(this.prisma, userId, limit);
   }
 
   // --------------------------------------------------------------------

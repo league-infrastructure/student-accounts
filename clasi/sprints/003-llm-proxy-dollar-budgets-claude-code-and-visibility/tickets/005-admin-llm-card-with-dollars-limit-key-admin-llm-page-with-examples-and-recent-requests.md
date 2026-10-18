@@ -2,7 +2,7 @@
 id: '005'
 title: 'Admin: LLM card with dollars, limit, key; admin LLM page with examples and
   recent requests'
-status: in-progress
+status: done
 use-cases:
 - SUC-004
 - SUC-005
@@ -22,10 +22,10 @@ The admin side. The LLM card on a user's detail panel shows the dollar meter, an
 
 ## Acceptance Criteria
 
-- [ ] Server: `GET /api/admin/users/:id/llm-proxy` returns `{ enabled, token, tokenMasked, budgetUsd, spentUsd, spentUsdTotal, periodResetsAt, tokenLimit, tokensUsed, requestCount, expiresAt, grantedAt, revokedAt, status, endpoint, anthropicEnabled, anthropicEndpoint, models }` (extend the existing status route in `routes/admin/llm-proxy.ts` or `users.ts`; keep the current fields); `GET /api/admin/users/:id/llm-proxy/requests?limit=50` returns recent `LlmProxyRequest` rows `{ ts, protocol, modelRequested, modelSent, inputTokens, outputTokens, costUsd, status }` newest first. Admin only.
-- [ ] `client/src/pages/admin/UserLlmProxyCard.tsx`: dollar meter and `$x of $y · resets <date>` (token fallback when budget null); limit field (number, step 0.5) with Save → `PATCH /api/admin/llm-proxy/tokens/:id` (ticket 001) and a toast; status line; key row masked with Show / Copy; buttons: "Open LLM page" (→ `/admin/users/:id/llm-proxy`), "OpenRouter activity" (external `https://openrouter.ai/activity`, labelled account-wide), existing Grant/Revoke kept (Grant modal shows `budgetUsd` default $5).
-- [ ] `client/src/pages/admin/UserLlmProxyPage.tsx` (new) + route `/admin/users/:id/llm-proxy` in `App.tsx` (admin-guarded like other admin routes): header with the student's name, the same figures and key controls, `LlmProxySetupExamples` with that student's token/endpoint, and a "Recent requests" table (time, protocol, model sent, tokens in/out, cost) with an empty state.
-- [ ] Tests: route tests for the two endpoints (403 non-admin, shapes, requests ordering/limit); client tests for the card (limit save calls PATCH, Show reveals, Copy copies, dollar/token fallback) and the page (renders examples with the token; table rows; empty state).
+- [x] Server: `GET /api/admin/users/:id/llm-proxy` returns `{ enabled, token, tokenMasked, budgetUsd, spentUsd, spentUsdTotal, periodResetsAt, tokenLimit, tokensUsed, requestCount, expiresAt, grantedAt, revokedAt, status, endpoint, anthropicEnabled, anthropicEndpoint, models }` (extend the existing status route in `routes/admin/llm-proxy.ts` or `users.ts`; keep the current fields); `GET /api/admin/users/:id/llm-proxy/requests?limit=50` returns recent `LlmProxyRequest` rows `{ ts, protocol, modelRequested, modelSent, inputTokens, outputTokens, costUsd, status }` newest first. Admin only.
+- [x] `client/src/pages/admin/UserLlmProxyCard.tsx`: dollar meter and `$x of $y · resets <date>` (token fallback when budget null); limit field (number, step 0.5) with Save → `PATCH /api/admin/llm-proxy/tokens/:id` (ticket 001) and a toast; status line; key row masked with Show / Copy; buttons: "Open LLM page" (→ `/admin/users/:id/llm-proxy`), "OpenRouter activity" (external `https://openrouter.ai/activity`, labelled account-wide), existing Grant/Revoke kept (Grant modal shows `budgetUsd` default $5).
+- [x] `client/src/pages/admin/UserLlmProxyPage.tsx` (new) + route `/admin/users/:id/llm-proxy` in `App.tsx` (admin-guarded like other admin routes): header with the student's name, the same figures and key controls, `LlmProxySetupExamples` with that student's token/endpoint, and a "Recent requests" table (time, protocol, model sent, tokens in/out, cost) with an empty state.
+- [x] Tests: route tests for the two endpoints (403 non-admin, shapes, requests ordering/limit); client tests for the card (limit save calls PATCH, Show reveals, Copy copies, dollar/token fallback) and the page (renders examples with the token; table rows; empty state).
 
 ## Testing
 

@@ -8,6 +8,10 @@
  *   POST   /admin/users/:id/llm-proxy-token      — grant; returns plaintext once.
  *   DELETE /admin/users/:id/llm-proxy-token      — revoke; 204.
  *   GET    /admin/users/:id/llm-proxy-token      — status (plaintext for admins, no hash).
+ *   GET    /admin/users/:id/llm-proxy            — same status payload, canonical name
+ *                                                  (sprint 003 ticket 005).
+ *   GET    /admin/users/:id/llm-proxy/requests   — ?limit=50: recent request-log rows,
+ *                                                  newest first (sprint 003 ticket 005).
  *   PATCH  /admin/llm-proxy/tokens/:id           — { budgetUsd }: change a token's
  *                                                  monthly budget (sprint 003).
  *   POST   /admin/llm-proxy/backfill-budgets     — set the default budget on every
@@ -36,7 +40,8 @@ import {
   LLM_PROXY_MAX_BUDGET_USD,
   type BudgetSummary,
 } from '../../services/llm-proxy-token.service.js';
-import type { LlmProxyToken } from '../../generated/prisma/client.js';
+import type { LlmProxyRequest, LlmProxyToken } from '../../generated/prisma/client.js';
+import { anthropicFields, LEAGUE_MODEL_IDS, proxyEndpointFor } from '../llm-proxy.js';
 
 export const adminLlmProxyRouter = Router();
 
@@ -121,46 +126,155 @@ function renderActive(row: LlmProxyToken, budget: BudgetSummary) {
   };
 }
 
+/** `llmp_abcd…wxyz` — mirrors the client's maskToken so logs and UI agree. */
+function maskToken(token: string): string {
+  if (token.length <= 14) return token;
+  return `${token.slice(0, 9)}…${token.slice(-4)}`;
+}
+
+type AdminTokenStatus = 'active' | 'expired' | 'revoked' | 'disabled';
+
+/**
+ * Status of the user's most recent token when none is active: a revoked row
+ * reads "revoked", an expired one "expired", no row at all "disabled".
+ */
+function inactiveStatus(latest: LlmProxyToken | null, now: Date): AdminTokenStatus {
+  if (!latest) return 'disabled';
+  if (latest.revoked_at) return 'revoked';
+  if (latest.expires_at.getTime() <= now.getTime()) return 'expired';
+  return 'disabled';
+}
+
+/**
+ * The full admin status payload for one user (sprint 003 ticket 005):
+ *
+ *   { enabled, token, tokenMasked, budgetUsd, spentUsd, spentUsdTotal,
+ *     periodResetsAt, tokenLimit, tokensUsed, requestCount, expiresAt,
+ *     grantedAt, revokedAt, status, endpoint, anthropicEnabled,
+ *     anthropicEndpoint, models }
+ *
+ * plus the pre-existing tokenId / grantedBy. Admins intentionally see the
+ * full plaintext key so they can read setup instructions and the working
+ * token back to a student. `models`, `endpoint` and the Anthropic fields
+ * mirror GET /api/account/llm-proxy so the shared setup examples render
+ * identically for both.
+ */
+async function adminStatusPayload(req: any, userId: number) {
+  const endpoint = proxyEndpointFor(req);
+  const common = {
+    endpoint,
+    models: [...LEAGUE_MODEL_IDS],
+    ...anthropicFields(endpoint),
+  };
+  const tokens = req.services.llmProxyTokens;
+  const active = await tokens.getActiveForUser(userId);
+  if (!active) {
+    const latest = await tokens.latestForUser(userId);
+    return {
+      enabled: false,
+      status: inactiveStatus(latest, new Date()),
+      token: null,
+      tokenMasked: null,
+      ...(latest
+        ? {
+            tokenId: latest.id,
+            expiresAt: latest.expires_at,
+            grantedAt: latest.granted_at,
+            revokedAt: latest.revoked_at,
+          }
+        : {}),
+      ...common,
+    };
+  }
+  const plaintext: string | null = active.token_plaintext ?? null;
+  return {
+    ...renderActive(active, tokens.budgetSummary(active)),
+    status: 'active' as AdminTokenStatus,
+    token: plaintext,
+    tokenMasked: plaintext ? maskToken(plaintext) : null,
+    ...common,
+  };
+}
+
+/** One request-log row in the client's camelCase shape. */
+function renderRequest(row: LlmProxyRequest) {
+  return {
+    id: row.id,
+    ts: row.ts,
+    protocol: row.protocol,
+    modelRequested: row.model_requested,
+    modelSent: row.model_sent,
+    inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens,
+    costUsd: row.cost_usd,
+    status: row.status,
+  };
+}
+
+const REQUESTS_DEFAULT_LIMIT = 50;
+const REQUESTS_MAX_LIMIT = 500;
+
+/** `?limit=` → integer in [1, 500]; default 50; null when malformed. */
+function parseLimit(raw: unknown): number | null {
+  if (raw === undefined) return REQUESTS_DEFAULT_LIMIT;
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return null;
+  const n = parseInt(raw, 10);
+  if (n < 1) return null;
+  return Math.min(n, REQUESTS_MAX_LIMIT);
+}
+
 // ---------------------------------------------------------------------------
-// GET /admin/users/:id/llm-proxy-token
+// GET /admin/users/:id/llm-proxy-token  and  GET /admin/users/:id/llm-proxy
 // ---------------------------------------------------------------------------
+//
+// Both return adminStatusPayload. The `-token` spelling predates sprint 003
+// and is kept for existing callers; `/llm-proxy` is the canonical name the
+// admin card and page use.
+
+async function getStatus(req: any, res: any, next: any) {
+  try {
+    const userId = parseIntParam(req.params.id);
+    if (userId === null) return res.status(400).json({ error: 'Invalid user id' });
+
+    const user = await UserRepository.findByIdIncludingInactive(prisma, userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    return res.json(await adminStatusPayload(req, userId));
+  } catch (err) {
+    handleError(err, res, next);
+  }
+}
+
+adminLlmProxyRouter.get('/users/:id/llm-proxy-token', getStatus);
+adminLlmProxyRouter.get('/users/:id/llm-proxy', getStatus);
+
+// ---------------------------------------------------------------------------
+// GET /admin/users/:id/llm-proxy/requests?limit=50 (sprint 003 ticket 005)
+// ---------------------------------------------------------------------------
+//
+// The user's most recent LlmProxyRequest rows, newest first, as a JSON array
+// of { id, ts, protocol, modelRequested, modelSent, inputTokens,
+// outputTokens, costUsd, status }. Rows survive token revocation and
+// re-grants (they are keyed by user as well as token). 400 for a malformed
+// limit; limits above 500 are clamped.
 
 adminLlmProxyRouter.get(
-  '/users/:id/llm-proxy-token',
+  '/users/:id/llm-proxy/requests',
   async (req, res, next) => {
     try {
       const userId = parseIntParam(req.params.id);
-      if (userId === null)
-        return res.status(400).json({ error: 'Invalid user id' });
+      if (userId === null) return res.status(400).json({ error: 'Invalid user id' });
+
+      const limit = parseLimit(req.query.limit);
+      if (limit === null) {
+        return res.status(400).json({ error: 'limit must be a positive integer.' });
+      }
 
       const user = await UserRepository.findByIdIncludingInactive(prisma, userId);
       if (!user) return res.status(404).json({ error: 'User not found' });
 
-      // Derive the proxy endpoint from the request origin, mirroring the
-      // student-facing /account/llm-proxy route so the admin sees the exact
-      // ANTHROPIC_BASE_URL the student would use. Base is returned without
-      // /v1 because the Anthropic SDK appends /v1/messages itself.
-      const forwardedProto = req.header('x-forwarded-proto');
-      const scheme = forwardedProto
-        ? forwardedProto.split(',')[0].trim()
-        : (req as any).secure
-          ? 'https'
-          : 'http';
-      const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
-      const endpoint = `${scheme}://${host}/proxy`;
-
-      const tokens = req.services.llmProxyTokens;
-      const active = await tokens.getActiveForUser(userId);
-      if (!active) {
-        return res.json({ enabled: false, endpoint });
-      }
-      // Admins intentionally see the full plaintext key here so they can read
-      // setup instructions and the working token back to a student.
-      return res.json({
-        ...renderActive(active, tokens.budgetSummary(active)),
-        endpoint,
-        token: active.token_plaintext ?? null,
-      });
+      const rows = await req.services.llmProxyTokens.recentRequestsForUser(userId, limit);
+      return res.json(rows.map(renderRequest));
     } catch (err) {
       handleError(err, res, next);
     }
