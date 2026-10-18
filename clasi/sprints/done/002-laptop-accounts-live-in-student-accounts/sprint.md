@@ -1,7 +1,7 @@
 ---
 id: '002'
 title: Laptop accounts live in student-accounts
-status: executing
+status: done
 branch: sprint/002-laptop-accounts-live-in-student-accounts
 use-cases:
 - SUC-001
