@@ -1,9 +1,12 @@
 ---
 id: '006'
 title: 'Docs: deploy runbook and README for the new keys, migration, Anthropic flag'
-status: open
-use-cases: [SUC-001, SUC-002]
-depends-on: ['005']
+status: in-progress
+use-cases:
+- SUC-001
+- SUC-002
+depends-on:
+- '005'
 github-issue: ''
 issue: llm-proxy-dollar-budgets-with-monthly-reset.md
 completes_issue: true
