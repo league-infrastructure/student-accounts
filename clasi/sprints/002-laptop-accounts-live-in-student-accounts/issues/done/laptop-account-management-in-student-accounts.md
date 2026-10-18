@@ -1,9 +1,9 @@
 ---
-status: in-progress
+status: done
 sprint: '002'
 tickets:
-- 002-004
-- 002-006
+- '004'
+- '006'
 ---
 
 # Laptop accounts are managed here: push credentials out to the roster
