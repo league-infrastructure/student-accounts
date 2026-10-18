@@ -1,9 +1,11 @@
 ---
 id: '007'
 title: Fleet LLM token endpoint with auto-grant
-status: open
-use-cases: [SUC-004]
-depends-on: ['001']
+status: in-progress
+use-cases:
+- SUC-004
+depends-on:
+- '001'
 github-issue: ''
 issue: fleet-llm-token-endpoint-for-laptop-login.md
 completes_issue: true
