@@ -1,9 +1,12 @@
 ---
 id: '006'
 title: Laptop login cards on Account page and admin detail panel
-status: open
-use-cases: [SUC-006, SUC-007]
-depends-on: ['004']
+status: in-progress
+use-cases:
+- SUC-006
+- SUC-007
+depends-on:
+- '004'
 github-issue: ''
 issue: laptop-account-management-in-student-accounts.md
 completes_issue: true
