@@ -1,5 +1,6 @@
 ---
 status: pending
+sprint: '003'
 ---
 
 # Student LLM proxy: tighter card, full page with setup examples for every tool

@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-007
 ---
 
 # Laptop login fetches the student's LLM proxy token: a machine endpoint

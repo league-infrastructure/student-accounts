@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-005
 ---
 
 # Admin: set a student's username and password, and email them their credentials

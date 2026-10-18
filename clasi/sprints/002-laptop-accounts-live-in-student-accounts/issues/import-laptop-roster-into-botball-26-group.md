@@ -1,5 +1,10 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-001
+- 002-002
+- 002-003
 ---
 
 # One-time import of the laptop roster into student-accounts (group "Botball 26")

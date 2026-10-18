@@ -1,5 +1,9 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-004
+- 002-006
 ---
 
 # Laptop accounts are managed here: push credentials out to the roster

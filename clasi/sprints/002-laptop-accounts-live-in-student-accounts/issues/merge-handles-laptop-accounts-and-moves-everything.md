@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-008
 ---
 
 # Merge: handle imported laptop accounts, and move everything to the survivor

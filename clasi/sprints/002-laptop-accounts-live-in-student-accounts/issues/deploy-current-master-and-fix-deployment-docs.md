@@ -1,5 +1,8 @@
 ---
-status: pending
+status: in-progress
+sprint: '002'
+tickets:
+- 002-009
 ---
 
 # Deploy current master (OpenRouter proxy) and fix the deployment drift

@@ -1,5 +1,6 @@
 ---
 status: pending
+sprint: '003'
 ---
 
 # Anthropic-compatible proxy endpoint so Claude Code works through the League proxy
