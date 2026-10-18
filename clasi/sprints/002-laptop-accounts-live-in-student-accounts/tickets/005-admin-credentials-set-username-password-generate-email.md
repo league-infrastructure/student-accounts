@@ -1,9 +1,11 @@
 ---
 id: '005'
 title: 'Admin credentials: set username/password, generate, email'
-status: open
-use-cases: [SUC-003]
-depends-on: ['004']
+status: in-progress
+use-cases:
+- SUC-003
+depends-on:
+- '004'
 github-issue: ''
 issue: admin-set-username-password-and-email-credentials.md
 completes_issue: true

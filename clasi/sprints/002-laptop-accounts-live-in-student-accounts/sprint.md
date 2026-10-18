@@ -379,3 +379,9 @@ and client. `npm run lint` (server): 12 errors, 2 warnings, pre-existing.
 
 Rule for this sprint: every other test file stays green, these five may stay
 red, nothing new goes red, no new lint errors.
+
+Observed during execution (ticket 004): under full-suite load, single route
+tests occasionally return 404 where 401/400 is expected (Express fall-through
+race); seen once each in `admin-passphrase`, `oauth`, `admin/anthropic-sync`
+and the new `account-credentials-laptop` tests across seven runs, never in
+isolation. Treated as part of the flaky baseline.
