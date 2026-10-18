@@ -2,8 +2,10 @@
 id: '001'
 title: 'Password utils: SHA-512 crypt verify/make, laptop_password_hash, laptop_import,
   .invalid mail guard'
-status: open
-use-cases: [SUC-001, SUC-002]
+status: in-progress
+use-cases:
+- SUC-001
+- SUC-002
 depends-on: []
 github-issue: ''
 issue: import-laptop-roster-into-botball-26-group.md
