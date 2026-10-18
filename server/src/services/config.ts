@@ -48,12 +48,15 @@ export const CONFIG_KEYS: ConfigKeyMeta[] = [
   { key: 'LLM_PROXY_PRICE_LARGE', group: 'LLM Proxy', label: 'Large Model Price (USD in,out per 1M tokens)', isSecret: false, requiresRestart: false, defaultValue: '0.2088,0.4176' },
   { key: 'LLM_PROXY_PRICE_MEDIUM', group: 'LLM Proxy', label: 'Medium Model Price (USD in,out per 1M tokens)', isSecret: false, requiresRestart: false, defaultValue: '0.091,0.182' },
   { key: 'LLM_PROXY_PRICE_SMALL', group: 'LLM Proxy', label: 'Small Model Price (USD in,out per 1M tokens)', isSecret: false, requiresRestart: false, defaultValue: '0.28,0.42' },
-  // Laptop accounts (DigitalOcean Spaces roster bucket; the same key also uploads backups)
+  // Laptop accounts (DigitalOcean Spaces roster bucket; DO_SPACES_KEY/_SECRET also upload backups)
   { key: 'DO_SPACES_ENDPOINT', group: 'Laptop accounts', label: 'Spaces Endpoint', isSecret: false, requiresRestart: true },
   { key: 'DO_SPACES_KEY', group: 'Laptop accounts', label: 'Spaces Access Key', isSecret: true, requiresRestart: true },
   { key: 'DO_SPACES_SECRET', group: 'Laptop accounts', label: 'Spaces Secret Key', isSecret: true, requiresRestart: true },
   { key: 'DO_SPACES_REGION', group: 'Laptop accounts', label: 'Spaces Region', isSecret: false, requiresRestart: true, defaultValue: 'sfo3' },
   { key: 'LAPTOP_ROSTER_BUCKET', group: 'Laptop accounts', label: 'Roster Bucket', isSecret: false, requiresRestart: false, defaultValue: 'jtl-student-unix-accounts' },
+  // The roster bucket's own key (the laptops' key). Falls back to DO_SPACES_KEY / DO_SPACES_SECRET when unset.
+  { key: 'LAPTOP_ROSTER_SPACES_KEY', group: 'Laptop accounts', label: 'Roster Spaces Access Key (falls back to Spaces Access Key)', isSecret: true, requiresRestart: true },
+  { key: 'LAPTOP_ROSTER_SPACES_SECRET', group: 'Laptop accounts', label: 'Roster Spaces Secret Key (falls back to Spaces Secret Key)', isSecret: true, requiresRestart: true },
 ];
 
 const CONFIG_KEY_SET = new Set(CONFIG_KEYS.map((k) => k.key));

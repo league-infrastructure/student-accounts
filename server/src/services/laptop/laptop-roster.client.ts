@@ -49,8 +49,9 @@ export interface RosterClient {
 export class LaptopRosterNotConfiguredError extends Error {
   constructor() {
     super(
-      'Laptop roster is not configured: set DO_SPACES_ENDPOINT, DO_SPACES_KEY and DO_SPACES_SECRET ' +
-        '(and optionally LAPTOP_ROSTER_BUCKET) to reach the Spaces bucket.',
+      'Laptop roster is not configured: set DO_SPACES_ENDPOINT plus LAPTOP_ROSTER_SPACES_KEY and ' +
+        'LAPTOP_ROSTER_SPACES_SECRET (or DO_SPACES_KEY / DO_SPACES_SECRET as a fallback), and optionally ' +
+        'LAPTOP_ROSTER_BUCKET, to reach the Spaces bucket.',
     );
     this.name = 'LaptopRosterNotConfiguredError';
   }
@@ -71,15 +72,19 @@ function isNotFound(err: unknown): boolean {
 /**
  * Spaces-backed roster client. Knows the bucket layout and nothing about
  * users. `opts.s3Client` is the test seam, as in BackupService; production
- * code lets it build the client from DO_SPACES_* env.
+ * code passes the roster credentials (`opts.key` / `opts.secret`, from
+ * LAPTOP_ROSTER_SPACES_KEY / _SECRET with DO_SPACES_* as the fallback) and
+ * lets buildS3Client fill in endpoint and region from DO_SPACES_* env. The
+ * roster bucket and the backup bucket are usually reached with different
+ * keys, so they must not be forced to share one.
  */
 export class LaptopRosterClient implements RosterClient {
   private readonly bucket: string;
   private readonly s3: S3Client;
 
-  constructor(opts: { bucket: string; s3Client?: S3Client }) {
+  constructor(opts: { bucket: string; s3Client?: S3Client; key?: string; secret?: string }) {
     if (!opts.bucket) throw new Error('LaptopRosterClient requires a bucket name');
-    const s3 = opts.s3Client ?? buildS3Client();
+    const s3 = opts.s3Client ?? buildS3Client({ key: opts.key, secret: opts.secret });
     if (!s3) throw new LaptopRosterNotConfiguredError();
     this.bucket = opts.bucket;
     this.s3 = s3;

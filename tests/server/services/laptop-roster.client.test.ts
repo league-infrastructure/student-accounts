@@ -73,6 +73,20 @@ describe('LaptopRosterClient', () => {
         process.env = saved;
       }
     });
+
+    it('builds its own S3 client from explicit roster credentials when given key/secret', () => {
+      const saved = { ...process.env };
+      process.env.DO_SPACES_ENDPOINT = 'https://sfo3.digitaloceanspaces.com';
+      delete process.env.DO_SPACES_KEY;
+      delete process.env.DO_SPACES_SECRET;
+      try {
+        expect(
+          () => new LaptopRosterClient({ bucket: BUCKET, key: 'roster-key', secret: 'roster-secret' }),
+        ).not.toThrow();
+      } finally {
+        process.env = saved;
+      }
+    });
   });
 
   describe('listIds', () => {

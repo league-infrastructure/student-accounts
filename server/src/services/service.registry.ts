@@ -131,13 +131,21 @@ export class ServiceRegistry {
     this.audit = new AuditService();
 
     // LaptopRosterClient — sprint 002 (laptop accounts) T002. Like
-    // BackupService, reads DO_SPACES_* from env at construction (the config
-    // cache is not loaded yet). Without a key, a stub throws on first use.
-    this.laptopRoster = process.env.DO_SPACES_KEY
-      ? new LaptopRosterClient({
-          bucket: process.env.LAPTOP_ROSTER_BUCKET || DEFAULT_LAPTOP_ROSTER_BUCKET,
-        })
-      : new UnconfiguredLaptopRosterClient();
+    // BackupService, reads env at construction (the config cache is not
+    // loaded yet). The roster bucket has its own Spaces key in production
+    // (LAPTOP_ROSTER_SPACES_KEY / _SECRET: the laptops' key, which cannot see
+    // the backup bucket); DO_SPACES_KEY / _SECRET are the fallback for setups
+    // with one all-buckets key. Without any key, a stub throws on first use.
+    const rosterKey = process.env.LAPTOP_ROSTER_SPACES_KEY || process.env.DO_SPACES_KEY;
+    const rosterSecret = process.env.LAPTOP_ROSTER_SPACES_SECRET || process.env.DO_SPACES_SECRET;
+    this.laptopRoster =
+      rosterKey && rosterSecret
+        ? new LaptopRosterClient({
+            bucket: process.env.LAPTOP_ROSTER_BUCKET || DEFAULT_LAPTOP_ROSTER_BUCKET,
+            key: rosterKey,
+            secret: rosterSecret,
+          })
+        : new UnconfiguredLaptopRosterClient();
 
     // LaptopAccountService — sprint 002 T004. Built before UserService, which
     // calls reconcile() after every credential change.
