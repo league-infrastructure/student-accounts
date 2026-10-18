@@ -2,7 +2,7 @@
 id: '001'
 title: 'Password utils: SHA-512 crypt verify/make, laptop_password_hash, laptop_import,
   .invalid mail guard'
-status: in-progress
+status: done
 use-cases:
 - SUC-001
 - SUC-002
@@ -21,14 +21,14 @@ Foundation for laptop logins. The laptops verify passwords with glibc SHA-512 cr
 
 ## Acceptance Criteria
 
-- [ ] `server/src/utils/password.ts` exports `isCryptHash(h)`, `verifyCryptHash(password, h)`, `makeCryptHash(password, rounds?)` implementing SHA-512 crypt per the glibc spec (default 5000 rounds, 16-char salt from `[./0-9A-Za-z]`), constant-time comparison. Implement with `node:crypto` (no new dependency) or a small well-known pure-JS package if one is already in the lockfile; document the choice in the file header.
-- [ ] A fixture test verifies `verifyCryptHash` against a hash produced by `openssl passwd -6` (generate once during implementation, paste the hash and plaintext into the test), and that `makeCryptHash` output round-trips through `verifyCryptHash` and has the `$6$` shape.
-- [ ] `verifyPassword(password, stored)` dispatches: `$6$` → crypt verifier; `salt:key` → existing scrypt; anything else (`!`, `*`, empty, malformed) → false. Existing scrypt tests still pass.
-- [ ] `generatePassword()` returns three lowercase words joined by `-` from a small embedded wordlist (~200 words), e.g. `maple-robot-seven`; test asserts shape and randomness.
-- [ ] Prisma: `User.laptop_password_hash String?`, `CreatedVia.laptop_import`; migration created; generated client updated.
-- [ ] `POST /api/auth/login` (`server/src/routes/auth/login.ts`): when the stored `password_hash` is a `$6$` hash and verification succeeds, rehash to scrypt and, if `laptop_password_hash` is null, copy the `$6$` hash there. Test: seed a user with a `$6$` `password_hash`, log in, assert `password_hash` now scrypt-shaped and `laptop_password_hash` set.
-- [ ] `server/src/services/mail.service.ts`: refuse to send to any address whose domain ends in `.invalid` (log at info, return a "skipped" result rather than throwing); unit test.
-- [ ] Full server suite green (apart from the pre-existing failures listed in the sprint's `docs` note, if any), `tsc --noEmit` clean.
+- [x] `server/src/utils/password.ts` exports `isCryptHash(h)`, `verifyCryptHash(password, h)`, `makeCryptHash(password, rounds?)` implementing SHA-512 crypt per the glibc spec (default 5000 rounds, 16-char salt from `[./0-9A-Za-z]`), constant-time comparison. Implement with `node:crypto` (no new dependency) or a small well-known pure-JS package if one is already in the lockfile; document the choice in the file header.
+- [x] A fixture test verifies `verifyCryptHash` against a hash produced by `openssl passwd -6` (generate once during implementation, paste the hash and plaintext into the test), and that `makeCryptHash` output round-trips through `verifyCryptHash` and has the `$6$` shape.
+- [x] `verifyPassword(password, stored)` dispatches: `$6$` → crypt verifier; `salt:key` → existing scrypt; anything else (`!`, `*`, empty, malformed) → false. Existing scrypt tests still pass.
+- [x] `generatePassword()` returns three lowercase words joined by `-` from a small embedded wordlist (~200 words), e.g. `maple-robot-seven`; test asserts shape and randomness.
+- [x] Prisma: `User.laptop_password_hash String?`, `CreatedVia.laptop_import`; migration created; generated client updated.
+- [x] `POST /api/auth/login` (`server/src/routes/auth/login.ts`): when the stored `password_hash` is a `$6$` hash and verification succeeds, rehash to scrypt and, if `laptop_password_hash` is null, copy the `$6$` hash there. Test: seed a user with a `$6$` `password_hash`, log in, assert `password_hash` now scrypt-shaped and `laptop_password_hash` set.
+- [x] `server/src/services/mail.service.ts`: refuse to send to any address whose domain ends in `.invalid` (log at info, return a "skipped" result rather than throwing); unit test.
+- [x] Full server suite green (apart from the pre-existing failures listed in the sprint's `docs` note, if any), `tsc --noEmit` clean.
 
 ## Testing
 

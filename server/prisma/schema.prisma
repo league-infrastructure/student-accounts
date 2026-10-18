@@ -67,6 +67,7 @@ enum CreatedVia {
   admin_created
   workspace_sync
   passphrase_signup
+  laptop_import
 }
 
 enum ExternalAccountType {
@@ -143,6 +144,12 @@ model User {
 
   username       String?  @unique
   password_hash  String?
+
+  /** SHA-512 crypt (`$6$`) form of the current password, written to the
+   *  laptop roster (students/<username>/config.json). Set when a password is
+   *  set here or imported from the roster; null when the user has no
+   *  laptop-compatible hash yet. */
+  laptop_password_hash String?
 
   /** Address used for outbound mail to this user. Null = use primary_email.
    *  Must be one of: primary_email, a provider Login's provider_email, or a

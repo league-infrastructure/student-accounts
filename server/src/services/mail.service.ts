@@ -42,8 +42,25 @@ export interface SendOptions {
   html?: string;
 }
 
-export interface SendResult {
-  messageId: string;
+export type SendResult =
+  /** Delivered to the transport. */
+  | { messageId: string; skipped?: undefined }
+  /** Deliberately not sent (e.g. an undeliverable `.invalid` recipient). */
+  | { skipped: true; reason: string; messageId?: undefined };
+
+/**
+ * True when `address` cannot be delivered to by construction: its domain is
+ * (or ends in) the reserved `.invalid` TLD (RFC 2606). Imported laptop
+ * accounts get `<id>@laptop.invalid` as a placeholder primary_email.
+ */
+export function isUndeliverableAddress(address: string): boolean {
+  if (typeof address !== 'string') return false;
+  // Accept "Name <user@host>" as well as a bare address; take the last '@'.
+  const bare = address.trim().replace(/^.*<([^>]*)>\s*$/, '$1');
+  const at = bare.lastIndexOf('@');
+  if (at === -1) return false;
+  const domain = bare.slice(at + 1).toLowerCase().replace(/\.+$/, '');
+  return domain === 'invalid' || domain.endsWith('.invalid');
 }
 
 // ---------------------------------------------------------------------------
@@ -117,10 +134,20 @@ export class MailService {
   /**
    * Send an email via the configured SMTP transport.
    *
+   * A recipient under the reserved `.invalid` TLD is never sent to: the call
+   * logs at info and resolves with { skipped: true } instead of throwing, so
+   * callers that mail placeholder addresses degrade quietly.
    * Throws MailNotConfiguredError if the service is not configured.
    * Resolves with { messageId } on success.
    */
   async send(opts: SendOptions): Promise<SendResult> {
+    if (isUndeliverableAddress(opts.to)) {
+      logger.info(
+        `[mail-service] skipped — to=${opts.to} is under the reserved .invalid domain subject="${opts.subject}"`,
+      );
+      return { skipped: true, reason: 'undeliverable .invalid recipient' };
+    }
+
     if (!this.configured || !this.transporter) {
       logger.warn(
         `[mail-service] send() called while not configured — to=${opts.to} subject="${opts.subject}"`,
