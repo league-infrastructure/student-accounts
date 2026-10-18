@@ -753,7 +753,7 @@ describe('Account page — UsernamePasswordSection form', () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
     const fetchMock = makeFetch(
       true,
-      { profile: { username: 'testuser', has_password: true } },
+      { profile: { username: null, has_password: true } },
       { status: 409, body: { error: 'That username is already taken' } },
     );
     (globalThis as any).fetch = fetchMock;
@@ -779,6 +779,69 @@ describe('Account page — UsernamePasswordSection form', () => {
     });
   });
 
+  it('shows an existing username read-only with a note, and no username input', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: 'testuser', has_password: true },
+    });
+
+    renderAccount();
+
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('ups-username-readonly')).toHaveTextContent('testuser');
+    expect(screen.getByText('Ask an instructor to change your username.')).toBeInTheDocument();
+    expect(document.getElementById('ups-username')).toBeNull();
+    // The password controls remain.
+    expect(screen.getByLabelText(/current password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^new password/i)).toBeInTheDocument();
+  });
+
+  it('does not send a username when only the password changes', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    const fetchMock = makeFetch(true, {
+      profile: { username: 'testuser', has_password: true },
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    renderAccount();
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/current password/i), { target: { value: 'oldpass' } });
+    fireEvent.change(screen.getByLabelText(/^new password/i), { target: { value: 'newpass1' } });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: 'newpass1' } });
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.filter(
+        ([url, init]: [string, RequestInit | undefined]) =>
+          url === '/api/account/credentials' && (init?.method ?? '').toUpperCase() === 'PATCH',
+      );
+      expect(calls).toHaveLength(1);
+      const body = JSON.parse(calls[0][1].body as string);
+      expect(body).toEqual({ currentPassword: 'oldpass', newPassword: 'newpass1' });
+    });
+  });
+
+  it('offers a username input when the account has a password but no username', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: { username: null, has_password: true },
+    });
+
+    renderAccount();
+    await waitFor(() => {
+      expect(screen.getByText('Username & Password')).toBeInTheDocument();
+    });
+
+    expect(document.getElementById('ups-username')).not.toBeNull();
+    expect(screen.queryByTestId('ups-username-readonly')).not.toBeInTheDocument();
+  });
+
   it('surfaces "Current password is incorrect" inline on 401 response', async () => {
     mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
     const fetchMock = makeFetch(
@@ -797,8 +860,11 @@ describe('Account page — UsernamePasswordSection form', () => {
     fireEvent.change(screen.getByLabelText(/current password/i), {
       target: { value: 'wrongpass' },
     });
-    fireEvent.change(screen.getByLabelText(/^username/i), {
-      target: { value: 'someotheruser' },
+    fireEvent.change(screen.getByLabelText(/^new password/i), {
+      target: { value: 'somethingnew' },
+    });
+    fireEvent.change(screen.getByLabelText(/confirm new password/i), {
+      target: { value: 'somethingnew' },
     });
 
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));

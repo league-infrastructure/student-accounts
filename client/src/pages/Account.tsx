@@ -983,6 +983,7 @@ export default function Account() {
 
         <AddCredentialsModal
           open={addCredentialsOpen}
+          existingUsername={data.profile.username ?? null}
           onClose={() => setAddCredentialsOpen(false)}
           onSuccess={() => {
             void queryClient.invalidateQueries({ queryKey: ['account'] });

@@ -62,6 +62,11 @@ async function makePassphraseUser(opts: {
   return user.id;
 }
 
+/** Drop the username so the user has a password but no username yet. */
+async function clearUsername(id: number): Promise<void> {
+  await (prisma as any).user.update({ where: { id }, data: { username: null } });
+}
+
 /**
  * Create a user with NO username and NO password_hash (first-time setup state).
  * Returns the user id.
@@ -157,13 +162,70 @@ describe('PATCH /api/account/credentials — change password', () => {
 // Happy path — change username only
 // ---------------------------------------------------------------------------
 
-describe('PATCH /api/account/credentials — change username', () => {
-  it('returns 200 with new username, persisted in DB', async () => {
+describe('PATCH /api/account/credentials — set username', () => {
+  it('returns 403 when the user already has a different username; nothing changes', async () => {
+    const userId = await makePassphraseUser({
+      email: 'cred-fixed@example.com',
+      username: 'fixeduname',
+      password: 'mypassword',
+    });
+    const agent = await loginAs('cred-fixed@example.com', 'student');
+
+    const res = await agent.patch('/api/account/credentials').send({
+      currentPassword: 'mypassword',
+      username: 'otheruname',
+      newPassword: 'brand-new-pass',
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('Your username is set. Ask an instructor to change it.');
+    const after = await (prisma as any).user.findUnique({ where: { id: userId } });
+    expect(after.username).toBe('fixeduname');
+    expect(await verifyPassword('mypassword', after.password_hash)).toBe(true);
+  });
+
+  it('accepts the same username resent alongside a password change', async () => {
+    await makePassphraseUser({
+      email: 'cred-same@example.com',
+      username: 'sameuname',
+      password: 'mypassword',
+    });
+    const agent = await loginAs('cred-same@example.com', 'student');
+
+    const res = await agent.patch('/api/account/credentials').send({
+      currentPassword: 'mypassword',
+      username: 'sameuname',
+      newPassword: 'another-pass',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.username).toBe('sameuname');
+  });
+
+  it('still changes only the password when no username is sent', async () => {
+    const userId = await makePassphraseUser({
+      email: 'cred-pwonly2@example.com',
+      username: 'pwonly2',
+      password: 'mypassword',
+    });
+    const agent = await loginAs('cred-pwonly2@example.com', 'student');
+
+    const res = await agent
+      .patch('/api/account/credentials')
+      .send({ currentPassword: 'mypassword', newPassword: 'changed-pass' });
+
+    expect(res.status).toBe(200);
+    const after = await (prisma as any).user.findUnique({ where: { id: userId } });
+    expect(await verifyPassword('changed-pass', after.password_hash)).toBe(true);
+  });
+
+  it('returns 200 and persists a username when the user has none', async () => {
     const userId = await makePassphraseUser({
       email: 'cred-uname@example.com',
       username: 'olduname',
       password: 'mypassword',
     });
+    await clearUsername(userId);
     const agent = await loginAs('cred-uname@example.com', 'student');
 
     const res = await agent.patch('/api/account/credentials').send({
@@ -191,6 +253,7 @@ describe('PATCH /api/account/credentials — change both', () => {
       username: 'userboth',
       password: 'pass-both',
     });
+    await clearUsername(userId);
     const agent = await loginAs('cred-both@example.com', 'student');
 
     const res = await agent.patch('/api/account/credentials').send({
@@ -251,11 +314,12 @@ describe('PATCH /api/account/credentials — username collision', () => {
       username: 'takenuser',
       password: 'pw-taken',
     });
-    await makePassphraseUser({
+    const claimerId = await makePassphraseUser({
       email: 'cred-claimer@example.com',
       username: 'claimer',
       password: 'pw-claimer',
     });
+    await clearUsername(claimerId);
     const agent = await loginAs('cred-claimer@example.com', 'student');
 
     const res = await agent.patch('/api/account/credentials').send({

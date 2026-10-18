@@ -48,7 +48,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 };
 
 /**
- * Single sign-in form: username + passphrase.
+ * Single sign-in form: username + password (masked, with a Show/Hide toggle).
  *
  * The same passphrase that an instructor distributed to the class is
  * also the student's permanent password. So on submit we try
@@ -67,6 +67,7 @@ export default function Login() {
   const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Surface OAuth-callback errors that came in via ?error=... query param.
   useEffect(() => {
@@ -120,7 +121,7 @@ export default function Login() {
     }
 
     setError(
-      login.error ?? 'Invalid username or passphrase.',
+      login.error ?? 'Invalid username or password.',
     );
     setSubmitting(false);
   }
@@ -154,19 +155,29 @@ export default function Login() {
 
           <div className="flex flex-col gap-1">
             <label htmlFor="login-passphrase" className={labelClass}>
-              Passphrase
+              Password
             </label>
-            <input
-              id="login-passphrase"
-              type="text"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              autoComplete="current-password"
-              required
-              className={inputClass}
-            />
+            <div className="flex gap-2">
+              <input
+                id="login-passphrase"
+                type={showPassword ? 'text' : 'password'}
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                autoComplete="current-password"
+                required
+                className={`${inputClass} flex-1 min-w-0`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
             <p className="text-xs text-slate-500">
-              The phrase your instructor gave you, or the one you used to sign up.
+              Your password, or the passphrase your instructor gave you.
             </p>
           </div>
 

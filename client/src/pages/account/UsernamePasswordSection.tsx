@@ -11,6 +11,7 @@
  * Error mapping:
  *   400 — generic validation error from the server
  *   401 — "Current password is incorrect"
+ *   403 — username already set (the field is read-only once set)
  *   409 — "Username already taken"
  */
 
@@ -68,8 +69,9 @@ export default function UsernamePasswordSection({
       currentPassword,
     };
 
+    // A username that is already set is read-only; only a first one is sent.
     const trimmedUsername = draftUsername.trim();
-    if (trimmedUsername !== (username ?? '')) {
+    if (!username && trimmedUsername) {
       patch.username = trimmedUsername;
     }
     if (newPassword) {
@@ -107,21 +109,31 @@ export default function UsernamePasswordSection({
     <div style={styles.card}>
       <h2 style={styles.sectionTitle}>Username &amp; Password</h2>
       <form onSubmit={(e) => void handleSubmit(e)} style={styles.form}>
-        <div style={styles.fieldGroup}>
-          <label htmlFor="ups-username" style={styles.label}>
-            Username
-          </label>
-          <input
-            id="ups-username"
-            type="text"
-            value={draftUsername}
-            onChange={(e) => setDraftUsername(e.target.value)}
-            autoComplete="username"
-            disabled={submitting}
-            style={styles.input}
-            placeholder="username"
-          />
-        </div>
+        {username ? (
+          <div style={styles.fieldGroup}>
+            <span style={styles.label}>Username</span>
+            <span data-testid="ups-username-readonly" style={styles.readonlyValue}>
+              {username}
+            </span>
+            <span style={styles.hint}>Ask an instructor to change your username.</span>
+          </div>
+        ) : (
+          <div style={styles.fieldGroup}>
+            <label htmlFor="ups-username" style={styles.label}>
+              Username
+            </label>
+            <input
+              id="ups-username"
+              type="text"
+              value={draftUsername}
+              onChange={(e) => setDraftUsername(e.target.value)}
+              autoComplete="username"
+              disabled={submitting}
+              style={styles.input}
+              placeholder="username"
+            />
+          </div>
+        )}
 
         <div style={styles.fieldGroup}>
           <label htmlFor="ups-current-password" style={styles.label}>
@@ -219,6 +231,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.85rem',
     fontWeight: 500,
     color: '#374151',
+  },
+  readonlyValue: {
+    fontSize: '0.875rem',
+    color: '#1e293b',
+    fontWeight: 500,
+  },
+  hint: {
+    fontSize: '0.8rem',
+    color: '#64748b',
   },
   required: {
     color: '#dc2626',

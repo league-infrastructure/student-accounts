@@ -49,15 +49,31 @@ function renderLogin(initialEntry: string = '/login') {
 }
 
 describe('Login page', () => {
-  it('renders one Username field and one Passphrase field, both visible', () => {
+  it('renders one Username field and one masked Password field', () => {
     renderLogin();
     const username = screen.getByLabelText(/username/i);
-    const passphrase = screen.getByLabelText(/passphrase/i);
+    const password = screen.getByLabelText(/^password$/i);
     expect(username).toBeInTheDocument();
-    expect(passphrase).toBeInTheDocument();
-    // Passphrase must NOT be type="password" — students need to verify
-    // what they typed against what's in Slack.
-    expect(passphrase).toHaveAttribute('type', 'text');
+    expect(password).toBeInTheDocument();
+    expect(password).toHaveAttribute('id', 'login-passphrase');
+    expect(password).toHaveAttribute('type', 'password');
+    expect(password).toHaveAttribute('autocomplete', 'current-password');
+    expect(
+      screen.getByText('Your password, or the passphrase your instructor gave you.'),
+    ).toBeInTheDocument();
+  });
+
+  it('Show / Hide toggle flips the password field between password and text', async () => {
+    const user = userEvent.setup();
+    renderLogin();
+    const password = screen.getByLabelText(/^password$/i);
+    expect(password).toHaveAttribute('type', 'password');
+
+    await user.click(screen.getByRole('button', { name: 'Show password' }));
+    expect(password).toHaveAttribute('type', 'text');
+
+    await user.click(screen.getByRole('button', { name: 'Hide password' }));
+    expect(password).toHaveAttribute('type', 'password');
   });
 
   it('always renders the Google, GitHub, and Pike 13 OAuth buttons', () => {
@@ -93,7 +109,7 @@ describe('Login page', () => {
     mockLoginWithCredentials.mockResolvedValue({ ok: true });
     renderLogin();
     await userEvent.type(screen.getByLabelText(/username/i), 'alice');
-    await userEvent.type(screen.getByLabelText(/passphrase/i), 'purple-cactus-river');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'purple-cactus-river');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
     await waitFor(() =>
       expect(mockLoginWithCredentials).toHaveBeenCalledWith('alice', 'purple-cactus-river'),
@@ -109,7 +125,7 @@ describe('Login page', () => {
 
     renderLogin();
     await userEvent.type(screen.getByLabelText(/username/i), 'bob');
-    await userEvent.type(screen.getByLabelText(/passphrase/i), 'orange-pencil-cloud');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'orange-pencil-cloud');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
@@ -123,7 +139,7 @@ describe('Login page', () => {
 
     renderLogin();
     await userEvent.type(screen.getByLabelText(/username/i), 'unknown');
-    await userEvent.type(screen.getByLabelText(/passphrase/i), 'bad-words-here');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'bad-words-here');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {

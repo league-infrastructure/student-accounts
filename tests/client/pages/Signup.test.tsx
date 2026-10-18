@@ -98,6 +98,11 @@ describe('Signup page — rendering', () => {
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
   });
 
+  it('masks the Password field (the class passphrase is a shared phrase and stays visible)', () => {
+    renderSignup();
+    expect(screen.getByLabelText(/^password$/i)).toHaveAttribute('type', 'password');
+  });
+
   it('renders the passphrase field empty by default (no URL param)', () => {
     renderSignup();
 

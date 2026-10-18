@@ -305,6 +305,48 @@ export class LaptopAccountService {
   }
 
   /**
+   * Lock the roster entry for `oldUsername` (rewrite it with `password_hash:
+   * '!'`), after an admin renamed the user. No-op when there is no entry or
+   * it is already locked. Never throws; audits `laptop_roster_locked`
+   * against `userId`. The student's synced files stay under
+   * `students/<oldUsername>/` in the bucket; only `config.json` changes.
+   */
+  async lockRosterId(
+    oldUsername: string,
+    userId: number,
+    actorId: number | null = null,
+  ): Promise<'locked' | 'unchanged' | 'skipped' | 'failed'> {
+    if (!isValidRosterId(oldUsername)) return 'skipped';
+    try {
+      const existing = await this.roster.read(oldUsername);
+      if (!existing) return 'skipped';
+      if (existing.password_hash === LOCKED_HASH) return 'unchanged';
+
+      await this.roster.write(oldUsername, {
+        ...existing,
+        password_hash: LOCKED_HASH,
+        managed_by: MANAGED_BY,
+        updated: rosterTimestamp(),
+      });
+      await this.prisma.$transaction(async (tx: any) => {
+        await this.audit.record(tx, {
+          actor_user_id: actorId,
+          action: 'laptop_roster_locked',
+          target_user_id: userId,
+          target_entity_type: 'User',
+          target_entity_id: String(userId),
+          details: { id: oldUsername, reason: 'renamed' },
+        });
+      });
+      logger.info({ userId, id: oldUsername }, '[laptop-account] Old roster entry locked after rename.');
+      return 'locked';
+    } catch (err) {
+      logger.error({ err, userId, id: oldUsername }, '[laptop-account] Could not lock the old roster entry.');
+      return 'failed';
+    }
+  }
+
+  /**
    * Reconcile every user who has a username. Used by the admin "Push all"
    * button after the import and whenever the bucket needs repairing.
    * Database errors listing users propagate; per-user failures are counted.

@@ -453,3 +453,44 @@ describe('LaptopAccountService.rosterIdTakenByOther', () => {
     expect(await unconfigured.rosterIdTakenByOther('zoe', null)).toBe(false);
   });
 });
+
+describe('LaptopAccountService.lockRosterId', () => {
+  it('rewrites an existing entry locked, keeps its provenance, and audits it', async () => {
+    roster.seed(laptopEntry('zoe', { renamed_from: 'zo' }));
+    const user = await makeLaptopUser('zoe-2');
+    const admin = await makeUser({ role: 'admin' });
+
+    expect(await service.lockRosterId('zoe', user.id, admin.id)).toBe('locked');
+
+    const entry = roster.entries.get('zoe')!;
+    expect(entry.password_hash).toBe('!');
+    expect(entry.display_name).toBe('Zoe');
+    expect(entry.created).toBe('20260825T170542Z');
+    expect(entry.created_host).toBe('jtl-inspiron-ABC123');
+    expect(entry.managed_by).toBe('student-accounts');
+    const events = await (prisma as any).auditEvent.findMany({ where: { action: 'laptop_roster_locked' } });
+    expect(events).toHaveLength(1);
+    expect(events[0].actor_user_id).toBe(admin.id);
+    expect(events[0].target_user_id).toBe(user.id);
+  });
+
+  it('is a no-op when there is no entry', async () => {
+    const user = await makeLaptopUser('zoe-2');
+    expect(await service.lockRosterId('zoe', user.id)).toBe('skipped');
+    expect(roster.writes).toHaveLength(0);
+  });
+
+  it('is a no-op when the entry is already locked', async () => {
+    roster.seed(laptopEntry('zoe', { password_hash: '!' }));
+    const user = await makeLaptopUser('zoe-2');
+    expect(await service.lockRosterId('zoe', user.id)).toBe('unchanged');
+    expect(roster.writes).toHaveLength(0);
+  });
+
+  it('never throws when the write fails', async () => {
+    roster.seed(laptopEntry('zoe'));
+    roster.failWrites = true;
+    const user = await makeLaptopUser('zoe-2');
+    expect(await service.lockRosterId('zoe', user.id)).toBe('failed');
+  });
+});

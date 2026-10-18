@@ -10,7 +10,7 @@
  * Transaction boundary: every multi-step write opens a prisma.$transaction.
  */
 
-import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../errors.js';
+import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from '../errors.js';
 import type { AuditService } from './audit.service.js';
 import { UserRepository } from './repositories/user.repository.js';
 import { LoginRepository } from './repositories/login.repository.js';
@@ -187,6 +187,8 @@ export class UserService {
    *    verifying the user has no credentials at all).
    *  - At least one of username or newPassword must be provided.
    *  - Empty/whitespace-only newPassword is a ValidationError (400).
+   *  - A username that is already set cannot be changed here (ForbiddenError,
+   *    403); resending the same value is accepted as a no-op.
    *  - Username shape follows `validateUsername` (laptop rules by default).
    *  - Username uniqueness is enforced by the DB unique constraint (→ ConflictError).
    *  - A new password is stored twice: scrypt in `password_hash` and SHA-512
@@ -228,6 +230,13 @@ export class UserService {
       if (trimmed.length === 0) {
         throw new ValidationError('newPassword must not be empty');
       }
+    }
+
+    // A username is fixed once set: only an admin can change it
+    // (`setCredentialsByAdmin`). Setting one when the user has none is fine.
+    const existingUsername = (user as any).username as string | null | undefined;
+    if (hasUsername && existingUsername && patch.username !== existingUsername) {
+      throw new ForbiddenError('Your username is set. Ask an instructor to change it.');
     }
 
     // 4. Build the update payload (username rules first: no hashing for a
@@ -305,6 +314,7 @@ export class UserService {
     const user = await UserRepository.findByIdIncludingInactive(this.prisma, userId);
     if (!user) throw new NotFoundError(`User ${userId} not found`);
 
+    const oldUsername = ((user as any).username as string | null | undefined) ?? null;
     const hasUsername = patch.username !== undefined;
     const hasTypedPassword = patch.password !== undefined;
     const generate = patch.generatePassword === true;
@@ -382,7 +392,15 @@ export class UserService {
       throw err;
     }
 
-    if (this.laptopAccounts) await this.laptopAccounts.reconcile(userId, actorId);
+    if (this.laptopAccounts) {
+      await this.laptopAccounts.reconcile(userId, actorId);
+      // A rename leaves the old roster entry behind: lock it so the old name
+      // can no longer log in at a laptop. The student's synced files stay
+      // under students/<old>/ in the bucket; moving them is a follow-up.
+      if (oldUsername && username && oldUsername !== username) {
+        await this.laptopAccounts.lockRosterId(oldUsername, userId, actorId);
+      }
+    }
 
     return password !== undefined ? { username, password } : { username };
   }

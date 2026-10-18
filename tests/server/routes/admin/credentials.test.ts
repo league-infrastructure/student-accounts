@@ -401,6 +401,36 @@ describe('PUT /api/admin/users/:id/credentials — password', () => {
     expect(written[0].actor_user_id).toBe(adminId);
   });
 
+  it('renaming a user writes the new roster entry and locks the old one', async () => {
+    const user = await makeUser({
+      username: 'alice',
+      display_name: 'Alice Liddell',
+      password_hash: 'deadbeef:cafebabe',
+      laptop_password_hash: '$6$salt$hash',
+    });
+    roster.seed({
+      id: 'alice',
+      display_name: 'Alice Liddell',
+      password_hash: '$6$salt$hash',
+      created: '20260825T170542Z',
+      created_host: 'jtl-inspiron-1',
+    });
+    const { agent, id: adminId } = await loginAs('admin@example.com');
+
+    const res = await agent.put(`/api/admin/users/${user.id}/credentials`).send({ username: 'alice-2' });
+
+    expect(res.status, res.text).toBe(200);
+    expect(res.body.username).toBe('alice-2');
+    expect(roster.entries.get('alice-2')!.password_hash).toBe('$6$salt$hash');
+    const old = roster.entries.get('alice')!;
+    expect(old.password_hash).toBe('!');
+    expect(old.created_host).toBe('jtl-inspiron-1');
+    const locked = (await auditEvents('laptop_roster_locked')).filter((e: any) => e.details?.id === 'alice');
+    expect(locked).toHaveLength(1);
+    expect(locked[0].actor_user_id).toBe(adminId);
+    expect(locked[0].target_user_id).toBe(user.id);
+  });
+
   it('a roster write failure does not fail the request; the user is marked dirty', async () => {
     const user = await makeUser({ username: 'alice' });
     roster.failWrites = true;

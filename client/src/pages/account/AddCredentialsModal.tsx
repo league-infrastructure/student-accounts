@@ -16,10 +16,12 @@ interface AddCredentialsModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** When the account already has a username it is shown read-only. */
+  existingUsername?: string | null;
 }
 
 async function patchCredentialsFirstTime(patch: {
-  username: string;
+  username?: string;
   newPassword: string;
 }): Promise<void> {
   const res = await fetch('/api/account/credentials', {
@@ -40,6 +42,7 @@ export default function AddCredentialsModal({
   open,
   onClose,
   onSuccess,
+  existingUsername = null,
 }: AddCredentialsModalProps) {
   const [username, setUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -79,7 +82,7 @@ export default function AddCredentialsModal({
     setError(null);
 
     const trimmedUsername = username.trim();
-    if (!trimmedUsername) {
+    if (!existingUsername && !trimmedUsername) {
       setError('Username is required.');
       return;
     }
@@ -94,7 +97,10 @@ export default function AddCredentialsModal({
 
     setSubmitting(true);
     try {
-      await patchCredentialsFirstTime({ username: trimmedUsername, newPassword });
+      await patchCredentialsFirstTime({
+        ...(existingUsername ? {} : { username: trimmedUsername }),
+        newPassword,
+      });
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -126,6 +132,15 @@ export default function AddCredentialsModal({
         </p>
 
         <form onSubmit={(e) => void handleSubmit(e)} style={styles.form}>
+          {existingUsername ? (
+            <div style={styles.fieldGroup}>
+              <span style={styles.label}>Username</span>
+              <span data-testid="acm-username-readonly">{existingUsername}</span>
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                Ask an instructor to change your username.
+              </span>
+            </div>
+          ) : (
           <div style={styles.fieldGroup}>
             <label htmlFor="acm-username" style={styles.label}>
               Username <span style={styles.required}>*</span>
@@ -142,6 +157,7 @@ export default function AddCredentialsModal({
               placeholder="choose a username"
             />
           </div>
+          )}
 
           <div style={styles.fieldGroup}>
             <label htmlFor="acm-new-password" style={styles.label}>

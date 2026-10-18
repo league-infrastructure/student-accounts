@@ -40,7 +40,7 @@ function renderLogin(search = '') {
 
 async function submitForm(username = 'testuser', passphrase = 'testpass') {
   fireEvent.change(screen.getByLabelText(/username/i), { target: { value: username } });
-  fireEvent.change(screen.getByLabelText(/passphrase/i), { target: { value: passphrase } });
+  fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: passphrase } });
   fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 }
 
