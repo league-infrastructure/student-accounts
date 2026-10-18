@@ -1055,4 +1055,87 @@ describe('AdminUsersPanel', () => {
       expect(body.role).toBe('admin');
     });
   });
+  // ---- Import laptop roster (sprint 002 "laptop accounts" T003) ----
+
+  it('shows an "Import laptop roster…" button for admins that opens the dialog', async () => {
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+
+    const button = screen.getByRole('button', { name: 'Import laptop roster…' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(button);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Import laptop roster' })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Group name')).toHaveValue('Botball 26');
+  });
+
+  it('runs the import from the dialog and shows the report', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const mockFetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/admin/users') {
+        return Promise.resolve({ ok: true, json: async () => SAMPLE_USERS });
+      }
+      if (url === '/api/admin/import/laptop-roster' && opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            created: 1,
+            matched: 0,
+            skipped: 0,
+            errors: 0,
+            details: [{ id: 'bob', outcome: 'created' }],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <AdminUsersPanel />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import laptop roster…' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Run' }));
+
+    await waitFor(() => expect(screen.getByTestId('import-created')).toHaveTextContent('1'));
+    const importCall = mockFetch.mock.calls.find(
+      (c) => c[0] === '/api/admin/import/laptop-roster',
+    );
+    expect(JSON.parse(importCall![1].body as string)).toEqual({ groupName: 'Botball 26' });
+    expect(screen.getByRole('link', { name: 'Review the merge queue' })).toHaveAttribute(
+      'href',
+      '/merge-queue',
+    );
+  });
+
+  it('hides the "Import laptop roster…" button for non-admin users', async () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 2,
+        email: 'staff@example.com',
+        displayName: 'Staff User',
+        role: 'STAFF',
+        avatarUrl: null,
+        provider: null,
+        providerId: null,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      loading: false,
+      logout: vi.fn(),
+    });
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Import laptop roster…' })).not.toBeInTheDocument();
+  });
 });

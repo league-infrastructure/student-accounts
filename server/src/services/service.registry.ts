@@ -55,6 +55,7 @@ import {
   DEFAULT_LAPTOP_ROSTER_BUCKET,
   type RosterClient,
 } from './laptop/laptop-roster.client';
+import { LaptopRosterImportService } from './laptop/laptop-roster-import.service';
 
 // Infrastructure services
 import { SchedulerService } from './scheduler.service';
@@ -113,6 +114,8 @@ export class ServiceRegistry {
    * throws LaptopRosterNotConfiguredError when DO_SPACES_KEY is unset.
    */
   readonly laptopRoster: RosterClient;
+  /** One-time import of the laptop roster into a group (sprint 002 T003). */
+  readonly laptopRosterImport: LaptopRosterImportService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -281,6 +284,15 @@ export class ServiceRegistry {
           bucket: process.env.LAPTOP_ROSTER_BUCKET || DEFAULT_LAPTOP_ROSTER_BUCKET,
         })
       : new UnconfiguredLaptopRosterClient();
+
+    // LaptopRosterImportService — sprint 002 (laptop accounts) T003.
+    this.laptopRosterImport = new LaptopRosterImportService(
+      this.laptopRoster,
+      defaultPrisma,
+      this.groups,
+      this.audit,
+      mergeScan,
+    );
   }
 
   static create(

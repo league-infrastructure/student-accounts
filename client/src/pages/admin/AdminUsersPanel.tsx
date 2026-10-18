@@ -21,6 +21,9 @@
  *
  * Bulk actions: Delete (existing), Suspend accounts, Revoke LLM Proxy.
  *
+ * Page header (admins only): "Import laptop roster…" opens the one-time
+ * laptop roster import dialog (sprint 002 "laptop accounts").
+ *
  * Make-admin guards (also enforced server-side):
  *   - self-demotion is blocked (server 403, button disabled client-side)
  *   - demoting the final admin is blocked (server 409, button disabled
@@ -34,6 +37,7 @@ import { useAuth } from '../../context/AuthContext';
 import { prettifyName } from './utils/prettifyName';
 import { isRecent, NEW_USER_BG } from '../../lib/recent-user';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import ImportLaptopRosterDialog from './ImportLaptopRosterDialog';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -720,6 +724,8 @@ export default function AdminUsersPanel() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const isAdmin = (currentUser?.role ?? '').toLowerCase() === 'admin';
 
   // Confirm dialog state
   const [confirmState, setConfirmState] = useState<ConfirmState>({ open: false });
@@ -899,6 +905,15 @@ export default function AdminUsersPanel() {
     <div>
       <div style={pageHeaderStyle}>
         <h2 style={{ margin: 0, fontSize: 20 }}>Users</h2>
+        {isAdmin && (
+          <button
+            type="button"
+            style={bulkButtonStyle('secondary')}
+            onClick={() => setImportOpen(true)}
+          >
+            Import laptop roster…
+          </button>
+        )}
       </div>
 
       {/* Bulk error banner */}
@@ -1161,6 +1176,17 @@ export default function AdminUsersPanel() {
         <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 24 }}>
           {users.length === 0 ? 'No users yet.' : 'No users match this filter.'}
         </p>
+      )}
+
+      {/* One-time laptop roster import (admins only) */}
+      {isAdmin && (
+        <ImportLaptopRosterDialog
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImported={() => {
+            void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+          }}
+        />
       )}
 
       {/* Confirm dialog for bulk suspend / revoke */}
