@@ -2,8 +2,10 @@
 id: '001'
 title: 'Budget data model and token service: dollars, monthly period, request log,
   admin budget PATCH'
-status: open
-use-cases: [SUC-001, SUC-006]
+status: in-progress
+use-cases:
+- SUC-001
+- SUC-006
 depends-on: []
 github-issue: ''
 issue: llm-proxy-dollar-budgets-with-monthly-reset.md
