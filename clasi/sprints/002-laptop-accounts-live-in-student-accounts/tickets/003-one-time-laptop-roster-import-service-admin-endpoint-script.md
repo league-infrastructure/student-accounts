@@ -1,9 +1,12 @@
 ---
 id: '003'
 title: One-time laptop roster import (service, admin endpoint, script)
-status: open
-use-cases: [SUC-001]
-depends-on: ['001', '002']
+status: in-progress
+use-cases:
+- SUC-001
+depends-on:
+- '001'
+- '002'
 github-issue: ''
 issue: import-laptop-roster-into-botball-26-group.md
 completes_issue: true
