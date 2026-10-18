@@ -2,9 +2,13 @@
 id: '004'
 title: 'Student: shared setup-examples component, tightened card, full /llm-proxy
   page'
-status: open
-use-cases: [SUC-003, SUC-006]
-depends-on: ['001', '003']
+status: in-progress
+use-cases:
+- SUC-003
+- SUC-006
+depends-on:
+- '001'
+- '003'
 github-issue: ''
 issue: student-llm-proxy-page-with-setup-examples.md
 completes_issue: true
