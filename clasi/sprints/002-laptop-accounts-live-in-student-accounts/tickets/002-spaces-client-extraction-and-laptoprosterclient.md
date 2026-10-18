@@ -1,8 +1,10 @@
 ---
 id: '002'
 title: Spaces client extraction and LaptopRosterClient
-status: open
-use-cases: [SUC-001, SUC-002]
+status: in-progress
+use-cases:
+- SUC-001
+- SUC-002
 depends-on: []
 github-issue: ''
 issue: import-laptop-roster-into-botball-26-group.md
