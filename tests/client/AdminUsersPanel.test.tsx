@@ -17,15 +17,19 @@
  *  - Bulk selection and bulk delete
  *  - Bulk "Suspend accounts" button: disabled when no student selected; opens confirm dialog
  *  - Bulk "Revoke LLM Proxy" button: disabled when no llmProxyEnabled selected; opens confirm
- *  - "Import laptop roster…" / "Push all laptop logins" header buttons (admins only)
+ *  - No "Import laptop roster…" / "Push all laptop logins" header buttons (server-only now)
+ *  - "Laptop" feature pill (after League): laptopLogin users, tri-state negation
+ *  - createdVia 'laptop_import' rows: no NEW_USER_BG highlight, excluded from "Recent"
+ *  - Laptop chip in the Accounts column for laptopLogin users
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import AdminUsersPanel, { summarizePushAll } from '../../client/src/pages/admin/AdminUsersPanel';
+import AdminUsersPanel from '../../client/src/pages/admin/AdminUsersPanel';
 import { ToastProvider } from '../../client/src/context/ToastContext';
+import { NEW_USER_BG } from '../../client/src/lib/recent-user';
 
 // ---- Mock useAuth ----
 
@@ -1059,189 +1063,134 @@ describe('AdminUsersPanel', () => {
       expect(body.role).toBe('admin');
     });
   });
-  // ---- Import laptop roster (sprint 002 "laptop accounts" T003) ----
+  // ---- Laptop: header buttons gone, Laptop pill, import rows not "new", chip ----
 
-  it('shows an "Import laptop roster…" button for admins that opens the dialog', async () => {
-    renderPanel();
-    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+  const NOW_ISO = new Date().toISOString();
+  const LAPTOP_USERS = [
+    ...SAMPLE_USERS,
+    {
+      id: 4,
+      email: '4@laptop.invalid',
+      displayName: 'Imported Student',
+      role: 'USER',
+      provider: null,
+      providers: [],
+      externalAccountTypes: [],
+      createdAt: NOW_ISO,
+      createdVia: 'laptop_import',
+      laptopLogin: true,
+      llmProxyEnabled: false,
+      oauthClientCount: 0,
+    },
+    {
+      id: 5,
+      email: 'newbie@example.com',
+      displayName: 'Fresh Signup',
+      role: 'USER',
+      provider: null,
+      providers: [{ provider: 'google', email: 'newbie@gmail.com' }],
+      externalAccountTypes: [],
+      createdAt: NOW_ISO,
+      createdVia: 'social_login',
+      laptopLogin: false,
+      llmProxyEnabled: false,
+      oauthClientCount: 0,
+    },
+  ];
 
-    const button = screen.getByRole('button', { name: 'Import laptop roster…' });
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    fireEvent.click(button);
+  function rowOf(name: string): HTMLElement {
+    const row = screen.getAllByRole('row').find((r) => r.textContent?.includes(name));
+    expect(row).toBeDefined();
+    return row as HTMLElement;
+  }
 
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: 'Import laptop roster' })).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Group name')).toHaveValue('Botball 26');
-  });
-
-  it('runs the import from the dialog and shows the report', async () => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
-    const mockFetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
-      if (url === '/api/admin/users') {
-        return Promise.resolve({ ok: true, json: async () => SAMPLE_USERS });
-      }
-      if (url === '/api/admin/import/laptop-roster' && opts?.method === 'POST') {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            created: 1,
-            matched: 0,
-            skipped: 0,
-            errors: 0,
-            details: [{ id: 'bob', outcome: 'created' }],
-          }),
-        });
-      }
-      return Promise.resolve({ ok: true, json: async () => ({}) });
-    });
-    vi.stubGlobal('fetch', mockFetch);
-    render(
-      <MemoryRouter>
-        <QueryClientProvider client={client}>
-          <ToastProvider>
-            <AdminUsersPanel />
-          </ToastProvider>
-        </QueryClientProvider>
-      </MemoryRouter>,
-    );
-    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Import laptop roster…' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Run' }));
-
-    await waitFor(() => expect(screen.getByTestId('import-created')).toHaveTextContent('1'));
-    const importCall = mockFetch.mock.calls.find(
-      (c) => c[0] === '/api/admin/import/laptop-roster',
-    );
-    expect(JSON.parse(importCall![1].body as string)).toEqual({ groupName: 'Botball 26' });
-    expect(screen.getByRole('link', { name: 'Review the merge queue' })).toHaveAttribute(
-      'href',
-      '/merge-queue',
-    );
-  });
-
-  it('hides the "Import laptop roster…" button for non-admin users', async () => {
-    mockUseAuth.mockReturnValue({
-      user: {
-        id: 2,
-        email: 'staff@example.com',
-        displayName: 'Staff User',
-        role: 'STAFF',
-        avatarUrl: null,
-        provider: null,
-        providerId: null,
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-01T00:00:00Z',
-      },
-      loading: false,
-      logout: vi.fn(),
-    });
+  it('has no "Import laptop roster…" or "Push all laptop logins" header buttons, even for admins', async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Import laptop roster…' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Push all laptop logins' })).not.toBeInTheDocument();
   });
 
-  // ---- Push all laptop logins (sprint 002 "laptop accounts" T006) ----
-
-  it('summarizePushAll lists every count', () => {
-    expect(summarizePushAll({ written: 3, locked: 1, unchanged: 10, skipped: 2, failed: 0 })).toBe(
-      'Laptop logins pushed: 3 written, 1 locked, 10 unchanged, 2 skipped, 0 failed.',
-    );
-  });
-
-  it('"Push all laptop logins" confirms first and does not POST on Cancel', async () => {
-    const { container } = renderPanel();
-    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
-    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
-
-    fireEvent.click(screen.getByRole('button', { name: 'Push all laptop logins' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: 'Push all laptop logins' })).toBeInTheDocument();
-
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(fetchMock.mock.calls.find((c) => c[0] === '/api/admin/laptop/push-all')).toBeUndefined();
-    expect(container).toBeInTheDocument();
-  });
-
-  it('"Push all laptop logins" POSTs on confirm and toasts the counts', async () => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
-    const mockFetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
-      if (url === '/api/admin/users') {
-        return Promise.resolve({ ok: true, json: async () => SAMPLE_USERS });
-      }
-      if (url === '/api/admin/laptop/push-all' && opts?.method === 'POST') {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ written: 3, locked: 1, unchanged: 10, skipped: 2, failed: 0 }),
-        });
-      }
-      return Promise.resolve({ ok: true, json: async () => ({}) });
-    });
-    vi.stubGlobal('fetch', mockFetch);
-    render(
-      <MemoryRouter>
-        <QueryClientProvider client={client}>
-          <ToastProvider>
-            <AdminUsersPanel />
-          </ToastProvider>
-        </QueryClientProvider>
-      </MemoryRouter>,
-    );
+  it('renders a "Laptop" feature pill directly after "League"', async () => {
+    renderPanel();
     await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Push all laptop logins' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Push all' }));
-
-    await waitFor(() =>
-      expect(mockFetch.mock.calls.find((c) => c[0] === '/api/admin/laptop/push-all')).toBeDefined(),
-    );
-    expect(
-      await screen.findByText('Laptop logins pushed: 3 written, 1 locked, 10 unchanged, 2 skipped, 0 failed.'),
-    ).toBeInTheDocument();
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    const labels = within(featureGroup).getAllByRole('button').map((b) => b.textContent);
+    expect(labels.indexOf('Laptop')).toBe(labels.indexOf('League') + 1);
   });
 
-  it('"Push all laptop logins" toasts the server error on failure', async () => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
-    const mockFetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
-      if (url === '/api/admin/users') {
-        return Promise.resolve({ ok: true, json: async () => SAMPLE_USERS });
-      }
-      if (url === '/api/admin/laptop/push-all' && opts?.method === 'POST') {
-        return Promise.resolve({
-          ok: false,
-          status: 503,
-          json: async () => ({ error: 'Laptop roster is not configured' }),
-        });
-      }
-      return Promise.resolve({ ok: true, json: async () => ({}) });
-    });
-    vi.stubGlobal('fetch', mockFetch);
-    render(
-      <MemoryRouter>
-        <QueryClientProvider client={client}>
-          <ToastProvider>
-            <AdminUsersPanel />
-          </ToastProvider>
-        </QueryClientProvider>
-      </MemoryRouter>,
-    );
-    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+  it('feature "Laptop" shows only users with laptopLogin', async () => {
+    renderPanel(LAPTOP_USERS);
+    await waitFor(() => expect(screen.getByText('Imported Student')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Push all laptop logins' }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Push all' }));
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'Laptop' }));
 
-    expect(await screen.findByText('Laptop roster is not configured')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Imported Student')).toBeInTheDocument();
+      expect(screen.queryByText('Fresh Signup')).not.toBeInTheDocument();
+      expect(screen.queryByText('Student User')).not.toBeInTheDocument();
+      expect(screen.queryByText('Admin User')).not.toBeInTheDocument();
+    });
+    expect(within(featureGroup).getByRole('button', { name: 'Laptop' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('feature "Laptop" is tri-state: second click negates (!Laptop), third clears', async () => {
+    renderPanel(LAPTOP_USERS);
+    await waitFor(() => expect(screen.getByText('Imported Student')).toBeInTheDocument());
+
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'Laptop' }));
+    await waitFor(() => expect(screen.queryByText('Fresh Signup')).not.toBeInTheDocument());
+
+    // positive → negated: everyone WITHOUT a laptop login
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'Laptop' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Imported Student')).not.toBeInTheDocument();
+      expect(screen.getByText('Fresh Signup')).toBeInTheDocument();
+      expect(screen.getByText('Student User')).toBeInTheDocument();
+      expect(screen.getByText('Admin User')).toBeInTheDocument();
+    });
+    expect(within(featureGroup).getByRole('button', { name: '!Laptop' })).toHaveAttribute('aria-pressed', 'true');
+
+    // negated → off
+    fireEvent.click(within(featureGroup).getByRole('button', { name: '!Laptop' }));
+    await waitFor(() => expect(screen.getByText('Imported Student')).toBeInTheDocument());
+    expect(within(featureGroup).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(featureGroup).getByRole('button', { name: 'Laptop' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('does not highlight a laptop_import user created now as new; a normal sign-up is highlighted', async () => {
+    renderPanel(LAPTOP_USERS);
+    await waitFor(() => expect(screen.getByText('Imported Student')).toBeInTheDocument());
+
+    expect(rowOf('Fresh Signup')).toHaveStyle({ backgroundColor: NEW_USER_BG });
+    expect(rowOf('Imported Student')).not.toHaveStyle({ backgroundColor: NEW_USER_BG });
+  });
+
+  it('feature "Recent" excludes laptop_import users even when created now', async () => {
+    renderPanel(LAPTOP_USERS);
+    await waitFor(() => expect(screen.getByText('Imported Student')).toBeInTheDocument());
+
+    const featureGroup = screen.getByRole('group', { name: 'Feature filter' });
+    fireEvent.click(within(featureGroup).getByRole('button', { name: 'Recent' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Fresh Signup')).toBeInTheDocument();
+      expect(screen.queryByText('Imported Student')).not.toBeInTheDocument();
+      expect(screen.queryByText('Student User')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders a laptop chip in the Accounts column only for laptopLogin users', async () => {
+    renderPanel(LAPTOP_USERS);
+    await waitFor(() => expect(screen.getByText('Imported Student')).toBeInTheDocument());
+
+    const chips = screen.getAllByRole('img', { name: 'Laptop login' });
+    expect(chips).toHaveLength(1);
+    expect(rowOf('Imported Student')).toContainElement(chips[0]);
+    expect(chips[0]).toHaveAttribute('title', 'Laptop login');
+    expect(within(rowOf('Fresh Signup')).queryByRole('img', { name: 'Laptop login' })).not.toBeInTheDocument();
   });
 });

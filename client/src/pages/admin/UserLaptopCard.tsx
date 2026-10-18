@@ -11,7 +11,11 @@
  *   - "Sync pending" indicator     — laptop_roster_dirty: the last roster
  *                                   write failed; the hourly job retries
  *   - "Push now"                   → POST /api/admin/users/:id/laptop/push
- *                                   (reconcile this one user; result toast)
+ *                                   (reconcile this one user; result toast).
+ *                                   Shown only while laptop_roster_dirty: it
+ *                                   is a repair action. Every change that
+ *                                   affects the roster entry writes it at
+ *                                   once, so a clean row has nothing to push.
  *
  * Data comes from GET /api/admin/users/:id under the same query key the
  * panel uses (['admin', 'users', id, 'detail']), so the card shares the
@@ -203,20 +207,23 @@ export default function UserLaptopCard({ userId, userName }: Props) {
             Allow laptop login
           </label>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => void pushNow()}
-              disabled={busy}
-              style={smallButtonStyle('primary', busy)}
-              title={`Write ${name}'s roster entry now`}
-            >
-              {busy ? 'Working…' : 'Push now'}
-            </button>
-            <span style={hintStyle}>
-              Rewrites students/{detail.username ?? '<username>'}/config.json from this account.
-            </span>
-          </div>
+          {detail.laptop_roster_dirty && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => void pushNow()}
+                disabled={busy}
+                style={smallButtonStyle('primary', busy)}
+                title={`Retry ${name}'s roster write now`}
+              >
+                {busy ? 'Working…' : 'Push now'}
+              </button>
+              <span style={hintStyle}>
+                Retries the failed write of students/{detail.username ?? '<username>'}/config.json
+                now instead of waiting for the hourly job.
+              </span>
+            </div>
+          )}
         </>
       )}
     </section>

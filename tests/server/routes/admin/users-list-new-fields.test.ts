@@ -256,3 +256,87 @@ describe('GET /api/admin/users — both new fields present', () => {
     expect(found.oauthClientCount).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// createdVia and laptopLogin (admin Users page: Laptop category, imports are
+// not "new"). laptop_password_hash is only used to compute the boolean and
+// must never reach the client.
+// ---------------------------------------------------------------------------
+
+describe('GET /api/admin/users — createdVia and laptopLogin', () => {
+  it('reports createdVia and laptopLogin=true for an importable roster user, without the hash', async () => {
+    const { agent } = await adminAgent();
+    const target = await makeUser({
+      primary_email: '4@laptop.invalid',
+      role: 'student',
+      created_via: 'laptop_import',
+      username: 'alice',
+      laptop_password_hash: '$6$salt$hash',
+    });
+
+    const res = await agent.get('/api/admin/users');
+    expect(res.status).toBe(200);
+
+    const found = res.body.find((u: any) => u.id === target.id);
+    expect(found).toBeDefined();
+    expect(found.createdVia).toBe('laptop_import');
+    expect(found.laptopLogin).toBe(true);
+    expect(found).not.toHaveProperty('laptop_password_hash');
+    expect(JSON.stringify(res.body)).not.toContain('$6$salt$hash');
+  });
+
+  it('laptopLogin is false without a username or without a laptop password hash', async () => {
+    const { agent } = await adminAgent();
+    const noUsername = await makeUser({
+      primary_email: 'nousername@example.com',
+      role: 'student',
+      laptop_password_hash: '$6$salt$hash',
+    });
+    const noHash = await makeUser({
+      primary_email: 'nohash@example.com',
+      role: 'student',
+      username: 'bob',
+    });
+
+    const res = await agent.get('/api/admin/users');
+    expect(res.status).toBe(200);
+
+    expect(res.body.find((u: any) => u.id === noUsername.id).laptopLogin).toBe(false);
+    expect(res.body.find((u: any) => u.id === noHash.id).laptopLogin).toBe(false);
+  });
+
+  it('laptopLogin is false when allows_laptop_account is off', async () => {
+    const { agent } = await adminAgent();
+    const optedOut = await makeUser({
+      primary_email: 'optedout@example.com',
+      role: 'student',
+      username: 'carol',
+      laptop_password_hash: '$6$salt$hash',
+      allows_laptop_account: false,
+    });
+
+    const res = await agent.get('/api/admin/users');
+    expect(res.status).toBe(200);
+
+    const found = res.body.find((u: any) => u.id === optedOut.id);
+    expect(found.laptopLogin).toBe(false);
+  });
+
+  it('every row has createdVia (string) and laptopLogin (boolean) and no laptop_password_hash', async () => {
+    const { agent } = await adminAgent();
+    await makeUser({ primary_email: 'plain@example.com', role: 'student' });
+
+    const res = await agent.get('/api/admin/users');
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+
+    for (const user of res.body) {
+      expect(typeof user.createdVia).toBe('string');
+      expect(typeof user.laptopLogin).toBe('boolean');
+      expect(user).not.toHaveProperty('laptop_password_hash');
+    }
+    const plain = res.body.find((u: any) => u.email === 'plain@example.com');
+    expect(plain.createdVia).toBe('admin_created');
+    expect(plain.laptopLogin).toBe(false);
+  });
+});

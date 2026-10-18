@@ -12,19 +12,21 @@
  *
  * Filter UI (search bar on the first line, lozenge bars on the second):
  *   - Role lozenge bar (radio): All | Staff | Admin | Student.
- *   - Feature lozenge bar: Google | Pike 13 | GitHub | League | LLM |
- *     Recent. League = has a @jointheleague.org account, LLM = has LLM
- *     proxy access, Recent = joined within the last two days. One feature
- *     filter is active at a time, and each pill is tri-state: click once
- *     for purple (has it) → again for red "!Label" (does NOT have it) →
- *     again to clear. "All" is a plain reset and never negates.
+ *   - Feature lozenge bar: Google | Pike 13 | GitHub | League | Laptop |
+ *     LLM | Recent. League = has a @jointheleague.org account, Laptop = can
+ *     log in on a League laptop (laptopLogin from the server), LLM = has
+ *     LLM proxy access, Recent = joined within the last two days. One
+ *     feature filter is active at a time, and each pill is tri-state: click
+ *     once for purple (has it) → again for red "!Label" (does NOT have it)
+ *     → again to clear. "All" is a plain reset and never negates.
+ *
+ * Users imported from the laptop roster (createdVia === 'laptop_import')
+ * are never treated as new: no NEW_USER_BG highlight and not in "Recent".
+ * The one-time roster import and push-all live on the server only
+ * (POST /api/admin/import/laptop-roster, POST /api/admin/laptop/push-all,
+ * and dist/scripts/import-laptop-roster.js; see docs/deploy.md section 7).
  *
  * Bulk actions: Delete (existing), Suspend accounts, Revoke LLM Proxy.
- *
- * Page header (admins only): "Import laptop roster…" opens the one-time
- * laptop roster import dialog (sprint 002 "laptop accounts"); "Push all
- * laptop logins" confirms, then POSTs /api/admin/laptop/push-all and shows
- * the counts in a toast (T006).
  *
  * Make-admin guards (also enforced server-side):
  *   - self-demotion is blocked (server 403, button disabled client-side)
@@ -39,8 +41,6 @@ import { useAuth } from '../../context/AuthContext';
 import { prettifyName } from './utils/prettifyName';
 import { isRecent, NEW_USER_BG } from '../../lib/recent-user';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import ImportLaptopRosterDialog from './ImportLaptopRosterDialog';
-import { useToast } from '../../context/ToastContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,23 +58,6 @@ interface UserExternalAccount {
   status: string;
 }
 
-/** Counts returned by POST /api/admin/laptop/push-all (sprint 002 T004). */
-export interface PushAllCounts {
-  written: number;
-  locked: number;
-  unchanged: number;
-  skipped: number;
-  failed: number;
-}
-
-/** One-line toast text for the push-all counts. */
-export function summarizePushAll(c: PushAllCounts): string {
-  return (
-    `Laptop logins pushed: ${c.written} written, ${c.locked} locked, ` +
-    `${c.unchanged} unchanged, ${c.skipped} skipped, ${c.failed} failed.`
-  );
-}
-
 interface AdminUser {
   id: number;
   email: string;
@@ -85,6 +68,11 @@ interface AdminUser {
   externalAccountTypes: string[];
   externalAccounts?: UserExternalAccount[];
   createdAt: string;
+  /** How the account was created (Prisma CreatedVia); 'laptop_import' rows
+   *  are never shown as new. */
+  createdVia?: string;
+  /** True when the user can log in on a League laptop right now. */
+  laptopLogin?: boolean;
   llmProxyEnabled: boolean;
   oauthClientCount: number;
 }
@@ -113,6 +101,7 @@ type FeatureFilter =
   | 'pike13'
   | 'github'
   | 'league'
+  | 'laptop'
   | 'llm'
   | 'recent';
 
@@ -130,8 +119,13 @@ type SortCol = 'name' | 'email' | 'accounts' | 'joined';
 // they sort in a stable, meaningful way. League accounts are split into
 // staff (flag) vs student (bolt) by whether "student" appears in any
 // jointheleague.org address on the user.
-type AccountKind = 'github' | 'league-staff' | 'league-student' | 'pike13';
-const ACCOUNT_ORDER: AccountKind[] = ['league-staff', 'league-student', 'github', 'pike13'];
+type AccountKind = 'github' | 'league-staff' | 'league-student' | 'pike13' | 'laptop';
+const ACCOUNT_ORDER: AccountKind[] = ['league-staff', 'league-student', 'github', 'pike13', 'laptop'];
+
+/** Imported from the laptop roster: an existing student, not a newcomer. */
+function isLaptopImport(u: AdminUser): boolean {
+  return u.createdVia === 'laptop_import';
+}
 
 /** Any @jointheleague.org address attached to the user (primary, a login
  *  email, or a workspace external_id). */
@@ -163,6 +157,7 @@ function userAccounts(u: AdminUser): AccountKind[] {
   if (u.providers?.some((p) => p.provider === 'github')) out.add('github');
   const eats = u.externalAccountTypes ?? [];
   if (eats.includes('pike13')) out.add('pike13');
+  if (u.laptopLogin === true) out.add('laptop');
   return ACCOUNT_ORDER.filter((k) => out.has(k));
 }
 
@@ -199,10 +194,12 @@ function featurePredicate(u: AdminUser, feature: Exclude<FeatureFilter, 'all'>):
       return u.providers.some((p) => p.provider === 'github');
     case 'league':
       return leagueEmails(u).length > 0;
+    case 'laptop':
+      return u.laptopLogin === true;
     case 'llm':
       return u.llmProxyEnabled === true;
     case 'recent':
-      return isRecent(u.createdAt, RECENT_FILTER_HOURS);
+      return !isLaptopImport(u) && isRecent(u.createdAt, RECENT_FILTER_HOURS);
   }
 }
 
@@ -315,6 +312,18 @@ function AccountIcon({ kind }: { kind: AccountKind }) {
       />
     );
   }
+  if (kind === 'laptop') {
+    return (
+      <span
+        role="img"
+        aria-label="Laptop login"
+        title="Laptop login"
+        style={{ fontSize: 14, lineHeight: 1, verticalAlign: 'middle' }}
+      >
+        💻
+      </span>
+    );
+  }
   // Pike13 — just text per spec
   return (
     <span
@@ -402,6 +411,7 @@ const FEATURE_OPTIONS: { label: string; value: FeatureFilter }[] = [
   { label: 'Pike 13', value: 'pike13' },
   { label: 'GitHub', value: 'github' },
   { label: 'League', value: 'league' },
+  { label: 'Laptop', value: 'laptop' },
   { label: 'LLM', value: 'llm' },
   { label: 'Recent', value: 'recent' },
 ];
@@ -744,10 +754,6 @@ export default function AdminUsersPanel() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState('');
-  const [importOpen, setImportOpen] = useState(false);
-  const [pushingAll, setPushingAll] = useState(false);
-  const isAdmin = (currentUser?.role ?? '').toLowerCase() === 'admin';
-  const { showToast } = useToast();
 
   // Confirm dialog state
   const [confirmState, setConfirmState] = useState<ConfirmState>({ open: false });
@@ -908,39 +914,6 @@ export default function AdminUsersPanel() {
     });
   }
 
-  /** "Push all laptop logins": confirm, POST /api/admin/laptop/push-all, toast the counts. */
-  function openPushAllConfirm() {
-    setConfirmState({
-      open: true,
-      title: 'Push all laptop logins',
-      message:
-        'Rewrite the laptop roster entry for every user with a username? ' +
-        'Eligible users get their current password hash; everyone else is locked. ' +
-        'This is safe to repeat.',
-      confirmLabel: 'Push all',
-      onConfirm: () => {
-        setConfirmState({ open: false });
-        void pushAllLaptopLogins();
-      },
-    });
-  }
-
-  async function pushAllLaptopLogins() {
-    setPushingAll(true);
-    try {
-      const res = await fetch('/api/admin/laptop/push-all', { method: 'POST' });
-      const body = (await res.json().catch(() => ({}))) as Partial<PushAllCounts> & { error?: string };
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      const counts = body as PushAllCounts;
-      showToast(summarizePushAll(counts), counts.failed > 0 ? 'error' : 'success');
-      refetchUsers();
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Push all failed', 'error');
-    } finally {
-      setPushingAll(false);
-    }
-  }
-
   function openRevokeConfirm() {
     const eligibleCount = selectedUsers.filter((u) => u.llmProxyEnabled).length;
     setConfirmState({
@@ -960,25 +933,6 @@ export default function AdminUsersPanel() {
     <div>
       <div style={pageHeaderStyle}>
         <h2 style={{ margin: 0, fontSize: 20 }}>Users</h2>
-        {isAdmin && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              style={bulkButtonStyle('secondary')}
-              disabled={pushingAll}
-              onClick={openPushAllConfirm}
-            >
-              {pushingAll ? 'Pushing…' : 'Push all laptop logins'}
-            </button>
-            <button
-              type="button"
-              style={bulkButtonStyle('secondary')}
-              onClick={() => setImportOpen(true)}
-            >
-              Import laptop roster…
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Bulk error banner */}
@@ -1124,9 +1078,10 @@ export default function AdminUsersPanel() {
           {visible.map((user) => {
             const isOwnRow = currentUser?.id === user.id;
             const isChecked = selected.has(user.id);
+            // Imported roster students are not newcomers: no highlight.
             const rowBackground = isChecked
               ? '#eff6ff'
-              : isRecent(user.createdAt)
+              : !isLaptopImport(user) && isRecent(user.createdAt)
                 ? NEW_USER_BG
                 : undefined;
 
@@ -1241,17 +1196,6 @@ export default function AdminUsersPanel() {
         <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 24 }}>
           {users.length === 0 ? 'No users yet.' : 'No users match this filter.'}
         </p>
-      )}
-
-      {/* One-time laptop roster import (admins only) */}
-      {isAdmin && (
-        <ImportLaptopRosterDialog
-          open={importOpen}
-          onClose={() => setImportOpen(false)}
-          onImported={() => {
-            void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-          }}
-        />
       )}
 
       {/* Confirm dialog for bulk suspend / revoke */}

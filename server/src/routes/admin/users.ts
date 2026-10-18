@@ -691,6 +691,19 @@ function serializeUser(user: any) {
       : false,
     // count of non-disabled OAuth clients created by this user.
     oauthClientCount: user._count?.oauth_clients_created ?? 0,
+    // How the account was created (Prisma CreatedVia). The admin Users page
+    // does not show 'laptop_import' rows as new.
+    createdVia: user.created_via ?? null,
+    // True when this user can log in on a League laptop right now: has a
+    // username and a roster-compatible password hash, is active, and has
+    // not been opted out. Only the boolean leaves the server; the hash
+    // itself is never serialized.
+    laptopLogin: Boolean(
+      user.username &&
+        user.laptop_password_hash &&
+        user.is_active !== false &&
+        (user.allows_laptop_account ?? true),
+    ),
     createdAt: user.created_at,
     updatedAt: user.updated_at,
   };

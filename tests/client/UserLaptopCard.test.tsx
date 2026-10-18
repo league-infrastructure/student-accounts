@@ -5,9 +5,10 @@
  *  - renders the state pill and line from GET /api/admin/users/:id for each
  *    state; the "Sync pending" indicator follows laptop_roster_dirty
  *  - the Allow toggle PATCHes { allows_laptop_account } and refetches
- *  - "Push now" POSTs /api/admin/users/:id/laptop/push and toasts the
- *    outcome (success for written, error for failed); a server error is
- *    shown inline and toasted
+ *  - "Push now" is rendered only while laptop_roster_dirty (repair action);
+ *    it POSTs /api/admin/users/:id/laptop/push and toasts the outcome
+ *    (success for written, error for failed); a server error is shown
+ *    inline and toasted
  *  - describeState / describeOutcome helpers
  */
 
@@ -96,21 +97,23 @@ describe('describeState / describeOutcome', () => {
 });
 
 describe('UserLaptopCard — render', () => {
-  it('shows the ready state with the username, no dirty indicator', async () => {
+  it('shows the ready state with the username, no dirty indicator and no Push now', async () => {
     setFetch({ current: BASE }, () => jsonResponse(200, {}));
     renderCard();
     expect(await screen.findByTestId('laptop-state-pill')).toHaveTextContent('ready');
     expect(screen.getByTestId('laptop-state-line')).toHaveTextContent('logs in on League laptops as alice');
     expect(screen.queryByTestId('laptop-dirty')).not.toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Allow laptop login' })).toBeChecked();
-    expect(screen.getByRole('button', { name: 'Push now' })).toBeEnabled();
+    // Writes are automatic; Push now is a repair action for dirty rows only.
+    expect(screen.queryByRole('button', { name: 'Push now' })).not.toBeInTheDocument();
     expect(calls[0]).toMatchObject({ url: '/api/admin/users/7', method: 'GET' });
   });
 
-  it('shows Sync pending when laptop_roster_dirty', async () => {
+  it('shows Sync pending and the Push now button when laptop_roster_dirty', async () => {
     setFetch({ current: { ...BASE, laptop_roster_dirty: true } }, () => jsonResponse(200, {}));
     renderCard();
     expect(await screen.findByTestId('laptop-dirty')).toHaveTextContent('Sync pending');
+    expect(screen.getByRole('button', { name: 'Push now' })).toBeEnabled();
   });
 
   it('shows disabled with the toggle off', async () => {
@@ -185,7 +188,7 @@ describe('UserLaptopCard — actions', () => {
   });
 
   it('a failed outcome is an error toast and the dirty indicator stays', async () => {
-    const state = { current: BASE };
+    const state = { current: { ...BASE, laptop_roster_dirty: true } };
     setFetch(state, () => {
       state.current = { ...BASE, laptop_roster_dirty: true };
       return jsonResponse(200, { outcome: 'failed', laptopLogin: { state: 'ready', dirty: true } });
@@ -198,7 +201,10 @@ describe('UserLaptopCard — actions', () => {
   });
 
   it('shows a server error inline (503 not configured)', async () => {
-    setFetch({ current: BASE }, () => jsonResponse(503, { error: 'Laptop roster is not configured' }));
+    setFetch(
+      { current: { ...BASE, laptop_roster_dirty: true } },
+      () => jsonResponse(503, { error: 'Laptop roster is not configured' }),
+    );
     renderCard();
     fireEvent.click(await screen.findByRole('button', { name: 'Push now' }));
 

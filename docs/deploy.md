@@ -339,41 +339,63 @@ Then in the admin UI:
 
 ## 7. One-time steps after this deploy (laptop accounts)
 
-Do these once, after the smoke checks pass. Both actions are idempotent.
+Both steps below were run against prod on **2026-10-18** and are idempotent;
+repeat them only if the roster bucket is rebuilt or the import has to be
+redone. Neither has a button in the UI any more (the "Import laptop roster…"
+and "Push all laptop logins" header buttons were removed from Admin → Users):
+the import is a script inside the running container and push-all is an admin
+endpoint, called the same way as the budget backfill in section 7b.
 
-1. **Import the laptop roster.** Admin → User Management → "Import laptop
-   roster…" (page header, admins only). Keep the group name **Botball 26**
-   and confirm. The dialog reports `created` / `matched` / `skipped` /
-   `errors`. A second run reports everything as matched. Imported students
-   get a `username` login, their existing laptop password (SHA-512 crypt), a
-   synthesised `<id>@laptop.invalid` email, and membership in "Botball 26";
-   the merge scan runs for each new user, so duplicates of existing students
-   show up on the Merge Queue page (`/merge-queue`). Review and approve them
-   there; approving moves logins, groups, proxy token and laptop credentials
-   to the survivor.
-
-   Shell alternative, from the manager node, inside the running container.
-   The runtime image has only the compiled `dist/` (no `tsx`, no `src/`), so
-   the `npm run import:laptop-roster` wrapper from the source tree does not
-   exist there; call the compiled script directly:
+1. **Import the laptop roster** (done 2026-10-18). From the manager node,
+   inside the running container. The runtime image has only the compiled
+   `dist/` (no `tsx`, no `src/`), so the `npm run import:laptop-roster`
+   wrapper from the source tree does not exist there; call the compiled
+   script directly:
 
    ```bash
    CTR=$(docker --context swarm1 ps -q -f name=student-accounts_web)
    docker --context swarm1 exec -it "$CTR" node dist/scripts/import-laptop-roster.js --group "Botball 26"
    ```
 
-   It prints the same report as JSON; exit 1 means some entries errored,
-   exit 2 means the roster bucket is not configured. (From a development
-   checkout with a prod `.env`, `cd server && npm run import:laptop-roster --
-   --group "Botball 26"` runs the same code.)
+   It prints a JSON report with `created` / `matched` / `skipped` / `errors`;
+   exit 1 means some entries errored, exit 2 means the roster bucket is not
+   configured. A second run reports everything as matched. Imported students
+   get a `username` login, their existing laptop password (SHA-512 crypt), a
+   synthesised `<id>@laptop.invalid` email, membership in "Botball 26" and
+   `created_via = laptop_import` (the admin Users page does not highlight
+   them as new; filter on "Laptop" to see who can log in). The merge scan
+   runs for each new user, so duplicates of existing students show up on the
+   Merge Queue page (`/merge-queue`). Review and approve them there;
+   approving moves logins, groups, proxy token and laptop credentials to the
+   survivor. (From a development checkout with a prod `.env`, `cd server &&
+   npm run import:laptop-roster -- --group "Botball 26"` runs the same code.)
 
-2. **Push all laptop logins.** Same page header, "Push all laptop logins" →
-   "Push all". This rewrites the roster entry for every active user with a
-   username and password and locks (`password_hash: "!"`) the entry of anyone
-   deactivated or opted out. The toast shows written / locked / unchanged /
-   skipped / failed counts. Failures leave users `laptop_roster_dirty`; the hourly job
-   retries, and a user's detail panel has a "Push now" button. Persistent
-   failures mean the Spaces key cannot write `jtl-student-unix-accounts`.
+2. **Push all laptop logins** (done 2026-10-18). `POST
+   /api/admin/laptop/push-all` rewrites the roster entry for every active
+   user with a username and password and locks (`password_hash: "!"`) the
+   entry of anyone deactivated or opted out; it returns written / locked /
+   unchanged / skipped / failed counts. Call it from an admin session: sign
+   in as an admin, open the browser devtools console on any page of the app
+   and run
+
+   ```js
+   await (await fetch('/api/admin/laptop/push-all', { method: 'POST' })).json()
+   //  → { written: 3, locked: 1, unchanged: 10, skipped: 2, failed: 0 }
+   ```
+
+   or with curl, using the session cookie from the browser (DevTools →
+   Application → Cookies → `connect.sid`):
+
+   ```bash
+   curl -s -X POST $BASE/api/admin/laptop/push-all -H "Cookie: connect.sid=<value>"
+   ```
+
+   Day to day this is not needed: every change that touches a roster entry
+   (password, username, display name, active flag, laptop permission) writes
+   it immediately, and the hourly `laptop-roster-push` job retries any user
+   left `laptop_roster_dirty`. A user's detail panel shows a "Push now"
+   button only while that user is dirty. Persistent failures mean the Spaces
+   key cannot write `jtl-student-unix-accounts`.
 
 3. **Check one laptop login end to end** when convenient: a student with a
    username and password set here chooses "Other…" on a League laptop and
@@ -481,6 +503,6 @@ you are staying on the new build.
 | Admin card says "legacy token quota; set a dollar limit to switch" | Same cause: section 7b has not run for that token. |
 | Request rows show `costUsd: 0`, or spend does not move | OpenRouter omitted `usage.cost` **and** the fallback price for that tier is unparseable. `LLM_PROXY_PRICE_*` must be `"<in>,<out>"` in USD per 1M tokens; fix on Admin → Configuration. Also check the server log for `recordUsage` errors (accounting is fire-and-forget). |
 | Claude Code hangs or answers with an OpenAI-shaped error | `ANTHROPIC_BASE_URL` must be `…/proxy` (no `/v1`; the SDK appends `/v1/messages`) and the token goes in `ANTHROPIC_AUTH_TOKEN`, with `ANTHROPIC_API_KEY=""`. Copy the block from `/llm-proxy` rather than typing it. |
-| Import/Push all → "not configured" | `DO_SPACES_KEY`/`DO_SPACES_SECRET` missing from the rendered env (they require a restart to take effect). |
-| Push all reports failures, users stay dirty | The Spaces key lacks write access on `jtl-student-unix-accounts`; fix in the DigitalOcean console, then "Push all" again or wait for the hourly job. |
+| Import script exits 2 / push-all → 503 "not configured" | `DO_SPACES_KEY`/`DO_SPACES_SECRET` missing from the rendered env (they require a restart to take effect). |
+| Push all reports failures, users stay dirty | The Spaces key lacks write access on `jtl-student-unix-accounts`; fix in the DigitalOcean console, then call push-all again (section 7) or wait for the hourly job. |
 | Google/GitHub sign-in redirect mismatch | Callback URLs must be `https://student-accounts.jtlapp.net/api/auth/{google,github}/callback` both in `config/prod/public.env` and in the provider console. |

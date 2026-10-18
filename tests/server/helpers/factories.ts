@@ -55,7 +55,13 @@ export async function makeUser(
     display_name: string;
     primary_email: string;
     role: 'student' | 'staff' | 'admin';
-    created_via: 'social_login' | 'pike13_sync' | 'admin_created';
+    created_via:
+      | 'social_login'
+      | 'pike13_sync'
+      | 'admin_created'
+      | 'workspace_sync'
+      | 'passphrase_signup'
+      | 'laptop_import';
     cohort_id: number | null;
     allows_oauth_client: boolean;
     allows_llm_proxy: boolean;
