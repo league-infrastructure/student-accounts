@@ -495,8 +495,17 @@ model OAuthConsent {
 // opaque random strings; the SHA-256 hex hash is what the proxy looks up on
 // every request, and the plaintext is also kept in token_plaintext (see the
 // column comment) so the Account page and POST /api/fleet/llm-token can hand
-// the same token back. Quota is enforced via token_limit vs tokens_used with
-// a hard cut-off.
+// the same token back.
+//
+// Quota (sprint 003): a monthly dollar budget. `budget_usd` is the cap for
+// one UTC calendar month, `spent_usd` the spend in the current period and
+// `period_start` the first instant of that month; the period is rolled lazily
+// by LlmProxyTokenService.assertUsable on the first request of a new month.
+// `spent_usd_total` is the lifetime spend. While `budget_usd` is NULL (rows
+// from before the migration, until the admin backfill) the legacy
+// token_limit vs tokens_used check applies instead. Dollar columns are Float,
+// not Decimal: the better-sqlite3 adapter stores Decimal as text and compares
+// it lexically, and these are classroom budgets, not ledgers.
 // ---------------------------------------------------------------------------
 model LlmProxyToken {
   id              Int       @id @default(autoincrement())
@@ -511,15 +520,49 @@ model LlmProxyToken {
   token_limit     Int
   tokens_used     Int       @default(0)
   request_count   Int       @default(0)
+  // Monthly dollar budget (sprint 003); see the model comment.
+  budget_usd      Float?
+  spent_usd       Float     @default(0)
+  spent_usd_total Float     @default(0)
+  period_start    DateTime?
   granted_by      Int?
   granted_at      DateTime  @default(now())
   revoked_at      DateTime?
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
 
-  user    User  @relation(fields: [user_id],    references: [id], onDelete: Cascade)
-  granter User? @relation("LlmProxyGranter", fields: [granted_by], references: [id], onDelete: SetNull)
+  user     User              @relation(fields: [user_id],    references: [id], onDelete: Cascade)
+  granter  User?             @relation("LlmProxyGranter", fields: [granted_by], references: [id], onDelete: SetNull)
+  requests LlmProxyRequest[]
 
   @@index([user_id])
   @@index([user_id, revoked_at, expires_at])
+}
+
+// ---------------------------------------------------------------------------
+// LlmProxyRequest — one row per proxied LLM call (sprint 003). Answers "what
+// did this student spend it on" and lets the per-period spend be recomputed.
+// `protocol` is 'openai' (chat/completions) or 'anthropic' (/messages), kept
+// as a String because SQLite has no enums. `cost_usd` is what OpenRouter
+// reported, or the TierPricing fallback when it reported nothing (Float, see
+// LlmProxyToken). Rows cascade with their token and are pruned after 90 days
+// by the llm-proxy-request-prune job.
+// ---------------------------------------------------------------------------
+model LlmProxyRequest {
+  id              Int      @id @default(autoincrement())
+  token_id        Int
+  user_id         Int
+  ts              DateTime @default(now())
+  protocol        String
+  model_requested String?
+  model_sent      String?
+  input_tokens    Int
+  output_tokens   Int
+  cost_usd        Float
+  status          Int
+
+  token LlmProxyToken @relation(fields: [token_id], references: [id], onDelete: Cascade)
+
+  @@index([token_id, ts])
+  @@index([user_id, ts])
 }

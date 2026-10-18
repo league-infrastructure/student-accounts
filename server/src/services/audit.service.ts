@@ -48,6 +48,11 @@ export type AuditAction =
   | 'reject_provisioning_request'
   | 'auth_denied'
   | 'role_changed'
+  // LLM proxy (Sprint 013; budgets in sprint 003)
+  | 'grant_llm_proxy_token'
+  | 'revoke_llm_proxy_token'
+  | 'llm_proxy_budget_changed'
+  | 'llm_proxy_budget_backfilled'
   // Allow any string so future actions are not blocked at compile time
   | (string & {});
 

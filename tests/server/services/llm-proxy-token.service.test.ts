@@ -29,6 +29,7 @@ function pastDate(daysBehind = 1): Date {
 }
 
 async function resetDb() {
+  await (prisma as any).llmProxyRequest.deleteMany();
   await (prisma as any).llmProxyToken.deleteMany();
   await (prisma as any).auditEvent.deleteMany();
   await (prisma as any).userGroup.deleteMany();
@@ -350,7 +351,7 @@ describe('LlmProxyTokenService.validate', () => {
     );
     await (prisma as any).llmProxyToken.update({
       where: { id: row.id },
-      data: { tokens_used: 100 },
+      data: { tokens_used: 100, budget_usd: null }, // legacy token-count path (sprint 003)
     });
     await expect(service.validate(token)).rejects.toThrow(
       LlmProxyTokenQuotaExceededError,

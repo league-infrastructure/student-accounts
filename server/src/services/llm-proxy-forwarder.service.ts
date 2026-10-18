@@ -31,16 +31,18 @@
 import type { Request, Response as ExpressResponse } from 'express';
 import { AppError } from '../errors.js';
 import { createLogger } from './logger.js';
+import { DEFAULT_TIER_MODELS } from './llm-proxy-pricing.js';
 
 const logger = createLogger('llm-proxy-forwarder');
 
 // ---------------------------------------------------------------------------
-// Constants — model tier defaults
+// Constants — model tier defaults (shared with TierPricing so the fallback
+// price table maps a sent slug back to the same tier; sprint 003)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MODEL_LARGE = 'deepseek/deepseek-v4-pro';
-const DEFAULT_MODEL_MEDIUM = 'deepseek/deepseek-v4-flash';
-const DEFAULT_MODEL_SMALL = 'deepseek/deepseek-v3.2';
+const DEFAULT_MODEL_LARGE = DEFAULT_TIER_MODELS.large;
+const DEFAULT_MODEL_MEDIUM = DEFAULT_TIER_MODELS.medium;
+const DEFAULT_MODEL_SMALL = DEFAULT_TIER_MODELS.small;
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // ---------------------------------------------------------------------------

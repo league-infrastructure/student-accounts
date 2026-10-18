@@ -125,10 +125,13 @@ accountRouter.get(
         ? 'https'
         : 'http';
     const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
+    // Dollar fields (sprint 003) come from the same budgetSummary the admin
+    // and fleet payloads use, so every view agrees.
     const llmProxy = llmActive
       ? {
           token: (llmActive as any).token_plaintext ?? null,
           endpoint: `${scheme}://${host}/proxy`,
+          ...llmProxyTokens.budgetSummary(llmActive),
         }
       : null;
 
@@ -448,11 +451,13 @@ accountRouter.get(
     const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
     const endpoint = `${scheme}://${host}/proxy`;
 
-    const active = await req.services.llmProxyTokens.getActiveForUser(userId);
+    const tokens = req.services.llmProxyTokens;
+    const active = await tokens.getActiveForUser(userId);
     if (!active) {
       return res.json({ enabled: false, endpoint });
     }
 
+    // budgetUsd / spentUsd / spentUsdTotal / periodResetsAt (sprint 003).
     return res.json({
       enabled: true,
       endpoint,
@@ -460,6 +465,7 @@ accountRouter.get(
       tokensUsed: active.tokens_used,
       tokenLimit: active.token_limit,
       requestCount: active.request_count,
+      ...tokens.budgetSummary(active),
       expiresAt: active.expires_at,
       grantedAt: active.granted_at,
     });

@@ -27,6 +27,7 @@ const GENERIC_401 = { error: 'Invalid username or password' };
 
 async function cleanDb(): Promise<void> {
   await (prisma as any).auditEvent.deleteMany();
+  await (prisma as any).llmProxyRequest.deleteMany();
   await (prisma as any).llmProxyToken.deleteMany();
   await (prisma as any).mergeSuggestion.deleteMany();
   await (prisma as any).userGroup.deleteMany();
@@ -101,10 +102,20 @@ describe('POST /api/fleet/llm-token — success', () => {
       token_limit: 1_000_000,
       tokens_used: 0,
       request_count: 0,
+      // Sprint 003: monthly dollar budget, snake_case like the other keys.
+      budget_usd: 5,
+      spent_usd: 0,
+      spent_usd_total: 0,
+      period_resets_at: expect.stringMatching(/^\d{4}-\d{2}-01T00:00:00\.000Z$/),
       expires_at: expect.any(String),
       granted_at: expect.any(String),
     });
     expect(res.body).not.toHaveProperty('anthropic_base_url');
+
+    // period_resets_at is the first instant of next UTC month.
+    const now = new Date();
+    const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    expect(res.body.period_resets_at).toBe(nextMonth.toISOString());
 
     // Expires about a year out.
     const ttlDays = (new Date(res.body.expires_at).getTime() - Date.now()) / 86_400_000;

@@ -11,6 +11,10 @@ import {
   createLaptopRosterPushJobHandler,
   JOB_NAME as LAPTOP_ROSTER_PUSH_JOB_NAME,
 } from './jobs/laptop-roster-push.job.js';
+import {
+  createLlmProxyRequestPruneJobHandler,
+  JOB_NAME as LLM_PROXY_REQUEST_PRUNE_JOB_NAME,
+} from './jobs/llm-proxy-request-prune.job.js';
 
 const port = parseInt(process.env.PORT || '5201', 10);
 
@@ -18,8 +22,8 @@ const registry = ServiceRegistry.create();
 
 initPrisma().then(() => initConfigCache()).then(async () => {
   // seedDefaults upserts all scheduled job rows (daily-backup, weekly-backup,
-  // workspace-delete, laptop-roster-push) so they exist before handlers are
-  // registered.
+  // workspace-delete, laptop-roster-push, llm-proxy-request-prune) so they
+  // exist before handlers are registered.
   await registry.scheduler.seedDefaults();
 
   registry.scheduler.registerHandler('daily-backup', async () => {
@@ -39,6 +43,12 @@ initPrisma().then(() => initConfigCache()).then(async () => {
   registry.scheduler.registerHandler(
     LAPTOP_ROSTER_PUSH_JOB_NAME,
     createLaptopRosterPushJobHandler({ prisma, laptopAccounts: registry.laptopAccounts }),
+  );
+
+  // LlmProxyRequestPruneJob — drop LLM proxy request-log rows older than 90 days.
+  registry.scheduler.registerHandler(
+    LLM_PROXY_REQUEST_PRUNE_JOB_NAME,
+    createLlmProxyRequestPruneJobHandler({ prisma }),
   );
 
   registry.scheduler.startTicking();

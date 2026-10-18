@@ -107,6 +107,8 @@ export class SchedulerService {
       { name: 'weekly-backup', frequency: 'weekly' },
       { name: 'workspace-delete', frequency: 'hourly' },
       { name: 'laptop-roster-push', frequency: 'hourly' },
+      // Sprint 003: 90-day retention of the LLM proxy request log.
+      { name: 'llm-proxy-request-prune', frequency: 'daily' },
     ];
     for (const def of defaults) {
       await this.prisma.scheduledJob.upsert({

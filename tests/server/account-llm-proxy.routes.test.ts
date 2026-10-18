@@ -31,6 +31,7 @@ beforeAll(async () => {
 }, 30000);
 
 async function wipeExceptStudent() {
+  await (prisma as any).llmProxyRequest.deleteMany();
   await (prisma as any).llmProxyToken.deleteMany();
   await (prisma as any).auditEvent.deleteMany();
   await (prisma as any).userGroup.deleteMany();
@@ -140,5 +141,72 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     expect(res.body.token).toBe(granted);
     expect(res.body).not.toHaveProperty('tokenHash');
     expect(res.body).not.toHaveProperty('token_hash');
+    // Sprint 003: dollar budget fields with the $5 default.
+    expect(res.body.budgetUsd).toBe(5);
+    expect(res.body.spentUsd).toBe(0);
+    expect(res.body.spentUsdTotal).toBe(0);
+    expect(res.body.periodResetsAt).toMatch(/^\d{4}-\d{2}-01T00:00:00\.000Z$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dollar budget fields (sprint 003 ticket 001, SUC-006)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/account/llm-proxy and GET /api/account — budget fields', () => {
+  it('reports the budget, spend this period, lifetime spend and the reset date', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const { row } = await registry.llmProxyTokens.grant(
+      studentId,
+      { expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000), budgetUsd: 2.5 },
+      admin.id,
+    );
+    await registry.llmProxyTokens.recordUsage(row.id, {
+      inputTokens: 100,
+      outputTokens: 50,
+      costUsd: 0.75,
+      modelSent: 'deepseek/deepseek-v4-flash',
+    });
+
+    const res = await studentAgent.get('/api/account/llm-proxy');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      enabled: true,
+      budgetUsd: 2.5,
+      spentUsd: 0.75,
+      spentUsdTotal: 0.75,
+      requestCount: 1,
+      tokensUsed: 150,
+    });
+    const now = new Date();
+    const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    expect(res.body.periodResetsAt).toBe(nextMonth.toISOString());
+
+    // GET /api/account profile.llmProxy mirrors the same fields.
+    const account = await studentAgent.get('/api/account');
+    expect(account.status).toBe(200);
+    expect(account.body.profile.llmProxyEnabled).toBe(true);
+    expect(account.body.profile.llmProxy).toMatchObject({
+      budgetUsd: 2.5,
+      spentUsd: 0.75,
+      spentUsdTotal: 0.75,
+      periodResetsAt: nextMonth.toISOString(),
+    });
+    expect(typeof account.body.profile.llmProxy.token).toBe('string');
+    expect(account.body.profile.llmProxy.endpoint).toMatch(/\/proxy$/);
+  });
+
+  it('a legacy token (budget_usd null) reports budgetUsd null', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const { row } = await registry.llmProxyTokens.grant(
+      studentId,
+      { expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000), tokenLimit: 1000 },
+      admin.id,
+    );
+    await (prisma as any).llmProxyToken.update({ where: { id: row.id }, data: { budget_usd: null } });
+    const res = await studentAgent.get('/api/account/llm-proxy');
+    expect(res.status).toBe(200);
+    expect(res.body.budgetUsd).toBeNull();
+    expect(res.body.tokenLimit).toBe(1000);
   });
 });

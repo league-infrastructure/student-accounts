@@ -47,6 +47,7 @@ afterAll(async () => {
 });
 
 async function wipeTestState() {
+  await (prisma as any).llmProxyRequest.deleteMany();
   await (prisma as any).llmProxyToken.deleteMany();
   await (prisma as any).auditEvent.deleteMany();
   await (prisma as any).userGroup.deleteMany();
@@ -206,17 +207,53 @@ describe('POST /proxy/v1/chat/completions — authentication', () => {
     expect(res.status).toBe(401);
   });
 
-  it('429 when quota is exhausted', async () => {
+  it('429 when the legacy token quota is exhausted (budget_usd null)', async () => {
     const { token, tokenId } = await grantTokenForStudent();
     await (prisma as any).llmProxyToken.update({
       where: { id: tokenId },
-      data: { tokens_used: 1_000_000 }, // equals token_limit
+      data: { tokens_used: 1_000_000, budget_usd: null }, // equals token_limit
     });
     const res = await request(app)
       .post('/proxy/v1/chat/completions')
       .set('Authorization', `Bearer ${token}`)
       .send({ model: 'x' });
     expect(res.status).toBe(429);
+    expect(res.body.error).toBe('LLM proxy token quota exhausted');
+  });
+
+  it('429 "monthly budget" when spent_usd has reached budget_usd (sprint 003)', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    await (prisma as any).llmProxyToken.update({
+      where: { id: tokenId },
+      data: { budget_usd: 0.01, spent_usd: 0.01 },
+    });
+    const res = await request(app)
+      .post('/proxy/v1/chat/completions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ model: 'x' });
+    expect(res.status).toBe(429);
+    expect(res.body.error).toMatch(/^monthly budget of \$0\.01 reached; resets \d{4}-\d{2}-01$/);
+    expect(fakeForwarder.forwardMessages).not.toHaveBeenCalled();
+  });
+
+  it('a new UTC month resets the spend and the request goes through', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    await (prisma as any).llmProxyToken.update({
+      where: { id: tokenId },
+      data: {
+        budget_usd: 0.01,
+        spent_usd: 0.01,
+        period_start: new Date('2000-01-01T00:00:00.000Z'),
+      },
+    });
+    const res = await request(app)
+      .post('/proxy/v1/chat/completions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ model: 'x' });
+    expect(res.status).toBe(200);
+    const row = await (prisma as any).llmProxyToken.findUnique({ where: { id: tokenId } });
+    expect(row.period_start.getUTCDate()).toBe(1);
+    expect(row.period_start.getTime()).toBeGreaterThan(Date.parse('2026-01-01T00:00:00Z'));
   });
 });
 
