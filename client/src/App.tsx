@@ -24,6 +24,7 @@ import SessionViewer from './pages/admin/SessionViewer';
 import ScheduledJobsPanel from './pages/admin/ScheduledJobsPanel';
 import ImportExport from './pages/admin/ImportExport';
 import UserDetailPanel from './pages/admin/UserDetailPanel';
+import UserLlmProxyPage from './pages/admin/UserLlmProxyPage';
 import AdminUsersPanel from './pages/admin/AdminUsersPanel';
 import Groups from './pages/admin/Groups';
 import GroupDetailPanel from './pages/admin/GroupDetailPanel';
@@ -90,6 +91,7 @@ function App() {
               {/* Admin ops pages — auth-gated by AdminLayout */}
               <Route element={<AdminLayout />}>
                 <Route path="/admin/users" element={<AdminUsersPanel />} />
+                <Route path="/admin/users/:id/llm-proxy" element={<UserLlmProxyPage />} />
                 <Route path="/admin/env" element={<EnvironmentInfo />} />
                 <Route path="/admin/db" element={<DatabaseViewer />} />
                 <Route path="/admin/config" element={<ConfigPanel />} />

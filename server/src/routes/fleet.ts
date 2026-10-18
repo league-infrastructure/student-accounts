@@ -30,7 +30,8 @@ import { getConfig } from '../services/config.js';
 import { verifyPassword } from '../utils/password.js';
 import { createLogger } from '../services/logger.js';
 import { fleetAttemptLimiter } from '../middleware/attemptLimiter.js';
-import type { User } from '../generated/prisma/client.js';
+import type { BudgetSummary } from '../services/llm-proxy-token.service.js';
+import type { LlmProxyToken, User } from '../generated/prisma/client.js';
 
 const logger = createLogger('fleet');
 
@@ -125,15 +126,12 @@ function requestOrigin(req: Request): string {
   return `${scheme}://${host}`;
 }
 
-type TokenRow = {
-  token_limit: number;
-  tokens_used: number;
-  request_count: number;
-  expires_at: Date;
-  granted_at: Date;
-};
-
-function tokenResponse(req: Request, user: User, apiKey: string, row: TokenRow) {
+/**
+ * Response body. snake_case to match the laptop's existing keys; the dollar
+ * fields (sprint 003) mirror `budgetUsd` / `spentUsd` / `spentUsdTotal` /
+ * `periodResetsAt` on GET /api/account/llm-proxy.
+ */
+function tokenResponse(req: Request, user: User, apiKey: string, row: LlmProxyToken, budget: BudgetSummary) {
   const origin = requestOrigin(req);
   const anthropicEnabled = getConfig('LLM_PROXY_ANTHROPIC_ENABLED') === 'true';
   return {
@@ -147,6 +145,10 @@ function tokenResponse(req: Request, user: User, apiKey: string, row: TokenRow) 
     token_limit: row.token_limit,
     tokens_used: row.tokens_used,
     request_count: row.request_count,
+    budget_usd: budget.budgetUsd,
+    spent_usd: budget.spentUsd,
+    spent_usd_total: budget.spentUsdTotal,
+    period_resets_at: budget.periodResetsAt,
     expires_at: row.expires_at.toISOString(),
     granted_at: row.granted_at.toISOString(),
   };
@@ -194,7 +196,7 @@ function issueToken(rotate: boolean) {
         logger.error({ err, userId: user.id }, '[fleet] failed to write audit event');
       }
 
-      return res.json(tokenResponse(req, user, token, row));
+      return res.json(tokenResponse(req, user, token, row, llmProxyTokens.budgetSummary(row)));
     } catch (err) {
       return next(err);
     }

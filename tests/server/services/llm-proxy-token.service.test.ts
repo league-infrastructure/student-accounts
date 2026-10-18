@@ -29,6 +29,7 @@ function pastDate(daysBehind = 1): Date {
 }
 
 async function resetDb() {
+  await (prisma as any).llmProxyRequest.deleteMany();
   await (prisma as any).llmProxyToken.deleteMany();
   await (prisma as any).auditEvent.deleteMany();
   await (prisma as any).userGroup.deleteMany();
@@ -350,7 +351,7 @@ describe('LlmProxyTokenService.validate', () => {
     );
     await (prisma as any).llmProxyToken.update({
       where: { id: row.id },
-      data: { tokens_used: 100 },
+      data: { tokens_used: 100, budget_usd: null }, // legacy token-count path (sprint 003)
     });
     await expect(service.validate(token)).rejects.toThrow(
       LlmProxyTokenQuotaExceededError,
@@ -372,8 +373,8 @@ describe('LlmProxyTokenService.recordUsage', () => {
       actor.id,
     );
 
-    await service.recordUsage(row.id, 200, 300);
-    await service.recordUsage(row.id, 50, 70);
+    await service.recordUsage(row.id, { inputTokens: 200, outputTokens: 300 });
+    await service.recordUsage(row.id, { inputTokens: 50, outputTokens: 70 });
 
     const reloaded = await (prisma as any).llmProxyToken.findUnique({
       where: { id: row.id },
@@ -386,7 +387,7 @@ describe('LlmProxyTokenService.recordUsage', () => {
     // An unknown id surfaces a Prisma P2025 error, which recordUsage must
     // catch and log (best-effort accounting — see the service comment).
     await expect(
-      service.recordUsage(9_999_999, 10, 20),
+      service.recordUsage(9_999_999, { inputTokens: 10, outputTokens: 20 }),
     ).resolves.toBeUndefined();
   });
 
@@ -398,7 +399,7 @@ describe('LlmProxyTokenService.recordUsage', () => {
       { expiresAt: futureDate(), tokenLimit: 1_000_000 },
       actor.id,
     );
-    await service.recordUsage(row.id, -5, -10);
+    await service.recordUsage(row.id, { inputTokens: -5, outputTokens: -10 });
     const reloaded = await (prisma as any).llmProxyToken.findUnique({
       where: { id: row.id },
     });

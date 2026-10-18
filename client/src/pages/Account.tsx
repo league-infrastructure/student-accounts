@@ -24,6 +24,7 @@ import { useAccountEventStream } from '../hooks/useAccountEventStream';
 import UsernamePasswordSection from './account/UsernamePasswordSection';
 import AddCredentialsModal from './account/AddCredentialsModal';
 import AccountLaptopCard, { type LaptopLoginState } from './account/AccountLaptopCard';
+import AccountLlmProxyCard from './account/AccountLlmProxyCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 // ---------------------------------------------------------------------------
@@ -51,8 +52,17 @@ export interface AccountProfile {
   llmProxyEnabled?: boolean;
   /** Number of non-disabled OAuth clients owned by this user. */
   oauthClientCount?: number;
-  /** When the user has an active LLM proxy token, plaintext + endpoint URL. */
-  llmProxy?: { token: string | null; endpoint: string } | null;
+  /** When the user has an active LLM proxy token: plaintext, endpoint URL
+   *  and the dollar/token figures (sprint 003). */
+  llmProxy?: {
+    token: string | null;
+    endpoint: string;
+    budgetUsd?: number | null;
+    spentUsd?: number | null;
+    periodResetsAt?: string | null;
+    tokensUsed?: number;
+    tokenLimit?: number;
+  } | null;
   /** Username for passphrase / local login, or null if not set. */
   username?: string | null;
   /** True when a password_hash is stored for this account. */
@@ -717,16 +727,16 @@ function WorkspaceSection({ data }: { data: AccountData }) {
 
 // ---------------------------------------------------------------------------
 // FeaturesSection — quick-glance at the user's enabled features (OAuth
-// Clients count + LLM Proxy access). Each row links to the full page.
-// Hidden rows mean the feature isn't enabled for this user.
+// Clients). Each row links to the full page. Hidden rows mean the feature
+// isn't enabled for this user. The LLM proxy has its own card
+// (AccountLlmProxyCard, sprint 003 ticket 005) rendered right below.
 // ---------------------------------------------------------------------------
 
 function FeaturesSection({ profile }: { profile: AccountProfile }) {
   const oauthCount = profile.oauthClientCount ?? 0;
   const showOauth = profile.allowsOauthClient || oauthCount > 0;
-  const showLlm = !!profile.llmProxy;
 
-  if (!showOauth && !showLlm) return null;
+  if (!showOauth) return null;
 
   return (
     <div style={styles.card} data-testid="features-section">
@@ -744,27 +754,6 @@ function FeaturesSection({ profile }: { profile: AccountProfile }) {
               <Link to="/oauth-clients" style={styles.featureLink}>
                 Create an OAuth client
               </Link>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showLlm && profile.llmProxy && (
-        <div style={styles.featureRow} data-testid="feature-llm-proxy">
-          <div style={styles.featureLabel}>LLM Proxy</div>
-          <div style={styles.featureBody}>
-            <Link to="/llm-proxy" style={styles.featureLink}>
-              You have access
-            </Link>
-            <div style={styles.featureMeta}>
-              <span style={styles.featureMetaKey}>endpoint:</span>{' '}
-              <code>{profile.llmProxy.endpoint}</code>
-            </div>
-            {profile.llmProxy.token && (
-              <div style={styles.featureMeta}>
-                <span style={styles.featureMetaKey}>key:</span>{' '}
-                <code style={styles.featureToken}>{profile.llmProxy.token}</code>
-              </div>
             )}
           </div>
         </div>
@@ -960,6 +949,16 @@ export default function Account() {
         <div style={styles.spacer} />
 
         <FeaturesSection profile={data.profile} />
+
+        {/* LLM proxy card (sprint 003 ticket 005): figures, masked key and the
+            "Set up and details" link to /llm-proxy. Only for users with an
+            active token — the server omits `llmProxy` otherwise. */}
+        {data.profile.llmProxy && (
+          <>
+            <div style={styles.spacer} />
+            <AccountLlmProxyCard />
+          </>
+        )}
 
         <div style={styles.spacer} />
 
@@ -1209,21 +1208,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#2563eb',
     textDecoration: 'none',
     fontWeight: 500,
-  },
-  featureMeta: {
-    fontSize: '0.78rem',
-    color: '#64748b',
-    marginTop: 4,
-    wordBreak: 'break-all' as const,
-  },
-  featureMetaKey: {
-    color: '#94a3b8',
-  },
-  featureToken: {
-    background: '#f1f5f9',
-    padding: '1px 6px',
-    borderRadius: 3,
-    fontSize: '0.78rem',
   },
   profileMeta: {
     fontSize: '0.9rem',

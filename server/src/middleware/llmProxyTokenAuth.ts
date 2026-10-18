@@ -3,14 +3,17 @@
  * (Sprint 013 T004).
  *
  * Reads `Authorization: Bearer <token>` from the request, asks
- * `req.services.llmProxyTokens.validate()` to confirm the token is active,
- * not expired, and within quota, then attaches the loaded row to
- * `res.locals.llmProxyToken` for downstream handlers. Typed errors from
- * the service are translated to HTTP status codes:
+ * `req.services.llmProxyTokens.validate()` (hash lookup + `assertUsable`) to
+ * confirm the token is active, not expired, and within its monthly dollar
+ * budget — rolling the budget period first when a new UTC month has started
+ * (sprint 003) — then attaches the loaded row to `res.locals.llmProxyToken`
+ * for downstream handlers. Typed errors from the service are translated to
+ * HTTP status codes:
  *
  *  - LlmProxyTokenUnauthorizedError → 401 (missing / unknown / revoked /
  *    expired).
- *  - LlmProxyTokenQuotaExceededError → 429 (quota exhausted).
+ *  - LlmProxyTokenQuotaExceededError → 429 ("monthly budget of $X reached;
+ *    resets <date>", or the legacy token quota for budget-less tokens).
  */
 
 import { Request, Response, NextFunction } from 'express';

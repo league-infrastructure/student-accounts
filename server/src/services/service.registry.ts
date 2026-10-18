@@ -350,8 +350,10 @@ export class ServiceRegistry {
     await (p as any).oAuthAccessToken.deleteMany();
     // OAuthClient has FK → User (SetNull). Delete before User.
     await (p as any).oAuthClient.deleteMany();
-    // LlmProxyToken has FK → User (Cascade) + granter User? (SetNull).
-    // Delete before User for the same teardown-symmetry reason.
+    // LlmProxyRequest has FK → LlmProxyToken (Cascade); LlmProxyToken has
+    // FK → User (Cascade) + granter User? (SetNull). Delete request rows,
+    // then tokens, before User for the same teardown-symmetry reason.
+    await (p as any).llmProxyRequest.deleteMany();
     await (p as any).llmProxyToken.deleteMany();
     // Login and ExternalAccount have FK → User with onDelete: Restrict,
     // so they must be deleted before User.

@@ -1,29 +1,58 @@
 import { useState } from 'react';
 
+/** Largest monthly budget the admin API accepts (LLM_PROXY_MAX_BUDGET_USD). */
+export const LLM_PROXY_MAX_BUDGET_USD = 1000;
+
 interface LlmProxyGrantModalProps {
   isOpen: boolean;
   onCancel: () => void;
-  onConfirm: (expiresAt: string, tokenLimit: number) => void;
+  /**
+   * `budgetUsd` is the monthly dollar budget; `tokenLimit` is the optional
+   * legacy token-count quota (undefined → server default).
+   */
+  onConfirm: (expiresAt: string, budgetUsd: number, tokenLimit?: number) => void;
   isLoading?: boolean;
+  /** Pre-filled budget; defaults to the server's $5. */
+  defaultBudgetUsd?: number;
 }
 
-export function LlmProxyGrantModal({ isOpen, onCancel, onConfirm, isLoading }: LlmProxyGrantModalProps) {
+export function LlmProxyGrantModal({
+  isOpen,
+  onCancel,
+  onConfirm,
+  isLoading,
+  defaultBudgetUsd = 5,
+}: LlmProxyGrantModalProps) {
   const [expiresAtStr, setExpiresAtStr] = useState(
     new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
   );
-  const [tokenLimitStr, setTokenLimitStr] = useState('1000000');
+  const [budgetStr, setBudgetStr] = useState(String(defaultBudgetUsd));
+  const [tokenLimitStr, setTokenLimitStr] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   function handleConfirm() {
     setError(null);
-    const tokenLimit = parseInt(tokenLimitStr, 10);
-    if (!Number.isFinite(tokenLimit) || tokenLimit <= 0) {
-      setError('Token limit must be a positive integer.');
+    const budgetUsd = Number(budgetStr.trim());
+    if (
+      budgetStr.trim() === '' ||
+      !Number.isFinite(budgetUsd) ||
+      budgetUsd <= 0 ||
+      budgetUsd > LLM_PROXY_MAX_BUDGET_USD
+    ) {
+      setError(`Monthly budget must be a positive dollar amount up to $${LLM_PROXY_MAX_BUDGET_USD}.`);
       return;
     }
-    onConfirm(expiresAtStr, tokenLimit);
+    let tokenLimit: number | undefined;
+    if (tokenLimitStr.trim() !== '') {
+      tokenLimit = parseInt(tokenLimitStr, 10);
+      if (!Number.isFinite(tokenLimit) || tokenLimit <= 0) {
+        setError('Token limit, when given, must be a positive integer.');
+        return;
+      }
+    }
+    onConfirm(expiresAtStr, budgetUsd, tokenLimit);
   }
 
   return (
@@ -38,7 +67,7 @@ export function LlmProxyGrantModal({ isOpen, onCancel, onConfirm, isLoading }: L
         )}
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600, color: '#334155' }}>
+          <label style={labelStyle}>
             Expiration Date/Time (ISO 8601)
           </label>
           <input
@@ -49,25 +78,43 @@ export function LlmProxyGrantModal({ isOpen, onCancel, onConfirm, isLoading }: L
             style={inputStyle}
             disabled={isLoading}
           />
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+          <div style={hintStyle}>
             Example: 2026-05-31T17:00:00Z
           </div>
         </div>
 
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>
+            Monthly Budget (USD)
+          </label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={budgetStr}
+            onChange={(e) => setBudgetStr(e.currentTarget.value)}
+            placeholder="5"
+            style={inputStyle}
+            disabled={isLoading}
+          />
+          <div style={hintStyle}>
+            Dollars per calendar month (UTC); spend resets on the 1st. Example: 5
+          </div>
+        </div>
+
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600, color: '#334155' }}>
-            Token Limit per User
+          <label style={labelStyle}>
+            Token Limit (optional)
           </label>
           <input
             type="text"
             value={tokenLimitStr}
             onChange={(e) => setTokenLimitStr(e.currentTarget.value)}
-            placeholder="1000000"
+            placeholder="server default"
             style={inputStyle}
             disabled={isLoading}
           />
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-            Example: 1000000
+          <div style={hintStyle}>
+            Legacy lifetime token cap. Leave blank to use the server default.
           </div>
         </div>
 
@@ -112,6 +159,20 @@ const modalStyle: React.CSSProperties = {
   boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
   maxWidth: 400,
   width: '90%',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: 6,
+  fontSize: 13,
+  fontWeight: 600,
+  color: '#334155',
+};
+
+const hintStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#64748b',
+  marginTop: 4,
 };
 
 const inputStyle: React.CSSProperties = {

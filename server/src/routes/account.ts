@@ -28,6 +28,7 @@ import { accountEventsRouter } from './account-events.js';
 import { LoginRepository } from '../services/repositories/login.repository.js';
 import { classifyEmailOwnership } from '../services/auth/email-ownership.js';
 import type { LaptopLoginView } from '../services/laptop/laptop-account.service.js';
+import { anthropicFields, LEAGUE_MODEL_IDS } from './llm-proxy.js';
 
 export const accountRouter = Router();
 
@@ -125,10 +126,16 @@ accountRouter.get(
         ? 'https'
         : 'http';
     const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
+    // Dollar fields (sprint 003) come from the same budgetSummary the admin
+    // and fleet payloads use, so every view agrees. anthropicEnabled /
+    // anthropicEndpoint mirror GET /account/llm-proxy (ticket 003).
     const llmProxy = llmActive
       ? {
           token: (llmActive as any).token_plaintext ?? null,
           endpoint: `${scheme}://${host}/proxy`,
+          models: [...LEAGUE_MODEL_IDS],
+          ...anthropicFields(`${scheme}://${host}/proxy`),
+          ...llmProxyTokens.budgetSummary(llmActive),
         }
       : null;
 
@@ -448,18 +455,30 @@ accountRouter.get(
     const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
     const endpoint = `${scheme}://${host}/proxy`;
 
-    const active = await req.services.llmProxyTokens.getActiveForUser(userId);
+    const tokens = req.services.llmProxyTokens;
+    const active = await tokens.getActiveForUser(userId);
     if (!active) {
-      return res.json({ enabled: false, endpoint });
+      return res.json({
+        enabled: false,
+        endpoint,
+        models: [...LEAGUE_MODEL_IDS],
+        ...anthropicFields(endpoint),
+      });
     }
 
+    // budgetUsd / spentUsd / spentUsdTotal / periodResetsAt (sprint 003).
+    // models: the League tier ids (ticket 004) so the setup examples on
+    // /llm-proxy track the server's list.
     return res.json({
       enabled: true,
       endpoint,
+      models: [...LEAGUE_MODEL_IDS],
+      ...anthropicFields(endpoint),
       token: (active as any).token_plaintext ?? null,
       tokensUsed: active.tokens_used,
       tokenLimit: active.token_limit,
       requestCount: active.request_count,
+      ...tokens.budgetSummary(active),
       expiresAt: active.expires_at,
       grantedAt: active.granted_at,
     });

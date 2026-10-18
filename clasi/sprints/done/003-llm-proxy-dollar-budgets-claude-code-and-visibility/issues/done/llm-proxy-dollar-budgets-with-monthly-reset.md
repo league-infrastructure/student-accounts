@@ -1,10 +1,10 @@
 ---
-status: in-progress
+status: done
 sprint: '003'
 tickets:
-- 003-001
-- 003-002
-- 003-006
+- '001'
+- '002'
+- '006'
 ---
 
 # LLM proxy: budgets in dollars with a monthly reset

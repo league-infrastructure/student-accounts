@@ -37,7 +37,10 @@ export type BulkLlmProxyScope = { kind: 'group'; id: number };
 
 export type BulkLlmProxyGrantParams = {
   expiresAt: Date;
-  tokenLimit: number;
+  /** Legacy token-count quota; the token service defaults it when absent. */
+  tokenLimit?: number;
+  /** Monthly dollar budget (sprint 003); defaults to LLM_PROXY_DEFAULT_BUDGET_USD. */
+  budgetUsd?: number;
 };
 
 export type BulkLlmProxyFailure = {

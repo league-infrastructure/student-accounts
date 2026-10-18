@@ -1,7 +1,7 @@
 ---
 id: '003'
 title: 'LLM proxy: dollar budgets, Claude Code, and visibility'
-status: ticketing
+status: done
 branch: sprint/003-llm-proxy-dollar-budgets-claude-code-and-visibility
 use-cases:
 - SUC-001

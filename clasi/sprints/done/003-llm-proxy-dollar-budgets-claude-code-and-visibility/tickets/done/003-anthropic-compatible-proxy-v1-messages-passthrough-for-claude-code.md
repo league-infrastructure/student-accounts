@@ -1,9 +1,11 @@
 ---
 id: '003'
 title: Anthropic-compatible /proxy/v1/messages passthrough for Claude Code
-status: open
-use-cases: [SUC-002]
-depends-on: ['002']
+status: done
+use-cases:
+- SUC-002
+depends-on:
+- '002'
 github-issue: ''
 issue: anthropic-compatible-proxy-endpoint-for-claude-code.md
 completes_issue: true
@@ -18,13 +20,13 @@ Let Claude Code use the proxy. Add `POST /proxy/v1/messages`, an Anthropic-forma
 
 ## Acceptance Criteria
 
-- [ ] Config: `LLM_PROXY_ANTHROPIC_BASE_URL` (default `https://openrouter.ai/api/v1/messages`) registered; `LLM_PROXY_ANTHROPIC_ENABLED` default flipped to `'true'` (it was registered in sprint 002 with default false); both documented in `config/{dev,prod}/public.env`.
-- [ ] Forwarder: `forwardAnthropicMessages(req, res, { onUsage })` sharing the fetch/stream/abort plumbing with the OpenAI path (refactor into a private `forward(upstreamUrl, headers, body, parse)` if that keeps it clean). Upstream headers: `Authorization: Bearer <OPENROUTER_API_KEY>`, pass through `anthropic-version` and `anthropic-beta` from the client, `content-type: application/json`, optional attribution headers as today. Body unchanged except `model` → tier slug. Response bytes piped unchanged (status, SSE framing).
-- [ ] `mapModel()` extended: besides the existing exact matches, any model string containing `opus` → LARGE, `sonnet` → MEDIUM, `haiku` → SMALL (case-insensitive, substring), so Claude Code's `claude-sonnet-4-5-…`, `claude-opus-…`, `claude-haiku-…` resolve; unknown → MEDIUM. Unit-tested.
-- [ ] Usage: non-streaming from `usage.input_tokens`/`usage.output_tokens` (plus `usage.cost` if OpenRouter includes it, else null); streaming from `message_start` (input) and the last `message_delta` (output, and cost if present). Report `protocol: 'anthropic'`.
-- [ ] Route (`routes/llm-proxy.ts`): `POST /messages` with `express.json({ limit: '10mb' })` and `llmProxyTokenAuth` (already accepts `x-api-key` and Bearer); 404 JSON `{ error: 'anthropic endpoint disabled' }` when the flag is off; `POST /messages/count_tokens` → 404 JSON with a clear message (document; check whether OpenRouter supports it and pass through if so). CORS allow-headers add `anthropic-version`, `anthropic-beta`, `x-api-key`.
-- [ ] `GET /proxy` self-doc (`app.ts`) lists both protocols and the env vars Claude Code needs; `GET /api/account/llm-proxy` returns `anthropicEnabled` and `anthropicEndpoint` (`<scheme>://<host>/proxy`); fleet endpoint already keys `anthropic_base_url` on the flag (verify).
-- [ ] Tests: forwarder Anthropic fixtures (non-streaming JSON; streaming SSE with `message_start`, `content_block_delta`, `message_delta`, `message_stop`) assert usage report, header passthrough, model mapping; route tests: auth via `x-api-key` and Bearer, 401 bad token, 404 when disabled, quota 429 applies to this route too.
+- [x] Config: `LLM_PROXY_ANTHROPIC_BASE_URL` (default `https://openrouter.ai/api/v1/messages`) registered; `LLM_PROXY_ANTHROPIC_ENABLED` default flipped to `'true'` (it was registered in sprint 002 with default false); both documented in `config/{dev,prod}/public.env`.
+- [x] Forwarder: `forwardAnthropicMessages(req, res, { onUsage })` sharing the fetch/stream/abort plumbing with the OpenAI path (refactor into a private `forward(upstreamUrl, headers, body, parse)` if that keeps it clean). Upstream headers: `Authorization: Bearer <OPENROUTER_API_KEY>`, pass through `anthropic-version` and `anthropic-beta` from the client, `content-type: application/json`, optional attribution headers as today. Body unchanged except `model` → tier slug. Response bytes piped unchanged (status, SSE framing).
+- [x] `mapModel()` extended: besides the existing exact matches, any model string containing `opus` → LARGE, `sonnet` → MEDIUM, `haiku` → SMALL (case-insensitive, substring), so Claude Code's `claude-sonnet-4-5-…`, `claude-opus-…`, `claude-haiku-…` resolve; unknown → MEDIUM. Unit-tested.
+- [x] Usage: non-streaming from `usage.input_tokens`/`usage.output_tokens` (plus `usage.cost` if OpenRouter includes it, else null); streaming from `message_start` (input) and the last `message_delta` (output, and cost if present). Report `protocol: 'anthropic'`.
+- [x] Route (`routes/llm-proxy.ts`): `POST /messages` with `express.json({ limit: '10mb' })` and `llmProxyTokenAuth` (already accepts `x-api-key` and Bearer); 404 JSON `{ error: 'anthropic endpoint disabled' }` when the flag is off; `POST /messages/count_tokens` → 404 JSON with a clear message (document; check whether OpenRouter supports it and pass through if so). CORS allow-headers add `anthropic-version`, `anthropic-beta`, `x-api-key`. *(Checked 2026-10-18: `POST https://openrouter.ai/api/v1/messages/count_tokens` answers 404 `{"error":{"message":"Not Found","code":404}}`, so there is nothing to pass through; the proxy answers 404 JSON locally and documents it in the route header.)*
+- [x] `GET /proxy` self-doc (`app.ts`) lists both protocols and the env vars Claude Code needs; `GET /api/account/llm-proxy` returns `anthropicEnabled` and `anthropicEndpoint` (`<scheme>://<host>/proxy`); fleet endpoint already keys `anthropic_base_url` on the flag (verify).
+- [x] Tests: forwarder Anthropic fixtures (non-streaming JSON; streaming SSE with `message_start`, `content_block_delta`, `message_delta`, `message_stop`) assert usage report, header passthrough, model mapping; route tests: auth via `x-api-key` and Bearer, 401 bad token, 404 when disabled, quota 429 applies to this route too.
 
 ## Testing
 

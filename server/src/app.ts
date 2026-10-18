@@ -13,7 +13,7 @@ import { fleetRouter } from './routes/fleet';
 import { adminRouter } from './routes/admin';
 import { accountRouter } from './routes/account';
 import { staffDirectoryRouter } from './routes/staff/directory';
-import { llmProxyRouter } from './routes/llm-proxy';
+import { llmProxyRouter, anthropicProxyEnabled } from './routes/llm-proxy';
 import { oauthRouter } from './routes/oauth';
 import { v1DirectoryRouter } from './routes/v1-directory';
 import { oauthClientsRouter } from './routes/oauth-clients';
@@ -95,10 +95,12 @@ app.use('/api', staffDirectoryRouter);
 app.use('/proxy/v1', llmProxyRouter);
 
 // GET /proxy — self-documenting info for the advertised base URL. Without
-// this, a bare GET to the base (the value of OPENAI_BASE_URL) falls through
-// to the SPA catch-all and returns index.html, which looks broken when someone
-// probes the endpoint. The actual API lives at /proxy/v1/chat/completions —
-// the OpenAI SDK appends /chat/completions to OPENAI_BASE_URL automatically.
+// this, a bare GET to the base (the value of OPENAI_BASE_URL / ANTHROPIC_BASE_URL)
+// falls through to the SPA catch-all and returns index.html, which looks broken
+// when someone probes the endpoint. The APIs live at /proxy/v1/chat/completions
+// (the OpenAI SDK appends /chat/completions to OPENAI_BASE_URL) and
+// /proxy/v1/messages (the Anthropic SDK appends /v1/messages to
+// ANTHROPIC_BASE_URL; sprint 003, behind LLM_PROXY_ANTHROPIC_ENABLED).
 app.get('/proxy', (req: express.Request, res: express.Response) => {
   res.header('Access-Control-Allow-Origin', '*');
   const forwardedProto = req.header('x-forwarded-proto');
@@ -109,14 +111,42 @@ app.get('/proxy', (req: express.Request, res: express.Response) => {
       : 'http';
   const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
   const base = `${scheme}://${host}/proxy`;
+  const anthropicEnabled = anthropicProxyEnabled();
   res.json({
     ok: true,
     service: 'llm-proxy',
     base,
+    protocols: anthropicEnabled ? ['openai', 'anthropic'] : ['openai'],
     openaiBaseUrl: `${base}/v1`,
     chatCompletions: `${base}/v1/chat/completions`,
+    anthropicEnabled,
+    ...(anthropicEnabled
+      ? { anthropicBaseUrl: base, messages: `${base}/v1/messages` }
+      : {}),
+    models: `${base}/v1/models`,
     health: `${base}/v1/health`,
-    note: 'Set OPENAI_BASE_URL to the openaiBaseUrl value; the OpenAI SDK appends /chat/completions. Requires a bearer token (Authorization: Bearer).',
+    env: {
+      openai: {
+        OPENAI_BASE_URL: `${base}/v1`,
+        OPENAI_API_KEY: '<your llmp_ token>',
+      },
+      ...(anthropicEnabled
+        ? {
+            anthropic: {
+              ANTHROPIC_BASE_URL: base,
+              ANTHROPIC_AUTH_TOKEN: '<your llmp_ token>',
+              ANTHROPIC_API_KEY: '',
+            },
+          }
+        : {}),
+    },
+    note:
+      'OpenAI clients: set OPENAI_BASE_URL to openaiBaseUrl; the SDK appends /chat/completions. ' +
+      (anthropicEnabled
+        ? 'Claude Code / Anthropic clients: set ANTHROPIC_BASE_URL to anthropicBaseUrl and ANTHROPIC_AUTH_TOKEN to your token (leave ANTHROPIC_API_KEY empty); the SDK appends /v1/messages. '
+        : '') +
+      'Every request needs your llmp_ token as Authorization: Bearer or x-api-key. ' +
+      'Model names league-large / league-medium / league-small (and any name containing opus / sonnet / haiku) map to the League tiers.',
   });
 });
 

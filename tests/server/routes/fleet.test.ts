@@ -27,6 +27,7 @@ const GENERIC_401 = { error: 'Invalid username or password' };
 
 async function cleanDb(): Promise<void> {
   await (prisma as any).auditEvent.deleteMany();
+  await (prisma as any).llmProxyRequest.deleteMany();
   await (prisma as any).llmProxyToken.deleteMany();
   await (prisma as any).mergeSuggestion.deleteMany();
   await (prisma as any).userGroup.deleteMany();
@@ -96,15 +97,26 @@ describe('POST /api/fleet/llm-token — success', () => {
       username: 'alice',
       api_key: expect.stringMatching(/^llmp_[A-Za-z0-9_-]+$/),
       base_url: 'https://student-accounts.jtlapp.net/proxy/v1',
+      // LLM_PROXY_ANTHROPIC_ENABLED defaults to 'true' since sprint 003 ticket 003.
+      anthropic_base_url: 'https://student-accounts.jtlapp.net/proxy',
       models: ['league-small', 'league-medium', 'league-large'],
       default_model: 'league-medium',
       token_limit: 1_000_000,
       tokens_used: 0,
       request_count: 0,
+      // Sprint 003: monthly dollar budget, snake_case like the other keys.
+      budget_usd: 5,
+      spent_usd: 0,
+      spent_usd_total: 0,
+      period_resets_at: expect.stringMatching(/^\d{4}-\d{2}-01T00:00:00\.000Z$/),
       expires_at: expect.any(String),
       granted_at: expect.any(String),
     });
-    expect(res.body).not.toHaveProperty('anthropic_base_url');
+
+    // period_resets_at is the first instant of next UTC month.
+    const now = new Date();
+    const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    expect(res.body.period_resets_at).toBe(nextMonth.toISOString());
 
     // Expires about a year out.
     const ttlDays = (new Date(res.body.expires_at).getTime() - Date.now()) / 86_400_000;
@@ -124,7 +136,7 @@ describe('POST /api/fleet/llm-token — success', () => {
     expect(res.body.base_url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/proxy\/v1$/);
   });
 
-  it('includes anthropic_base_url only when LLM_PROXY_ANTHROPIC_ENABLED is "true"', async () => {
+  it('includes anthropic_base_url when LLM_PROXY_ANTHROPIC_ENABLED is "true"', async () => {
     await makeStudent('carol', 'pw-for-carol');
     process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'true';
     const res = await fetchToken(
@@ -134,6 +146,15 @@ describe('POST /api/fleet/llm-token — success', () => {
     expect(res.status).toBe(200);
     expect(res.body.anthropic_base_url).toBe('https://accounts.example.org/proxy');
     expect(res.body.base_url).toBe('https://accounts.example.org/proxy/v1');
+  });
+
+  it('omits anthropic_base_url when LLM_PROXY_ANTHROPIC_ENABLED is "false"', async () => {
+    await makeStudent('dave', 'pw-for-dave');
+    process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'false';
+    const res = await fetchToken({ username: 'dave', password: 'pw-for-dave' });
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('anthropic_base_url');
+    expect(res.body.base_url).toMatch(/\/proxy\/v1$/);
   });
 
   it('returns the same api_key on a second call and creates only one token row', async () => {

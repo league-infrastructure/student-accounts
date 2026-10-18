@@ -1,103 +1,77 @@
 /**
- * UserLlmProxyCard — admin panel for granting / revoking LLM proxy access
- * to a single user (Sprint 013 T005).
+ * UserLlmProxyCard — the admin "LLM Proxy" card on a user's detail panel
+ * (sprint 003, ticket 005; originally Sprint 013 T005).
  *
- * Rendered inside UserDetailPanel next to the external-account cards.
- * Uses the same inline-style vocabulary as the neighboring admin cards
- * (AccountCard / Kv / StatusPill / ActionButton) so it matches visually.
+ * Compact: the shared AdminLlmProxyFigures block (dollar meter, editable
+ * monthly limit, status, masked key with Show / Copy), then the actions:
+ * "Open LLM page" (/admin/users/:id/llm-proxy — setup examples with this
+ * student's key and the recent-requests table), "OpenRouter activity"
+ * (account-wide upstream usage; per-student detail is in our own log) and
+ * Grant / Revoke. Grant opens LlmProxyGrantModal, whose budget defaults to
+ * the server's $5.
  *
  * Data lifecycle:
- *   GET    /api/admin/users/:id/llm-proxy-token  — current status
- *   POST   /api/admin/users/:id/llm-proxy-token  — grant (returns plaintext once)
+ *   GET    /api/admin/users/:id/llm-proxy        — status (full key, dollars)
+ *   POST   /api/admin/users/:id/llm-proxy-token  — grant { expiresAt, budgetUsd, tokenLimit? }
  *   DELETE /api/admin/users/:id/llm-proxy-token  — revoke
- *
- * Plaintext-once invariant:
- *   Plaintext is only present in the POST response. We stash it locally
- *   and display a prominent one-shot banner with Copy + Dismiss until
- *   the admin moves on.
+ *   PATCH  /api/admin/llm-proxy/tokens/:id       — { budgetUsd } (inside the figures block)
  */
 
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import LlmProxyUsage from '../../components/LlmProxyUsage';
+import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { LlmProxyGrantModal } from '../../components/LlmProxyGrantModal';
+import AdminLlmProxyFigures, {
+  adminLlmProxyQueryKey,
+  STATUS_LABEL,
+  statusKind,
+  useAdminLlmProxyStatus,
+} from './AdminLlmProxyFigures';
 
-interface StatusResponse {
-  enabled: boolean;
-  tokenId?: number;
-  tokensUsed?: number;
-  tokenLimit?: number;
-  requestCount?: number;
-  expiresAt?: string;
-  grantedAt?: string;
-  grantedBy?: number | null;
-  revokedAt?: string | null;
-  /** Proxy base URL (OpenAI base, minus /v1), derived from request origin. */
-  endpoint?: string;
-  /** Full plaintext bearer token. Admins see the whole key, by design. */
-  token?: string | null;
-}
+export const OPENROUTER_ACTIVITY_URL = 'https://openrouter.ai/activity';
 
 interface Props {
   userId: number;
   userName?: string;
 }
 
-/** Default expiration: +30 days, formatted for <input type="datetime-local">. */
-function defaultExpiresAt(): string {
-  const d = new Date(Date.now() + 30 * 24 * 3600 * 1000);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export default function UserLlmProxyCard({ userId, userName }: Props) {
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showGrantForm, setShowGrantForm] = useState(false);
-  const [expiresAtInput, setExpiresAtInput] = useState<string>(defaultExpiresAt());
-  const [tokenLimitInput, setTokenLimitInput] = useState<number>(1_000_000);
+  const [grantOpen, setGrantOpen] = useState(false);
 
-  // Nested under ['admin', 'users', ...] so the SSE 'users' topic cascades
-  // here when another admin grants/revokes a token elsewhere.
-  const {
-    data: status,
-    error: queryError,
-  } = useQuery<StatusResponse>({
-    queryKey: ['admin', 'users', userId, 'llm-proxy'],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/users/${userId}/llm-proxy-token`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
-    enabled: Number.isFinite(userId),
-  });
+  const { data: status, error: queryError } = useAdminLlmProxyStatus(userId);
 
-  const err =
-    mutationError ?? (queryError ? (queryError as Error).message : null);
+  const err = mutationError ?? (queryError ? (queryError as Error).message : null);
 
   const refetchStatus = () =>
-    queryClient.invalidateQueries({
-      queryKey: ['admin', 'users', userId, 'llm-proxy'],
-    });
+    queryClient.invalidateQueries({ queryKey: adminLlmProxyQueryKey(userId) });
 
-  async function submitGrant() {
+  async function submitGrant(expiresAtRaw: string, budgetUsd: number, tokenLimit?: number) {
     setBusy(true);
     setMutationError(null);
     try {
-      const expiresAt = new Date(expiresAtInput).toISOString();
+      const expires = new Date(expiresAtRaw);
+      if (Number.isNaN(expires.getTime())) {
+        throw new Error('Expiration must be a valid ISO 8601 date/time.');
+      }
       const res = await fetch(`/api/admin/users/${userId}/llm-proxy-token`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ expiresAt, tokenLimit: tokenLimitInput }),
+        body: JSON.stringify({
+          expiresAt: expires.toISOString(),
+          budgetUsd,
+          ...(tokenLimit !== undefined ? { tokenLimit } : {}),
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
-      // Plaintext deliberately ignored here — the token lives on the
-      // student's own Account page. Admins don't need to see it.
+      // The status refetch carries the key; nothing to keep from this body.
       await res.json().catch(() => null);
-      setShowGrantForm(false);
+      setGrantOpen(false);
       await refetchStatus();
     } catch (e: any) {
       setMutationError(e.message ?? 'Grant failed');
@@ -107,7 +81,7 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
   }
 
   async function submitRevoke() {
-    const msg = `Revoke LLM proxy access for ${userName ?? 'this user'}? Their token will stop working immediately.`;
+    const msg = `Revoke LLM proxy access for ${userName ?? 'this user'}? Their key will stop working immediately.`;
     if (!window.confirm(msg)) return;
     setBusy(true);
     setMutationError(null);
@@ -138,212 +112,92 @@ export default function UserLlmProxyCard({ userId, userName }: Props) {
       {!status ? (
         <div style={{ fontSize: 13, color: '#64748b' }}>Loading…</div>
       ) : status.enabled ? (
-        <div style={splitStyle}>
-          {/* Left half — status / usage / expiry / grant + revoke action */}
-          <div style={splitColStyle}>
-            <Row k="Status" v={<Pill status="enabled" />} />
-            <Row
-              k="Usage"
-              v={
-                <span>
-                  {status.tokensUsed?.toLocaleString() ?? 0} /{' '}
-                  {status.tokenLimit?.toLocaleString() ?? 0} tokens
-                  <span style={{ color: '#64748b', marginLeft: 6 }}>
-                    ({status.requestCount ?? 0} requests)
-                  </span>
-                </span>
-              }
-            />
-            <Row
-              k="Expires"
-              v={status.expiresAt ? new Date(status.expiresAt).toLocaleString() : '—'}
-            />
-            <Row
-              k="Granted"
-              v={status.grantedAt ? new Date(status.grantedAt).toLocaleString() : '—'}
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button
-                type="button"
-                onClick={submitRevoke}
-                disabled={busy}
-                style={smallButtonStyle('danger', busy)}
-              >
-                Revoke access
-              </button>
-            </div>
-          </div>
-
-          {/* Right half — setup instructions and the full key */}
-          <div style={splitColStyle}>
-            <SetupPanel endpoint={status.endpoint} token={status.token} />
-          </div>
-        </div>
-      ) : showGrantForm ? (
         <>
-          <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
-            Grant an LLM proxy token so {userName ?? 'this user'} can call Claude
-            through the app-hosted forwarder.
-          </div>
-          <div style={formGridStyle}>
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Expires at</span>
-              <input
-                type="datetime-local"
-                value={expiresAtInput}
-                onChange={(e) => setExpiresAtInput(e.target.value)}
-                style={inputStyle}
-              />
-            </label>
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>Token limit</span>
-              <input
-                type="number"
-                min={1}
-                step={100_000}
-                value={tokenLimitInput}
-                onChange={(e) => setTokenLimitInput(parseInt(e.target.value, 10) || 0)}
-                style={inputStyle}
-              />
-            </label>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <AdminLlmProxyFigures userId={userId} status={status} />
+          <div style={actionsStyle}>
+            <Link
+              to={`/admin/users/${userId}/llm-proxy`}
+              style={buttonStyle('primary')}
+              data-testid="llm-proxy-open-page"
+            >
+              Open LLM page
+            </Link>
+            <OpenRouterLink />
             <button
               type="button"
-              onClick={submitGrant}
+              onClick={submitRevoke}
               disabled={busy}
-              style={smallButtonStyle('primary', busy)}
+              style={buttonStyle('danger', busy)}
             >
-              Grant access
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowGrantForm(false)}
-              disabled={busy}
-              style={smallButtonStyle('neutral', busy)}
-            >
-              Cancel
+              Revoke access
             </button>
           </div>
         </>
       ) : (
         <>
-          <Row k="Status" v={<Pill status="disabled" />} />
-          <div style={{ fontSize: 13, color: '#475569', margin: '8px 0 12px' }}>
-            Grant an LLM proxy token so {userName ?? 'this user'} can call Claude
-            through the app-hosted forwarder.
+          <div style={{ display: 'flex', gap: 8, fontSize: 13, marginBottom: 6, alignItems: 'baseline' }}>
+            <div style={{ color: '#64748b', minWidth: 100 }}>Status</div>
+            <span data-testid="llm-proxy-status" style={inactivePillStyle}>
+              {STATUS_LABEL[statusKind(status)]}
+            </span>
+            {status.revokedAt && (
+              <span style={{ color: '#64748b' }}>
+                revoked {new Date(status.revokedAt).toLocaleDateString()}
+              </span>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ fontSize: 13, color: '#475569', margin: '8px 0 12px' }}>
+            Grant an LLM proxy key so {userName ?? 'this user'} can use Claude Code, Continue
+            and other tools through the League proxy. New keys get the default monthly budget
+            ($5) unless you change it.
+          </div>
+          <div style={actionsStyle}>
             <button
               type="button"
-              onClick={() => setShowGrantForm(true)}
+              onClick={() => setGrantOpen(true)}
               disabled={busy}
-              style={smallButtonStyle('primary', busy)}
+              style={buttonStyle('primary', busy)}
             >
               Grant access
             </button>
+            <OpenRouterLink />
           </div>
+          <LlmProxyGrantModal
+            isOpen={grantOpen}
+            onCancel={() => setGrantOpen(false)}
+            onConfirm={(expiresAt, budgetUsd, tokenLimit) => {
+              void submitGrant(expiresAt, budgetUsd, tokenLimit);
+            }}
+            isLoading={busy}
+            defaultBudgetUsd={5}
+          />
         </>
       )}
     </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Local components + style primitives (mirrors UserDetailPanel's vocabulary)
-// ---------------------------------------------------------------------------
-
-function Row({ k, v }: { k: string; v: React.ReactNode }) {
+/** External link to OpenRouter's activity page — the whole League account, not one student. */
+export function OpenRouterLink() {
   return (
-    <div style={{ display: 'flex', gap: 8, fontSize: 13, marginBottom: 4 }}>
-      <div style={{ color: '#64748b', minWidth: 100 }}>{k}</div>
-      <div style={{ color: '#0f172a' }}>{v}</div>
-    </div>
-  );
-}
-
-/**
- * SetupPanel — the right-hand half of the enabled card. Shows the proxy URL,
- * the full plaintext key, and copy-paste setup snippets. Admins deliberately
- * see the whole key here so they can hand it back to a student.
- */
-function SetupPanel({
-  endpoint,
-  token,
-}: {
-  endpoint?: string;
-  token?: string | null;
-}) {
-  // Fall back to the current origin if the server didn't supply an endpoint
-  // (the proxy always lives at <origin>/proxy).
-  const base = endpoint ?? `${window.location.origin}/proxy`;
-  const key = token ?? '(key unavailable — granted before plaintext storage)';
-
-  const copy = (text: string) => {
-    navigator.clipboard?.writeText(text).catch(() => {});
-  };
-
-  return (
-    <div>
-      <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>
-        SETUP INSTRUCTIONS
-      </div>
-
-      <Row
-        k="Proxy URL"
-        v={
-          <span>
-            <code style={inlineCodeStyle}>{base}</code>{' '}
-            <button type="button" onClick={() => copy(base)} style={copyBtnStyle}>
-              Copy
-            </button>
-          </span>
-        }
-      />
-      <Row
-        k="Key"
-        v={
-          <span>
-            <code style={{ ...inlineCodeStyle, wordBreak: 'break-all' }}>{key}</code>{' '}
-            {token && (
-              <button type="button" onClick={() => copy(token)} style={copyBtnStyle}>
-                Copy
-              </button>
-            )}
-          </span>
-        }
-      />
-
-      <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600, margin: '12px 0 6px' }}>
-        Connect Continue
-      </div>
-      <LlmProxyUsage endpoint={base} token={key} />
-    </div>
-  );
-}
-
-function Pill({ status }: { status: 'enabled' | 'disabled' }) {
-  const c =
-    status === 'enabled'
-      ? { bg: '#d1fae5', fg: '#065f46' }
-      : { bg: '#e2e8f0', fg: '#475569' };
-  return (
-    <span
-      style={{
-        fontSize: 11,
-        padding: '2px 8px',
-        background: c.bg,
-        color: c.fg,
-        borderRadius: 999,
-        fontWeight: 600,
-      }}
+    <a
+      href={OPENROUTER_ACTIVITY_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={buttonStyle('neutral')}
+      title="OpenRouter usage for the whole League account (all students share one upstream key)"
+      data-testid="llm-proxy-openrouter-link"
     >
-      {status}
-    </span>
+      OpenRouter activity <span style={{ color: '#64748b', fontWeight: 400 }}>(account-wide)</span> ↗
+    </a>
   );
 }
 
-function smallButtonStyle(
+// ---------------------------------------------------------------------------
+// Styles (mirrors UserDetailPanel's vocabulary)
+// ---------------------------------------------------------------------------
+
+function buttonStyle(
   variant: 'primary' | 'danger' | 'neutral',
   disabled = false,
 ): React.CSSProperties {
@@ -354,6 +208,7 @@ function smallButtonStyle(
         ? { bg: '#dc2626', fg: '#fff', border: 'none' }
         : { bg: '#f1f5f9', fg: '#0f172a', border: '1px solid #cbd5e1' };
   return {
+    display: 'inline-block',
     padding: '7px 14px',
     background: palette.bg,
     color: palette.fg,
@@ -361,6 +216,7 @@ function smallButtonStyle(
     borderRadius: 6,
     fontWeight: 600,
     fontSize: 13,
+    textDecoration: 'none',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
   };
@@ -394,59 +250,21 @@ const errorStyle: React.CSSProperties = {
   marginBottom: 10,
 };
 
-const formGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-  gap: 12,
-};
-
-const labelStyle: React.CSSProperties = {
+const actionsStyle: React.CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
+  gap: 8,
+  marginTop: 12,
+  flexWrap: 'wrap',
+  alignItems: 'center',
 };
 
-const labelTextStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: '#64748b',
-  fontWeight: 600,
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  fontSize: 13,
-  border: '1px solid #cbd5e1',
-  borderRadius: 6,
-  background: '#fff',
-};
-
-// Two-column split for the enabled view: status on the left, setup on the right.
-const splitStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-  gap: 20,
-  alignItems: 'start',
-};
-
-const splitColStyle: React.CSSProperties = {
-  minWidth: 0,
-};
-
-const inlineCodeStyle: React.CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 12,
-  padding: '2px 6px',
-  background: '#f1f5f9',
-  borderRadius: 4,
-  userSelect: 'all',
-};
-
-const copyBtnStyle: React.CSSProperties = {
-  fontSize: 12,
+const inactivePillStyle: React.CSSProperties = {
+  fontSize: 11,
   padding: '2px 8px',
-  border: '1px solid #cbd5e1',
-  borderRadius: 4,
-  background: '#f8fafc',
-  cursor: 'pointer',
+  background: '#e2e8f0',
+  color: '#475569',
+  borderRadius: 999,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.03em',
 };
-
