@@ -42,6 +42,7 @@ Response 200:
 ```json
 {"user_id": 42, "username": "alice",
  "api_key": "llmp_...", "base_url": "https://student-accounts.jtlapp.net/proxy/v1",
+ "anthropic_base_url": "https://student-accounts.jtlapp.net/proxy",
  "models": ["league-small", "league-medium", "league-large"], "default_model": "league-medium",
  "token_limit": 1000000, "tokens_used": 1234, "request_count": 7,
  "expires_at": "...", "granted_at": "..."}
@@ -62,9 +63,9 @@ the laptop app's "Replace key".
 
 **Auto-grant.** Laptop students must not need an admin click to get a
 token. Rule: a student with `allows_laptop_account` and username+password
-(or `created_via = laptop_sync`) is `allows_llm_proxy = true` by default;
-`reconcileAccessFlags()` at startup and the `laptop-sync` job then mint
-tokens (`grant(userId, {expiresAt: +1y, tokenLimit: LLM_PROXY_DEFAULT_TOKEN_LIMIT})`).
+(including everyone the one-time import created, `created_via =
+laptop_import`) is `allows_llm_proxy = true` by default;
+`reconcileAccessFlags()` at startup then mints tokens (`grant(userId, {expiresAt: +1y, tokenLimit: LLM_PROXY_DEFAULT_TOKEN_LIMIT})`).
 The endpoint itself calls `getActiveForUser`, and if none exists but the
 flag is on, grants one inline (scope `fleet`). Expired token → grant a new
 one inline the same way, so a returning student never sees 403 for
@@ -72,8 +73,9 @@ expiry. Admins can still revoke and clear the flag.
 
 **Tiers for the laptops.** `default_model: league-medium` is what the
 laptop writes into the seeded tool configs; the laptops export
-`OPENAI_BASE_URL=<base_url>` and `OPENAI_API_KEY=<api_key>`. No
-`ANTHROPIC_*` variables: the proxy speaks OpenAI only.
+`OPENAI_BASE_URL=<base_url>` and `OPENAI_API_KEY=<api_key>`, and, when
+the response carries `anthropic_base_url` (set once the Anthropic
+endpoint issue ships), `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN` too.
 
 ## Files
 
@@ -81,7 +83,7 @@ laptop writes into the seeded tool configs; the laptops export
   `server/src/middleware/rateLimit.ts` (new, small)
 - `server/src/services/llm-proxy-token.service.ts`: `ensureActive(userId,
   actorId, scope)` helper (grant-if-missing/expired) used by the endpoint
-  and by `laptop-sync`
+  and by the importer
 - `server/src/routes/admin/users.ts` / user creation paths: default
   `allows_llm_proxy` for laptop students
 - Tests: `tests/server/routes/fleet.test.ts` (supertest): 200 shape, same
@@ -102,7 +104,7 @@ laptop writes into the seeded tool configs; the laptops export
 
 ## Dependencies
 
-- Import issue for `$6$` verification (laptop-made accounts) and the
+- Import issue for `$6$` verification (imported accounts) and the
   management issue for `allows_laptop_account`. The endpoint itself can
   land first for users who already have scrypt passwords.
 - Fleet side: `ubuntu-install` issue

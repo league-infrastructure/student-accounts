@@ -24,6 +24,10 @@ boring.
 
 ## Design / tasks
 
+The deploy itself (step 1) is run by the stakeholder: production serves
+real students and this sprint runs unattended. The sprint delivers steps
+2-4 and a checked deploy runbook for step 1.
+
 1. **Deploy.** `scripts/deploy.sh prod up` (per `docker-stack.yaml`
    header) after syncing swarm secrets; confirm `OPENROUTER_API_KEY` and
    the three `LLM_PROXY_MODEL_*` values are present in prod config

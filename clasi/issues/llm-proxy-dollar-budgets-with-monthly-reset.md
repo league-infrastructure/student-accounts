@@ -58,13 +58,19 @@ this student spend it on" is answerable and the per-period sum can be
 recomputed. Keep 90 days (prune in the daily backup job).
 
 **Defaults and admin.** `LLM_PROXY_DEFAULT_BUDGET_USD` (default `5`) in
-`CONFIG_KEYS`; grants take `budgetUsd` (admin UI field next to the token
-limit, which becomes optional); bulk grant by cohort/group takes it too;
-`PATCH /api/admin/llm-proxy/tokens/:id` to change a budget without
-re-granting. Account page and `UserLlmProxyCard` show `$x.xx of $y this
-month, resets <date>`; the `/proxy` self-doc and `LlmProxyUsage.tsx` copy
-updated. `GET /api/account/llm-proxy` and the fleet endpoint return
-`budget_usd`, `spent_usd`, `period_resets_at`.
+`CONFIG_KEYS`; grants take `budgetUsd` (the token limit becomes optional);
+bulk grant by cohort/group takes it too; `PATCH /api/admin/llm-proxy/tokens/:id`
+`{budgetUsd}` to change a budget without re-granting. `GET /api/account/llm-proxy`,
+the admin status endpoint and the fleet endpoint return `budgetUsd`,
+`spentUsd`, `periodResetsAt`. The admin card/page work is in
+`admin-llm-usage-visibility-and-dollar-limits.md`, the student page in
+`student-llm-proxy-page-with-setup-examples.md`; this issue supplies the
+fields and a minimal rendering so nothing shows stale token-only copy.
+
+**Both protocols.** The cost hook applies to `chat/completions` and, once
+`anthropic-compatible-proxy-endpoint-for-claude-code.md` lands, to
+`/messages`; the forwarder's `onUsage` carries `{inputTokens,
+outputTokens, costUsd, modelSent}` for either.
 
 **Backstop.** Document in the admin UI the OpenRouter credit balance as
 the account-wide cap; optionally `LLM_PROXY_MONTHLY_CAP_USD` for the whole

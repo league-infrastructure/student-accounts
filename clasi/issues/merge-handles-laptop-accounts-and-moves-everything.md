@@ -6,7 +6,7 @@ status: pending
 
 ## Context
 
-Importing the laptop roster (`laptop-accounts-sync-from-spaces-roster.md`)
+The one-time laptop roster import (`import-laptop-roster-into-botball-26-group.md`)
 creates users who very often already exist here under a Google or GitHub
 login (same kid, different door). The merge queue is how an admin
 reconciles them, so it has to work well for this case. Two problems with
@@ -15,7 +15,7 @@ reconciles them, so it has to work well for this case. Two problems with
 `Login` and `ExternalAccount` rows and inherits the cohort; it does **not**
 move `LlmProxyToken`, `UserGroup`, `username`/`password_hash`, OAuth rows
 or the `allows_*` flags, so merging a laptop user into a Google user would
-silently strip their laptop login credentials and proxy token. And
+silently strip their username/password (which is now their laptop login) and proxy token. And
 suggestions come only from the LLM scan (`merge-scan.service.ts`) run at
 user creation; there is no deterministic rule and no way for an admin to
 merge two arbitrary users.
@@ -40,13 +40,13 @@ merge two arbitrary users.
   configured); otherwise revoke the non-survivor's. Carry
   `tokens_used`/`request_count` into the survivor's row when revoking, so
   spend is not forgotten.
-- `username` + `password_hash`: if the survivor has none, take the
-  non-survivor's (this is what keeps the laptop login working). If both
-  have one, keep the survivor's and record the dropped username in the
-  audit event; the laptop write-back then re-points the roster: the losing
-  username's roster entry is locked (`!`) and the surviving one is written
-  (see the management issue; call `LaptopAccountService.reconcile(user)`
-  after the merge).
+- `username` + `password_hash` + `laptop_password_hash`: if the survivor
+  has none, take the non-survivor's (this is what keeps the laptop login
+  working). If both have one, keep the survivor's and record the dropped
+  username in the audit event; the laptop write-back then re-points the
+  roster: the losing username's roster entry is locked (`!`) and the
+  surviving one is written (call `LaptopAccountService.reconcile(user)`
+  after the merge, from the management issue).
 - `allows_*` flags: OR them. `is_active`: survivor stays active.
 - `cohort_id`: as now.
 - OAuth consents/tokens/refresh tokens, provisioning requests, audit
@@ -66,8 +66,9 @@ with `haiku_confidence: 1.0`, rationale `"same username"` /
 - normalised `display_name` equal (case/whitespace-insensitive, ≥ 2
   tokens) and neither user is staff.
 
-Run the rule scan for every user the laptop sync creates, and once as a
-backfill job over existing laptop users.
+Run the rule scan for every user the laptop import creates (the importer
+already calls `mergeScan`), and once as a backfill over users with
+`created_via = laptop_import`.
 
 **Admin manual merge.** `POST /api/admin/users/:id/merge` body
 `{otherUserId, survivorId}`: inserts a `MergeSuggestion` (status pending,
@@ -98,12 +99,12 @@ survivor before confirming.
 ## Verification
 
 1. User A (Google, no username, active proxy token used 10k) + user B
-   (laptop import, username `alice`, `$6$` hash, group G). Approve with
+   (laptop import, username `alice`, `$6$` hash, group "Botball 26"). Approve with
    survivor A → A has username `alice` and B's hash, membership in G, A's
    token kept and B's revoked with usage carried; B inactive, B's email
    parked; one audit event lists everything moved.
 2. Same, survivor B → B keeps its token; A's logins now on B.
-3. Rule scan: laptop user `alice` imported while `alice@gmail.com` exists →
+3. Rule scan: laptop user `alice` imported while a user with `alice@gmail.com` exists →
    pending suggestion with confidence 1.0 and no OpenRouter call.
 4. Manual merge endpoint: 400 when survivor is neither user; 409 when
    either user is inactive.
@@ -111,6 +112,6 @@ survivor before confirming.
 
 ## Dependencies
 
-- Import issue (laptop Login, `$6$` hashes).
+- Import issue (`$6$` hashes, `laptop_password_hash`).
 - Management issue for `LaptopAccountService.reconcile` (can land as a
   no-op hook first).
