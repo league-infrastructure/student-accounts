@@ -4,6 +4,7 @@ import { requireAuth } from '../../middleware/requireAuth.js';
 import { AppError } from '../../errors.js';
 import { adminBus, userBus } from '../../services/change-bus.js';
 import { provisionUserIfNeeded } from '../../services/group.service.js';
+import { LLM_PROXY_DEFAULT_TOKEN_LIMIT } from '../../services/llm-proxy-token.service.js';
 
 export const adminUsersRouter = Router();
 
@@ -31,6 +32,12 @@ adminUsersRouter.get('/users/:id', async (req, res, next) => {
       cohort: user.cohort ? { id: user.cohort.id, name: user.cohort.name } : null,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
+      // Laptop login (sprint 002 "laptop accounts" T006): what the admin
+      // detail card shows. laptop_login_state is LaptopAccountService.stateFor.
+      username: (user as any).username ?? null,
+      allows_laptop_account: (user as any).allows_laptop_account ?? false,
+      laptop_roster_dirty: (user as any).laptop_roster_dirty ?? false,
+      laptop_login_state: req.services.laptopAccounts.stateFor(user as any).state,
       logins: user.logins.map((l: any) => ({
         id: l.id,
         provider: l.provider,
@@ -167,6 +174,8 @@ adminUsersRouter.put('/users/:id', async (req, res, next) => {
     const user = await req.services.users.update(id, { email, displayName, role });
     adminBus.notify('users');
     userBus.notifyUser(id);
+    // A new display name belongs in the laptop roster entry too; never throws.
+    if (displayName !== undefined) await req.services.laptopAccounts.reconcile(id, actorId);
     res.json(serializeUser(user));
   } catch (err: any) {
     if (err.code === 'P2025') {
@@ -224,6 +233,8 @@ adminUsersRouter.delete('/users/:id', async (req, res, next) => {
     adminBus.notify('users');
     adminBus.notify('groups');
     userBus.notifyUser(id);
+    // Lock the laptop roster entry (is_active changed); never throws.
+    await req.services.laptopAccounts.reconcile(id, actorId);
     res.json({ success: true, removedMemberships });
   } catch (err: any) {
     next(err);
@@ -336,7 +347,6 @@ adminUsersRouter.get('/pending-users', async (_req, res, next) => {
 // affects the approval. The response reports what happened.
 // ---------------------------------------------------------------------------
 
-const LLM_PROXY_DEFAULT_TOKEN_LIMIT = 1_000_000;
 const LLM_PROXY_DEFAULT_EXPIRY_DAYS = 30;
 
 adminUsersRouter.post('/users/:id/approve', async (req, res, next) => {
@@ -469,6 +479,9 @@ adminUsersRouter.post('/users/:id/deny-approval', async (req, res, next) => {
     adminBus.notify('users');
     userBus.notifyUser(id);
 
+    // Lock the laptop roster entry (is_active changed); never throws.
+    await req.services.laptopAccounts.reconcile(id, actorId);
+
     res.json({ ok: true, permanent });
   } catch (err) {
     next(err);
@@ -528,9 +541,12 @@ adminUsersRouter.post('/users/:id/provision-claude', async (req, res, next) => {
 // PATCH /admin/users/:id/permissions — update per-user permission flags
 //
 // Body (all optional):
-//   { allows_oauth_client?: boolean, allows_llm_proxy?: boolean, allows_league_account?: boolean }
+//   { allows_oauth_client?: boolean, allows_llm_proxy?: boolean,
+//     allows_league_account?: boolean, allows_laptop_account?: boolean }
 //
-// Returns 200 with { allowsOauthClient, allowsLlmProxy, allowsLeagueAccount }.
+// Returns 200 with { allowsOauthClient, allowsLlmProxy, allowsLeagueAccount,
+// allowsLaptopAccount }. A change to allows_laptop_account reconciles the
+// laptop roster entry (locks it when off; sprint 002 T004).
 // Returns 400 if any provided field is not a boolean.
 // Returns 404 if the user does not exist.
 // ---------------------------------------------------------------------------
@@ -544,7 +560,12 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
 
     // Validate each recognised field — must be boolean when present.
-    const PERMISSION_FIELDS = ['allows_oauth_client', 'allows_llm_proxy', 'allows_league_account'] as const;
+    const PERMISSION_FIELDS = [
+      'allows_oauth_client',
+      'allows_llm_proxy',
+      'allows_league_account',
+      'allows_laptop_account',
+    ] as const;
     for (const field of PERMISSION_FIELDS) {
       if (field in body && typeof body[field] !== 'boolean') {
         return res.status(400).json({ error: `Field '${field}' must be a boolean` });
@@ -555,6 +576,7 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
       allows_oauth_client?: boolean;
       allows_llm_proxy?: boolean;
       allows_league_account?: boolean;
+      allows_laptop_account?: boolean;
     } = {};
     for (const field of PERMISSION_FIELDS) {
       if (field in body) {
@@ -562,11 +584,22 @@ adminUsersRouter.patch('/users/:id/permissions', async (req, res, next) => {
       }
     }
 
-    const { leagueAccountFlipped, llmProxyFlipped, llmProxyUnflipped, ...permissions } =
-      await req.services.users.setPermissions(id, patch, actorId);
+    const {
+      leagueAccountFlipped,
+      llmProxyFlipped,
+      llmProxyUnflipped,
+      laptopAccountChanged,
+      ...permissions
+    } = await req.services.users.setPermissions(id, patch, actorId);
 
     adminBus.notify('users');
     userBus.notifyUser(id);
+
+    // Laptop login flag changed: write (on) or lock (off) the roster entry.
+    // Awaited because it never throws; a failure marks the user dirty.
+    if (laptopAccountChanged) {
+      await req.services.laptopAccounts.reconcile(id, actorId);
+    }
 
     // Fire-and-soft-fail: if allows_league_account just flipped false→true,
     // try to provision a Workspace account for the user. Failure does not

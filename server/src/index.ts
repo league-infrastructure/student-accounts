@@ -7,6 +7,10 @@ import {
   createWorkspaceDeleteJobHandler,
   WORKSPACE_DELETE_JOB_NAME,
 } from './jobs/workspace-delete.job.js';
+import {
+  createLaptopRosterPushJobHandler,
+  JOB_NAME as LAPTOP_ROSTER_PUSH_JOB_NAME,
+} from './jobs/laptop-roster-push.job.js';
 
 const port = parseInt(process.env.PORT || '5201', 10);
 
@@ -14,7 +18,8 @@ const registry = ServiceRegistry.create();
 
 initPrisma().then(() => initConfigCache()).then(async () => {
   // seedDefaults upserts all scheduled job rows (daily-backup, weekly-backup,
-  // workspace-delete) so they exist before handlers are registered.
+  // workspace-delete, laptop-roster-push) so they exist before handlers are
+  // registered.
   await registry.scheduler.seedDefaults();
 
   registry.scheduler.registerHandler('daily-backup', async () => {
@@ -28,6 +33,12 @@ initPrisma().then(() => initConfigCache()).then(async () => {
   registry.scheduler.registerHandler(
     WORKSPACE_DELETE_JOB_NAME,
     createWorkspaceDeleteJobHandler(prisma, registry.googleClient),
+  );
+
+  // LaptopRosterPushJob — retry laptop roster writes that failed (dirty users).
+  registry.scheduler.registerHandler(
+    LAPTOP_ROSTER_PUSH_JOB_NAME,
+    createLaptopRosterPushJobHandler({ prisma, laptopAccounts: registry.laptopAccounts }),
   );
 
   registry.scheduler.startTicking();

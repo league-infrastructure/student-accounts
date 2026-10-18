@@ -3,6 +3,8 @@
  *
  * Layout (top-down):
  *   1. Identity card — display name + all known email addresses.
+ *   1a. Credentials card — username / password / email credentials (admin).
+ *   1a'. Laptop login card — state, allow toggle, dirty indicator, Push now.
  *   2. Account blocks, one per account kind:
  *        - External Google (read-only; only shown if present)
  *        - League         (read-only; only shown if present)
@@ -22,6 +24,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { prettifyName } from './utils/prettifyName';
 import UserGroupsCard from './UserGroupsCard';
 import UserLlmProxyCard from './UserLlmProxyCard';
+import UserCredentialsCard from './UserCredentialsCard';
+import UserLaptopCard from './UserLaptopCard';
+import MergeWithDialog from './MergeWithDialog';
 import { isStudentLeagueEmail, isStaffLeagueEmail } from '../../lib/email-domain';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +57,11 @@ interface UserDetail {
   createdAt: string;
   logins: Login[];
   externalAccounts: ExternalAccount[];
+  /** Laptop login fields (sprint 002 T006); read by UserLaptopCard. */
+  username?: string | null;
+  allows_laptop_account?: boolean;
+  laptop_roster_dirty?: boolean;
+  laptop_login_state?: string;
 }
 
 interface Login {
@@ -293,6 +303,17 @@ export default function UserDetailPanel() {
           {user.cohort && (
             <span style={{ color: '#64748b', fontSize: 13 }}>· cohort: {user.cohort.name}</span>
           )}
+          <span style={{ marginLeft: 'auto' }}>
+            {/* Admin manual merge (sprint 002 "laptop accounts" T008) */}
+            <MergeWithDialog
+              userId={user.id}
+              userName={prettifyNameFromUser()}
+              onMerged={(survivorId) => {
+                queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+                navigate(`/users/${survivorId}`);
+              }}
+            />
+          </span>
         </div>
         <div style={{ marginTop: 10, fontSize: 13 }}>
           <div style={{ color: '#64748b', marginBottom: 4 }}>Email addresses</div>
@@ -301,6 +322,22 @@ export default function UserDetailPanel() {
           </ul>
         </div>
       </section>
+
+      {/* ================================================================== */}
+      {/* 1a. Credentials (sprint 002 "laptop accounts" T005)                 */}
+      {/* ================================================================== */}
+      <UserCredentialsCard
+        userId={user.id}
+        userName={prettifyNameFromUser()}
+      />
+
+      {/* ================================================================== */}
+      {/* 1a'. Laptop login (sprint 002 "laptop accounts" T006)               */}
+      {/* ================================================================== */}
+      <UserLaptopCard
+        userId={user.id}
+        userName={prettifyNameFromUser()}
+      />
 
       {/* ================================================================== */}
       {/* 1b. Groups (Sprint 012 T006)                                         */}

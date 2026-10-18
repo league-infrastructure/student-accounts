@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Account from '../../../client/src/pages/Account';
@@ -434,6 +434,90 @@ describe('Account page — student', () => {
     expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
     // LLM Proxy heading should not appear (AccountLlmProxyCard is removed)
     expect(screen.queryByText('LLM Proxy')).not.toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// AccountLaptopCard (sprint 002 "laptop accounts" T006)
+// ===========================================================================
+
+describe('Account page — Laptop login card', () => {
+  it('renders the card from profile.laptopLogin for a student', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: {
+        username: 'alice',
+        has_password: true,
+        laptopLogin: { enabled: true, state: 'ready', username: 'alice', dirty: false },
+      },
+    });
+
+    renderAccount();
+
+    const card = await screen.findByTestId('laptop-login-card');
+    expect(card).toHaveTextContent('Laptop login');
+    expect(screen.getByTestId('laptop-login-state')).toHaveAttribute('data-state', 'ready');
+    expect(screen.getByTestId('laptop-login-state')).toHaveTextContent('Use username alice and your password');
+    expect(screen.queryByTestId('laptop-login-syncing')).not.toBeInTheDocument();
+  });
+
+  it('links to the Username & Password section when the student has credentials but no password', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: {
+        username: 'alice',
+        has_password: false,
+        laptopLogin: { enabled: false, state: 'needs_password', username: 'alice', dirty: true },
+      },
+    });
+
+    renderAccount();
+
+    await screen.findByTestId('laptop-login-card');
+    expect(screen.getByRole('link', { name: 'Set a password' })).toHaveAttribute('href', '#ups-new-password');
+    // The target field is on the page.
+    expect(document.getElementById('ups-new-password')).not.toBeNull();
+    expect(screen.getByTestId('laptop-login-syncing')).toHaveTextContent('Syncing to laptops…');
+  });
+
+  it('opens the Add username/password modal from the card when there are no credentials', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true, {
+      profile: {
+        laptopLogin: { enabled: false, state: 'needs_password', username: null, dirty: false },
+      },
+    });
+
+    renderAccount();
+
+    const card = await screen.findByTestId('laptop-login-card');
+    fireEvent.click(within(card).getByRole('button', { name: 'Add username/password' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('is hidden when the profile has no laptopLogin (older server)', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('student'), loading: false });
+    (globalThis as any).fetch = makeFetch(true);
+
+    renderAccount();
+
+    await waitFor(() => expect(screen.getAllByText('student@example.com').length).toBeGreaterThan(0));
+    expect(screen.queryByTestId('laptop-login-card')).not.toBeInTheDocument();
+  });
+
+  it('is hidden for admins even when the server reports a state', async () => {
+    mockUseAuth.mockReturnValue({ user: makeUser('admin'), loading: false });
+    (globalThis as any).fetch = makeFetch(
+      true,
+      { profile: { laptopLogin: { enabled: false, state: 'locked', username: null, dirty: false } } },
+      undefined,
+      ADMIN_ACCOUNT_BASE,
+    );
+
+    renderAccount();
+
+    await waitFor(() => expect(screen.getAllByText('admin@example.com').length).toBeGreaterThan(0));
+    expect(screen.queryByTestId('laptop-login-card')).not.toBeInTheDocument();
   });
 });
 

@@ -3,7 +3,7 @@
  *
  * Responsibilities:
  *  - Grant a new token: generate an opaque random string, hash it (SHA-256),
- *    persist the hash + metadata, return the plaintext exactly once.
+ *    persist the hash, the plaintext and metadata, return the plaintext.
  *  - Revoke the active token for a user.
  *  - Validate a bearer token on the proxy hot path: hash lookup, revocation
  *    check, expiration check, hard quota cut-off.
@@ -18,9 +18,16 @@
  *    revoked, or expired.
  *  - LlmProxyTokenQuotaExceededError (429) — token's quota is exhausted.
  *
- * Security invariants:
- *  - The plaintext token is never persisted. It is generated in memory,
- *    returned to the caller of `grant()` exactly once, and discarded.
+ * Storage of the plaintext:
+ *  - The plaintext IS persisted, in `LlmProxyToken.token_plaintext`, next to
+ *    the SHA-256 hash that the proxy hot path looks up. It is stored so the
+ *    student can read their token again on the Account page and so the League
+ *    laptops can fetch the same token at every login through
+ *    POST /api/fleet/llm-token (`ensureActive`) instead of minting a new one
+ *    each time. These tokens are quota-capped, expire, and are scoped to
+ *    classroom use, so the trade-off is deliberate. Rows created before the
+ *    column existed have NULL and get a fresh token on the next `ensureActive`.
+ *    Validation still uses only `token_hash`.
  *  - The token format is `llmp_<base64url(randomBytes(32))>`. The prefix
  *    aids identification in logs/pastes and does not affect validation.
  */
@@ -44,6 +51,12 @@ export const TOKEN_BYTES = 32;
 
 /** Prefix stamped on every plaintext token — helps pattern-match in logs. */
 export const TOKEN_PREFIX = 'llmp_';
+
+/** Token limit used wherever a grant is made without an explicit limit. */
+export const LLM_PROXY_DEFAULT_TOKEN_LIMIT = 1_000_000;
+
+/** Lifetime of tokens minted automatically (reconcile, fleet auto-grant). */
+export const LLM_PROXY_AUTO_GRANT_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Typed errors
@@ -82,7 +95,7 @@ export type GrantParams = {
 
 export type GrantOptions = {
   /** Origin of the grant — feeds the audit event `details` blob. */
-  scope?: 'single' | 'cohort' | 'group' | 'reconcile';
+  scope?: 'single' | 'cohort' | 'group' | 'reconcile' | 'fleet';
   scopeId?: number | null;
   /**
    * @deprecated No longer enforced. The Sprint 026 T004 permission gate
@@ -100,6 +113,14 @@ export type GrantResult = {
   token: string;
   /** Persisted row (without plaintext, which is not stored). */
   row: LlmProxyToken;
+};
+
+export type EnsureActiveResult = {
+  /** Plaintext token — the stored `token_plaintext` or a freshly minted one. */
+  token: string;
+  row: LlmProxyToken;
+  /** True when this call minted a new token. */
+  granted: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -236,8 +257,6 @@ export class LlmProxyTokenService {
    * Never removes access. Returns a summary for startup logging.
    */
   async reconcileAccessFlags(): Promise<{ tokensGranted: number; flagsSet: number }> {
-    const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
-    const DEFAULT_TOKEN_LIMIT = 1_000_000;
     let tokensGranted = 0;
     let flagsSet = 0;
 
@@ -251,7 +270,10 @@ export class LlmProxyTokenService {
       if (!active) {
         await this.grant(
           u.id,
-          { expiresAt: new Date(Date.now() + ONE_YEAR_MS), tokenLimit: DEFAULT_TOKEN_LIMIT },
+          {
+            expiresAt: new Date(Date.now() + LLM_PROXY_AUTO_GRANT_TTL_MS),
+            tokenLimit: LLM_PROXY_DEFAULT_TOKEN_LIMIT,
+          },
           null,
           { scope: 'reconcile' },
         );
@@ -290,6 +312,55 @@ export class LlmProxyTokenService {
 
   async getActiveForUser(userId: number): Promise<LlmProxyToken | null> {
     return LlmProxyTokenRepository.findActiveForUser(this.prisma, userId);
+  }
+
+  // --------------------------------------------------------------------
+  // Ensure active (auto-grant)
+  // --------------------------------------------------------------------
+
+  /**
+   * Return the user's active token with its plaintext, minting one when
+   * there is none (first laptop login, or the previous token expired —
+   * `findActiveForUser` already excludes expired rows, so an expired token
+   * simply falls through to a fresh grant). A live row whose plaintext was
+   * never stored (pre-plaintext-column rows) is unusable by a machine
+   * client, so it is revoked and replaced the same way.
+   *
+   * Auto-grants use `LLM_PROXY_AUTO_GRANT_TTL_MS` (one year) and
+   * `LLM_PROXY_DEFAULT_TOKEN_LIMIT`. `allows_llm_proxy` is set true in every
+   * path so the flag and token state agree (the grant path does this inside
+   * its transaction; the found path sets it idempotently).
+   */
+  async ensureActive(
+    userId: number,
+    actorId: number | null,
+    scope: NonNullable<GrantOptions['scope']>,
+  ): Promise<EnsureActiveResult> {
+    const existing = await LlmProxyTokenRepository.findActiveForUser(this.prisma, userId);
+    if (existing && existing.token_plaintext != null) {
+      await this.prisma.user.updateMany({
+        where: { id: userId, allows_llm_proxy: false },
+        data: { allows_llm_proxy: true },
+      });
+      return { token: existing.token_plaintext, row: existing, granted: false };
+    }
+    if (existing) {
+      logger.warn(
+        { userId, tokenId: existing.id },
+        '[llm-proxy-token-service] active token has no stored plaintext; replacing it',
+      );
+      await this.revoke(userId, actorId);
+    }
+    const { token, row } = await this.grant(
+      userId,
+      {
+        expiresAt: new Date(Date.now() + LLM_PROXY_AUTO_GRANT_TTL_MS),
+        tokenLimit: LLM_PROXY_DEFAULT_TOKEN_LIMIT,
+      },
+      actorId,
+      { scope },
+    );
+    return { token, row, granted: true };
   }
 
   // --------------------------------------------------------------------

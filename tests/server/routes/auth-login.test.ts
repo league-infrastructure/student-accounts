@@ -9,7 +9,14 @@
 
 import request from 'supertest';
 import { prisma } from '../../../server/src/services/prisma.js';
-import { hashPassword } from '../../../server/src/utils/password.js';
+import {
+  hashPassword,
+  isCryptHash,
+  isScryptHash,
+  makeCryptHash,
+  verifyCryptHash,
+  verifyPassword,
+} from '../../../server/src/utils/password.js';
 
 process.env.NODE_ENV = 'test';
 
@@ -485,5 +492,147 @@ describe('POST /api/auth/login — login by email', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(user.id);
+  });
+});
+
+// ===========================================================================
+// Imported laptop account: $6$ password_hash → scrypt rehash (Sprint 002 T001)
+// ===========================================================================
+
+describe('POST /api/auth/login — SHA-512 crypt password_hash (laptop import)', () => {
+  /** Generated once with: openssl passwd -6 -salt Botball26Fixture secret */
+  const OPENSSL_HASH =
+    '$6$Botball26Fixture$aNQlHIWlqMgpWS186K6u6SNXkL1PWiMmeBpGdgZDL.21BIQ5wEIdE6hcD3xQ0DKPXanIltLYdvSyrgOikntZ./';
+
+  async function makeImportedUser(opts: {
+    username: string;
+    cryptHash: string;
+    laptopHash?: string | null;
+  }) {
+    return (prisma as any).user.create({
+      data: {
+        username: opts.username,
+        password_hash: opts.cryptHash,
+        laptop_password_hash: opts.laptopHash ?? null,
+        display_name: opts.username,
+        primary_email: `${opts.username}@laptop.invalid`,
+        role: 'student',
+        is_active: true,
+        created_via: 'laptop_import',
+      },
+    });
+  }
+
+  it('signs in with the laptop password, rehashes to scrypt and keeps the $6$ hash', async () => {
+    const user = await makeImportedUser({ username: 'laptop-alice', cryptHash: OPENSSL_HASH });
+
+    const agent = request.agent(app);
+    const res = await agent
+      .post('/api/auth/login')
+      .send({ username: 'laptop-alice', password: 'secret' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(user.id);
+    expect(res.body.username).toBe('laptop-alice');
+
+    const after = await (prisma as any).user.findUnique({ where: { id: user.id } });
+    expect(isScryptHash(after.password_hash)).toBe(true);
+    expect(isCryptHash(after.password_hash)).toBe(false);
+    expect(await verifyPassword('secret', after.password_hash)).toBe(true);
+    expect(after.laptop_password_hash).toBe(OPENSSL_HASH);
+
+    // Session established; a second login now goes through scrypt.
+    const meRes = await agent.get('/api/auth/me');
+    expect(meRes.status).toBe(200);
+    const again = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'laptop-alice', password: 'secret' });
+    expect(again.status).toBe(200);
+  });
+
+  it('works for a hash produced by makeCryptHash as well', async () => {
+    const cryptHash = makeCryptHash('maple-robot-seven');
+    const user = await makeImportedUser({ username: 'laptop-bob', cryptHash });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'laptop-bob', password: 'maple-robot-seven' });
+
+    expect(res.status).toBe(200);
+    const after = await (prisma as any).user.findUnique({ where: { id: user.id } });
+    expect(isScryptHash(after.password_hash)).toBe(true);
+    expect(after.laptop_password_hash).toBe(cryptHash);
+    expect(verifyCryptHash('maple-robot-seven', after.laptop_password_hash)).toBe(true);
+  });
+
+  it('does not overwrite an existing laptop_password_hash', async () => {
+    const existing = makeCryptHash('secret');
+    const user = await makeImportedUser({
+      username: 'laptop-carol',
+      cryptHash: OPENSSL_HASH,
+      laptopHash: existing,
+    });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'laptop-carol', password: 'secret' });
+
+    expect(res.status).toBe(200);
+    const after = await (prisma as any).user.findUnique({ where: { id: user.id } });
+    expect(isScryptHash(after.password_hash)).toBe(true);
+    expect(after.laptop_password_hash).toBe(existing);
+  });
+
+  it('rejects the wrong password and leaves the $6$ hash untouched', async () => {
+    const user = await makeImportedUser({ username: 'laptop-dave', cryptHash: OPENSSL_HASH });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'laptop-dave', password: 'Secret' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('Invalid username or password');
+    const after = await (prisma as any).user.findUnique({ where: { id: user.id } });
+    expect(after.password_hash).toBe(OPENSSL_HASH);
+    expect(after.laptop_password_hash).toBeNull();
+  });
+
+  it('never signs in a locked (!) or starred (*) roster hash', async () => {
+    await makeImportedUser({ username: 'laptop-locked', cryptHash: '!' });
+    await makeImportedUser({ username: 'laptop-starred', cryptHash: '*' });
+
+    for (const [username, password] of [
+      ['laptop-locked', '!'],
+      ['laptop-locked', 'secret'],
+      ['laptop-starred', '*'],
+      ['laptop-starred', ''],
+    ]) {
+      const res = await request(app).post('/api/auth/login').send({ username, password });
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it('a scrypt user is untouched by the rehash hook', async () => {
+    const scryptHash = await hashPassword('plain-old-password');
+    const user = await (prisma as any).user.create({
+      data: {
+        username: 'native-erin',
+        password_hash: scryptHash,
+        display_name: 'Erin',
+        primary_email: 'erin@example.com',
+        role: 'student',
+        is_active: true,
+        created_via: 'admin_created',
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'native-erin', password: 'plain-old-password' });
+
+    expect(res.status).toBe(200);
+    const after = await (prisma as any).user.findUnique({ where: { id: user.id } });
+    expect(after.password_hash).toBe(scryptHash);
+    expect(after.laptop_password_hash).toBeNull();
   });
 });

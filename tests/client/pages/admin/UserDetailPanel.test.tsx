@@ -18,6 +18,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import UserDetailPanel from '../../../../client/src/pages/admin/UserDetailPanel';
+import { ToastProvider } from '../../../../client/src/context/ToastContext';
 
 // ---------------------------------------------------------------------------
 // Data factories
@@ -92,9 +93,11 @@ function renderPanel(userId: string | number, fetchImpl: (...args: unknown[]) =>
   return render(
     <MemoryRouter initialEntries={[`/admin/users/${userId}`]}>
       <QueryClientProvider client={client}>
-        <Routes>
-          <Route path="/admin/users/:id" element={<UserDetailPanel />} />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path="/admin/users/:id" element={<UserDetailPanel />} />
+          </Routes>
+        </ToastProvider>
       </QueryClientProvider>
     </MemoryRouter>,
   );

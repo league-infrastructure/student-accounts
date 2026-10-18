@@ -18,7 +18,11 @@ const createTransportSpy = vi.spyOn(nodemailer, 'createTransport').mockReturnVal
 );
 
 // Import AFTER the spy is in place.
-import { MailService, MailNotConfiguredError } from '../../../server/src/services/mail.service.js';
+import {
+  MailService,
+  MailNotConfiguredError,
+  isUndeliverableAddress,
+} from '../../../server/src/services/mail.service.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -218,5 +222,65 @@ describe('MailService from address', () => {
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({ from: 'user@example.com' }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// .invalid recipients are never sent to (Sprint 002 T001)
+// ---------------------------------------------------------------------------
+
+describe('isUndeliverableAddress', () => {
+  it('is true for addresses under the reserved .invalid TLD', () => {
+    expect(isUndeliverableAddress('alice@laptop.invalid')).toBe(true);
+    expect(isUndeliverableAddress('alice@INVALID')).toBe(true);
+    expect(isUndeliverableAddress('alice@sub.domain.invalid')).toBe(true);
+    expect(isUndeliverableAddress('alice@laptop.invalid.')).toBe(true);
+    expect(isUndeliverableAddress('Alice <alice@laptop.invalid>')).toBe(true);
+    expect(isUndeliverableAddress('  alice@laptop.invalid  ')).toBe(true);
+  });
+
+  it('is false for ordinary addresses, including ones that merely contain "invalid"', () => {
+    expect(isUndeliverableAddress('alice@example.com')).toBe(false);
+    expect(isUndeliverableAddress('alice@invalid.example.com')).toBe(false);
+    expect(isUndeliverableAddress('alice@notinvalid.org')).toBe(false);
+    expect(isUndeliverableAddress('invalid@example.com')).toBe(false);
+    expect(isUndeliverableAddress('alice.invalid@example.com')).toBe(false);
+    expect(isUndeliverableAddress('not-an-address')).toBe(false);
+    expect(isUndeliverableAddress('')).toBe(false);
+  });
+});
+
+describe('MailService.send() — .invalid recipient guard', () => {
+  it('skips a .invalid recipient without touching the transport, returning { skipped: true }', async () => {
+    setSmtpEnv();
+    const svc = new MailService();
+    const result = await svc.send({
+      to: 'alice@laptop.invalid',
+      subject: 'Your League account',
+      text: 'hello',
+    });
+
+    expect(result.skipped).toBe(true);
+    expect(result.messageId).toBeUndefined();
+    expect((result as { reason: string }).reason).toMatch(/invalid/);
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  it('skips (does not throw MailNotConfiguredError) even when SMTP is unconfigured', async () => {
+    const svc = new MailService();
+    expect(svc.isConfigured()).toBe(false);
+    const result = await svc.send({ to: 'bob@laptop.invalid', subject: 'x', text: 'y' });
+    expect(result.skipped).toBe(true);
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  it('still sends to ordinary recipients', async () => {
+    setSmtpEnv();
+    mockSendMail.mockResolvedValueOnce({ messageId: 'msg-ok' });
+    const svc = new MailService();
+    const result = await svc.send({ to: 'carol@example.com', subject: 'x', text: 'y' });
+    expect(result).toEqual({ messageId: 'msg-ok' });
+    expect(result.skipped).toBeUndefined();
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
   });
 });

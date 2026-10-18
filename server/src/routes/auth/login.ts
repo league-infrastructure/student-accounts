@@ -3,7 +3,10 @@
  *
  * Public endpoint (no auth required). The identifier may be a username or a
  * primary email. Two credentials are accepted, tried in order:
- *   1. the user's real password (verified against the stored scrypt hash);
+ *   1. the user's real password (verified against the stored hash — scrypt,
+ *      or SHA-512 crypt for accounts imported from the laptop roster; a
+ *      crypt hash is upgraded to scrypt on first successful sign-in and
+ *      preserved in laptop_password_hash);
  *   2. an active signup passphrase of a group/cohort the user belongs to —
  *      so a student who forgot their password can sign in with the phrase
  *      their instructor posted. Only non-expired passphrases match, and the
@@ -16,7 +19,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { prisma } from '../../services/prisma.js';
-import { verifyPassword } from '../../utils/password.js';
+import { hashPassword, isCryptHash, verifyPassword } from '../../utils/password.js';
 import { AuditService } from '../../services/audit.service.js';
 import { PassphraseService } from '../../services/passphrase.service.js';
 import { createLogger } from '../../services/logger.js';
@@ -74,6 +77,9 @@ loginRouter.post('/login', async (req: Request, res: Response) => {
 
   if (u.password_hash != null && (await verifyPassword(password, u.password_hash))) {
     method = 'password';
+    if (isCryptHash(u.password_hash)) {
+      await upgradeCryptHash(u.id, password, u.password_hash, u.laptop_password_hash);
+    }
   }
 
   if (method == null) {
@@ -134,6 +140,34 @@ loginRouter.post('/login', async (req: Request, res: Response) => {
     role: u.role,
   });
 });
+
+/**
+ * An imported laptop account arrives with its SHA-512 crypt (`$6$`) hash in
+ * `password_hash`. On the first successful sign-in we have the plaintext, so
+ * rehash to this app's native scrypt format and keep the crypt hash in
+ * `laptop_password_hash` (unless one is already there) so the laptop roster
+ * can still be written without the plaintext. Failure here is logged, not
+ * fatal: the user has already authenticated.
+ */
+async function upgradeCryptHash(
+  userId: number,
+  password: string,
+  cryptHash: string,
+  existingLaptopHash: string | null,
+): Promise<void> {
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password_hash: await hashPassword(password),
+        ...(existingLaptopHash == null ? { laptop_password_hash: cryptHash } : {}),
+      },
+    });
+    logger.info({ userId }, '[login] rehashed $6$ password_hash to scrypt');
+  } catch (err) {
+    logger.error({ err, userId }, '[login] failed to rehash $6$ password_hash');
+  }
+}
 
 /**
  * Whether the user belongs to the group/cohort that owns a matched passphrase.

@@ -288,3 +288,57 @@ describe('PATCH /api/admin/users/:id/permissions — error cases', () => {
     expect(res.status).toBe(403);
   });
 });
+
+// ---------------------------------------------------------------------------
+// allows_laptop_account (sprint 002 "laptop accounts" T004)
+// ---------------------------------------------------------------------------
+
+describe('PATCH /api/admin/users/:id/permissions — allows_laptop_account', () => {
+  it('defaults to true and is returned as allowsLaptopAccount', async () => {
+    const user = await makeUser({ role: 'student' });
+
+    const res = await adminAgent.patch(`/api/admin/users/${user.id}/permissions`).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ allowsLaptopAccount: true });
+  });
+
+  it('updates allows_laptop_account and returns 200 with updated flags', async () => {
+    const user = await makeUser({ role: 'student' });
+
+    const res = await adminAgent
+      .patch(`/api/admin/users/${user.id}/permissions`)
+      .send({ allows_laptop_account: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      allowsOauthClient: false,
+      allowsLlmProxy: false,
+      allowsLeagueAccount: false,
+      allowsLaptopAccount: false,
+    });
+
+    const updated = await (prisma as any).user.findUnique({ where: { id: user.id } });
+    expect(updated.allows_laptop_account).toBe(false);
+
+    const events = await (prisma as any).auditEvent.findMany({
+      where: { action: 'user_permission_changed', target_user_id: user.id },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].details).toMatchObject({
+      before: { allows_laptop_account: true },
+      after: { allows_laptop_account: false },
+    });
+  });
+
+  it('returns 400 when allows_laptop_account is not a boolean', async () => {
+    const user = await makeUser({ role: 'student' });
+
+    const res = await adminAgent
+      .patch(`/api/admin/users/${user.id}/permissions`)
+      .send({ allows_laptop_account: 'yes' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/allows_laptop_account/);
+  });
+});

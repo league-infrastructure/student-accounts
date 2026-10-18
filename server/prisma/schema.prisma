@@ -1,13 +1,19 @@
-// Dual-adapter strategy: the adapter is selected at runtime in
-// server/src/services/prisma.ts based on DATABASE_URL:
-//   "file:" prefix → @prisma/adapter-better-sqlite3 (dev / integration tests)
-//   anything else  → @prisma/adapter-pg (production PostgreSQL)
+// Database adapter: selected at runtime in server/src/services/prisma.ts
+// from DATABASE_URL:
+//   "file:" prefix → @prisma/adapter-better-sqlite3
+//   anything else  → @prisma/adapter-pg (PostgreSQL)
+//
+// Production runs SQLite: docker-stack.yaml sets DATABASE_URL=file:/app/data/app.db
+// on a volume pinned to a Swarm manager node, with the daily/weekly backup jobs
+// (copies to DigitalOcean Spaces) as the safety net. Dev and the test suite run
+// SQLite too. The pg adapter is kept as a supported path but no deployment uses
+// it (decision 2026-10-18, sprint 002 ticket 009; moving production to Postgres
+// is its own issue). See README "Production database" and docs/deploy.md.
 //
 // NOTE: Prisma 7 enforces strict adapter/provider compatibility.
 // @prisma/adapter-better-sqlite3 declares provider="sqlite", so the datasource
-// must also say "sqlite" for dev/test to work. For production migrations against
-// Postgres, prisma.config.ts supplies the postgresql:// URL and uses the pg
-// adapter at runtime.
+// must say "sqlite". Running against Postgres would need the datasource
+// provider changed and the migrations regenerated; nothing here does that.
 //
 generator client {
   provider = "prisma-client"
@@ -67,6 +73,7 @@ enum CreatedVia {
   admin_created
   workspace_sync
   passphrase_signup
+  laptop_import
 }
 
 enum ExternalAccountType {
@@ -144,6 +151,12 @@ model User {
   username       String?  @unique
   password_hash  String?
 
+  /** SHA-512 crypt (`$6$`) form of the current password, written to the
+   *  laptop roster (students/<username>/config.json). Set when a password is
+   *  set here or imported from the roster; null when the user has no
+   *  laptop-compatible hash yet. */
+  laptop_password_hash String?
+
   /** Address used for outbound mail to this user. Null = use primary_email.
    *  Must be one of: primary_email, a provider Login's provider_email, or a
    *  workspace ExternalAccount's external_id. Validated server-side. */
@@ -172,6 +185,13 @@ model User {
   allows_oauth_client   Boolean @default(false)
   allows_llm_proxy      Boolean @default(false)
   allows_league_account Boolean @default(false)
+
+  /** Laptop login (sprint 002 "laptop accounts"). On by default; admins can
+   *  switch it off per user. When off, the roster entry is locked (`!`). */
+  allows_laptop_account Boolean @default(true)
+  /** True when the last laptop roster write for this user failed; the hourly
+   *  `laptop-roster-push` job retries dirty rows. */
+  laptop_roster_dirty   Boolean @default(false)
 
   @@index([role])
   @@index([cohort_id])
@@ -463,14 +483,20 @@ model OAuthConsent {
 }
 
 // ---------------------------------------------------------------------------
-// LlmProxyToken — per-user bearer token for the in-app LLM proxy (Sprint 013).
+// LlmProxyToken — per-user bearer token for the in-app LLM proxy (Sprint 013;
+// upstream switched from Anthropic to OpenRouter in sprint 001 of this repo).
 //
-// The app hosts a small forwarder at /proxy/v1 that relays requests to the
-// Anthropic Messages API on behalf of students. Each student who has been
-// granted access has exactly one active (non-revoked, non-expired) token.
-// Tokens are opaque random strings shown to the admin once at grant time;
-// the hash (SHA-256 hex) is persisted for validation on every request.
-// Quota is enforced via token_limit vs tokens_used with a hard cut-off.
+// The app hosts a small forwarder at /proxy/v1 that relays requests to
+// OpenRouter on behalf of students: POST /proxy/v1/chat/completions (OpenAI
+// Chat Completions shape, League model tiers league-large/medium/small) today,
+// plus an Anthropic-compatible /proxy/v1/messages endpoint planned for sprint
+// 003 behind LLM_PROXY_ANTHROPIC_ENABLED. Each student who has been granted
+// access has exactly one active (non-revoked, non-expired) token. Tokens are
+// opaque random strings; the SHA-256 hex hash is what the proxy looks up on
+// every request, and the plaintext is also kept in token_plaintext (see the
+// column comment) so the Account page and POST /api/fleet/llm-token can hand
+// the same token back. Quota is enforced via token_limit vs tokens_used with
+// a hard cut-off.
 // ---------------------------------------------------------------------------
 model LlmProxyToken {
   id              Int       @id @default(autoincrement())

@@ -1,9 +1,11 @@
-# docker-stack.yaml — Swarm stack for prod (apps.jointheleague.org).
+# docker-stack.yaml — Swarm stack for prod (student-accounts.jtlapp.net).
 # Deploy via: docker stack deploy -c docker-stack.yaml --with-registry-auth student-accounts
-# scripts/deploy.sh prod up handles this for you (and syncs swarm secrets first).
+# scripts/up.sh prod (npm run deploy:prod) handles this for you: it renders the
+# dotconfig env (config/prod/{public,secrets}.env) into this file and runs the
+# stack deploy. Runbook: docs/deploy.md.
 #
 # Caddy: an external caddy-docker-proxy on the host watches the Swarm API and
-# routes apps.jointheleague.org → this service. Service-level Caddy labels MUST
+# routes student-accounts.jtlapp.net → this service. Service-level Caddy labels MUST
 # go under deploy.labels in Swarm — service `labels:` are container labels and
 # are ignored by caddy-docker-proxy.
 

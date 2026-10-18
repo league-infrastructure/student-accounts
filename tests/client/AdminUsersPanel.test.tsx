@@ -17,13 +17,15 @@
  *  - Bulk selection and bulk delete
  *  - Bulk "Suspend accounts" button: disabled when no student selected; opens confirm dialog
  *  - Bulk "Revoke LLM Proxy" button: disabled when no llmProxyEnabled selected; opens confirm
+ *  - "Import laptop roster…" / "Push all laptop logins" header buttons (admins only)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import AdminUsersPanel from '../../client/src/pages/admin/AdminUsersPanel';
+import AdminUsersPanel, { summarizePushAll } from '../../client/src/pages/admin/AdminUsersPanel';
+import { ToastProvider } from '../../client/src/context/ToastContext';
 
 // ---- Mock useAuth ----
 
@@ -110,7 +112,9 @@ function renderPanel(users = SAMPLE_USERS) {
   return render(
     <MemoryRouter>
       <QueryClientProvider client={client}>
-        <AdminUsersPanel />
+        <ToastProvider>
+          <AdminUsersPanel />
+        </ToastProvider>
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -520,7 +524,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -584,7 +588,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -619,7 +623,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -663,7 +667,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -722,7 +726,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -754,7 +758,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -798,7 +802,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -880,7 +884,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1029,7 +1033,7 @@ describe('AdminUsersPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <AdminUsersPanel />
+          <ToastProvider><AdminUsersPanel /></ToastProvider>
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1054,5 +1058,190 @@ describe('AdminUsersPanel', () => {
       const body = JSON.parse(putCall![1].body as string);
       expect(body.role).toBe('admin');
     });
+  });
+  // ---- Import laptop roster (sprint 002 "laptop accounts" T003) ----
+
+  it('shows an "Import laptop roster…" button for admins that opens the dialog', async () => {
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+
+    const button = screen.getByRole('button', { name: 'Import laptop roster…' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(button);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Import laptop roster' })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Group name')).toHaveValue('Botball 26');
+  });
+
+  it('runs the import from the dialog and shows the report', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const mockFetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/admin/users') {
+        return Promise.resolve({ ok: true, json: async () => SAMPLE_USERS });
+      }
+      if (url === '/api/admin/import/laptop-roster' && opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            created: 1,
+            matched: 0,
+            skipped: 0,
+            errors: 0,
+            details: [{ id: 'bob', outcome: 'created' }],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <ToastProvider>
+            <AdminUsersPanel />
+          </ToastProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import laptop roster…' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Run' }));
+
+    await waitFor(() => expect(screen.getByTestId('import-created')).toHaveTextContent('1'));
+    const importCall = mockFetch.mock.calls.find(
+      (c) => c[0] === '/api/admin/import/laptop-roster',
+    );
+    expect(JSON.parse(importCall![1].body as string)).toEqual({ groupName: 'Botball 26' });
+    expect(screen.getByRole('link', { name: 'Review the merge queue' })).toHaveAttribute(
+      'href',
+      '/merge-queue',
+    );
+  });
+
+  it('hides the "Import laptop roster…" button for non-admin users', async () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: 2,
+        email: 'staff@example.com',
+        displayName: 'Staff User',
+        role: 'STAFF',
+        avatarUrl: null,
+        provider: null,
+        providerId: null,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      loading: false,
+      logout: vi.fn(),
+    });
+    renderPanel();
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Import laptop roster…' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Push all laptop logins' })).not.toBeInTheDocument();
+  });
+
+  // ---- Push all laptop logins (sprint 002 "laptop accounts" T006) ----
+
+  it('summarizePushAll lists every count', () => {
+    expect(summarizePushAll({ written: 3, locked: 1, unchanged: 10, skipped: 2, failed: 0 })).toBe(
+      'Laptop logins pushed: 3 written, 1 locked, 10 unchanged, 2 skipped, 0 failed.',
+    );
+  });
+
+  it('"Push all laptop logins" confirms first and does not POST on Cancel', async () => {
+    const { container } = renderPanel();
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push all laptop logins' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Push all laptop logins' })).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(fetchMock.mock.calls.find((c) => c[0] === '/api/admin/laptop/push-all')).toBeUndefined();
+    expect(container).toBeInTheDocument();
+  });
+
+  it('"Push all laptop logins" POSTs on confirm and toasts the counts', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const mockFetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/admin/users') {
+        return Promise.resolve({ ok: true, json: async () => SAMPLE_USERS });
+      }
+      if (url === '/api/admin/laptop/push-all' && opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ written: 3, locked: 1, unchanged: 10, skipped: 2, failed: 0 }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <ToastProvider>
+            <AdminUsersPanel />
+          </ToastProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push all laptop logins' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Push all' }));
+
+    await waitFor(() =>
+      expect(mockFetch.mock.calls.find((c) => c[0] === '/api/admin/laptop/push-all')).toBeDefined(),
+    );
+    expect(
+      await screen.findByText('Laptop logins pushed: 3 written, 1 locked, 10 unchanged, 2 skipped, 0 failed.'),
+    ).toBeInTheDocument();
+  });
+
+  it('"Push all laptop logins" toasts the server error on failure', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const mockFetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/admin/users') {
+        return Promise.resolve({ ok: true, json: async () => SAMPLE_USERS });
+      }
+      if (url === '/api/admin/laptop/push-all' && opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 503,
+          json: async () => ({ error: 'Laptop roster is not configured' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <ToastProvider>
+            <AdminUsersPanel />
+          </ToastProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Student User')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Push all laptop logins' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Push all' }));
+
+    expect(await screen.findByText('Laptop roster is not configured')).toBeInTheDocument();
   });
 });

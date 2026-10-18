@@ -469,3 +469,65 @@ describe('POST /api/auth/passphrase-signup — missing fields', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ===========================================================================
+// Laptop username rules (sprint 002 "laptop accounts" T004)
+// ===========================================================================
+
+describe('POST /api/auth/passphrase-signup — laptop username rules', () => {
+  it('returns 400 with the laptop message for an upper-case username', async () => {
+    const cohort = await makeCohort({ name: 'Laptop Rules Cohort' });
+    await setCohortPassphrase(cohort.id, 'laptop-rules-one');
+
+    const res = await request(app)
+      .post('/api/auth/passphrase-signup')
+      .send({
+        username: 'Alice',
+        passphrase: 'laptop-rules-one',
+        password: 'SecurePass1!',
+        displayName: 'Test User',
+        email: 'laptop-rules-one@test.example.com',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/lowercase letters, digits and dashes/);
+  });
+
+  it('returns 400 for a reserved laptop system name', async () => {
+    const cohort = await makeCohort({ name: 'Laptop Rules Cohort 2' });
+    await setCohortPassphrase(cohort.id, 'laptop-rules-two');
+
+    const res = await request(app)
+      .post('/api/auth/passphrase-signup')
+      .send({
+        username: 'student',
+        passphrase: 'laptop-rules-two',
+        password: 'SecurePass1!',
+        displayName: 'Test User',
+        email: 'laptop-rules-two@test.example.com',
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('stores a SHA-512 crypt laptop_password_hash alongside the scrypt hash', async () => {
+    const cohort = await makeCohort({ name: 'Laptop Hash Cohort' });
+    await setCohortPassphrase(cohort.id, 'laptop-hash-one');
+
+    const res = await request(app)
+      .post('/api/auth/passphrase-signup')
+      .send({
+        username: 'gina',
+        passphrase: 'laptop-hash-one',
+        password: 'SecurePass1!',
+        displayName: 'Gina',
+        email: 'gina@test.example.com',
+      });
+
+    expect(res.status).toBe(200);
+    const user = await (prisma as any).user.findUnique({ where: { username: 'gina' } });
+    expect(user.password_hash).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
+    expect(user.laptop_password_hash).toMatch(/^\$6\$/);
+    expect(user.allows_laptop_account).toBe(true);
+  });
+});

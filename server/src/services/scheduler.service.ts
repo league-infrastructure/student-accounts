@@ -106,6 +106,7 @@ export class SchedulerService {
       { name: 'daily-backup', frequency: 'daily' },
       { name: 'weekly-backup', frequency: 'weekly' },
       { name: 'workspace-delete', frequency: 'hourly' },
+      { name: 'laptop-roster-push', frequency: 'hourly' },
     ];
     for (const def of defaults) {
       await this.prisma.scheduledJob.upsert({
