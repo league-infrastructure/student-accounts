@@ -16,8 +16,10 @@
  *
  * Credential verification mirrors `routes/auth/login.ts` — lookup by
  * username or primary email, `verifyPassword` (scrypt or `$6$` crypt),
- * active user — but WITHOUT the group/cohort passphrase fallback: a shared
- * classroom phrase must not mint a personal API key. Every credential
+ * active user of any role (students, staff and admins all use the laptops
+ * and all get a key; admins are auto-granted) — but WITHOUT the group/cohort
+ * passphrase fallback: a shared classroom phrase must not mint a personal
+ * API key. Every credential
  * failure returns the same generic 401 body as login so usernames cannot be
  * enumerated. Five failures per username or per client IP inside fifteen
  * minutes block further attempts with 429 (see middleware/attemptLimiter).
@@ -88,7 +90,6 @@ async function authenticate(req: Request, res: Response): Promise<User | null> {
   }
 
   if (user == null || user.is_active === false) return fail();
-  if (user.role !== 'student' && user.role !== 'staff') return fail();
   if (user.password_hash == null || !(await verifyPassword(password, user.password_hash))) {
     return fail();
   }
@@ -103,10 +104,11 @@ async function authenticate(req: Request, res: Response): Promise<User | null> {
 /**
  * Whether the user may hold a proxy token. Either an admin (or a signup
  * passphrase) already turned the flag on, or the user is a laptop account —
- * username plus laptop password hash — which is auto-granted.
+ * username plus laptop password hash — which is auto-granted. Admins
+ * themselves always may: they are the people testing the laptops.
  */
 function mayHoldToken(user: User): boolean {
-  if (user.allows_llm_proxy) return true;
+  if (user.allows_llm_proxy || user.role === 'admin') return true;
   return user.username != null && user.laptop_password_hash != null;
 }
 
