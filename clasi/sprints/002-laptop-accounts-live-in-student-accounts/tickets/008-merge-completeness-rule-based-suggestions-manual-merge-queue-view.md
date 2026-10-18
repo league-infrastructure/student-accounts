@@ -1,9 +1,12 @@
 ---
 id: 008
 title: Merge completeness, rule-based suggestions, manual merge, queue view
-status: open
-use-cases: [SUC-005]
-depends-on: ['003', '004']
+status: in-progress
+use-cases:
+- SUC-005
+depends-on:
+- '003'
+- '004'
 github-issue: ''
 issue: merge-handles-laptop-accounts-and-moves-everything.md
 completes_issue: true
