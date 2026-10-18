@@ -1,8 +1,9 @@
 ---
 id: 009
 title: Deployment docs drift and deploy runbook
-status: open
-use-cases: [SUC-008]
+status: in-progress
+use-cases:
+- SUC-008
 depends-on: []
 github-issue: ''
 issue: deploy-current-master-and-fix-deployment-docs.md
