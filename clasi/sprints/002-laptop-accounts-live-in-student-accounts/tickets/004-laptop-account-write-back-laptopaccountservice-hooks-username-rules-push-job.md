@@ -2,9 +2,13 @@
 id: '004'
 title: 'Laptop account write-back: LaptopAccountService, hooks, username rules, push
   job'
-status: open
-use-cases: [SUC-002, SUC-007]
-depends-on: ['001', '002']
+status: in-progress
+use-cases:
+- SUC-002
+- SUC-007
+depends-on:
+- '001'
+- '002'
 github-issue: ''
 issue: laptop-account-management-in-student-accounts.md
 completes_issue: false
