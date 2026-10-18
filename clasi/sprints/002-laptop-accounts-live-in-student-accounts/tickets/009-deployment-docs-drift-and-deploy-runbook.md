@@ -1,7 +1,7 @@
 ---
 id: 009
 title: Deployment docs drift and deploy runbook
-status: in-progress
+status: done
 use-cases:
 - SUC-008
 depends-on: []
@@ -19,13 +19,13 @@ Documentation only. Fix the deployment drift found in the 2026-10-17 review and 
 
 ## Acceptance Criteria
 
-- [ ] `docker-stack.yaml` header: says `student-accounts.jtlapp.net`, not `apps.jointheleague.org`.
-- [ ] `config/prod/secrets.env.example`: callback URLs use `student-accounts.jtlapp.net`.
-- [ ] `server/prisma/schema.prisma` comment on `LlmProxyToken`: forwards to OpenRouter (OpenAI Chat Completions, and the Anthropic-compatible endpoint planned for sprint 003), not "Anthropic Messages API".
-- [ ] `server/src/services/llm-proxy-token.service.ts` header: plaintext **is** stored in `token_plaintext` (and why), replacing "never persisted".
-- [ ] `README.md`: production database section states SQLite on a manager-pinned volume with the S3 backup job as the safety net, and that Postgres is supported but not used in prod; remove or correct the dual-adapter claim in the schema comment accordingly.
-- [ ] New `docs/deploy.md`: prerequisites (docker context `swarm1`, secrets synced via `npm run secrets-sync:prod`, `OPENROUTER_API_KEY` + `LLM_PROXY_MODEL_*` present), the exact commands (`npm run deploy:prod` / `scripts/up.sh prod`), smoke checks (`/api/health` version, `/proxy/v1/health` says `chat/completions`, `/proxy/v1/models` lists the three tiers, one authenticated `chat/completions` call increments `tokens_used`), rollback (redeploy previous `IMAGE_TAG`), and the new env/secrets this sprint adds (`DO_SPACES_*` already present for backups, `LAPTOP_ROSTER_BUCKET`, `LLM_PROXY_ANTHROPIC_ENABLED`).
-- [ ] `docs/deploy.md` also lists the one-time steps after deploy: run the laptop roster import (admin button) into "Botball 26", then "Push all laptop logins".
+- [x] `docker-stack.yaml` header: says `student-accounts.jtlapp.net`, not `apps.jointheleague.org`.
+- [x] `config/prod/secrets.env.example`: callback URLs use `student-accounts.jtlapp.net`.
+- [x] `server/prisma/schema.prisma` comment on `LlmProxyToken`: forwards to OpenRouter (OpenAI Chat Completions, and the Anthropic-compatible endpoint planned for sprint 003), not "Anthropic Messages API".
+- [x] `server/src/services/llm-proxy-token.service.ts` header: plaintext **is** stored in `token_plaintext` (and why), replacing "never persisted".
+- [x] `README.md`: production database section states SQLite on a manager-pinned volume with the S3 backup job as the safety net, and that Postgres is supported but not used in prod; remove or correct the dual-adapter claim in the schema comment accordingly.
+- [x] New `docs/deploy.md`: prerequisites (docker context `swarm1`, secrets synced via `npm run secrets-sync:prod`, `OPENROUTER_API_KEY` + `LLM_PROXY_MODEL_*` present), the exact commands (`npm run deploy:prod` / `scripts/up.sh prod`), smoke checks (`/api/health` version, `/proxy/v1/health` says `chat/completions`, `/proxy/v1/models` lists the three tiers, one authenticated `chat/completions` call increments `tokens_used`), rollback (redeploy previous `IMAGE_TAG`), and the new env/secrets this sprint adds (`DO_SPACES_*` already present for backups, `LAPTOP_ROSTER_BUCKET`, `LLM_PROXY_ANTHROPIC_ENABLED`).
+- [x] `docs/deploy.md` also lists the one-time steps after deploy: run the laptop roster import (admin button) into "Botball 26", then "Push all laptop logins".
 
 ## Testing
 

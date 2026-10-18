@@ -3,7 +3,7 @@
  *
  * Responsibilities:
  *  - Grant a new token: generate an opaque random string, hash it (SHA-256),
- *    persist the hash + metadata, return the plaintext exactly once.
+ *    persist the hash, the plaintext and metadata, return the plaintext.
  *  - Revoke the active token for a user.
  *  - Validate a bearer token on the proxy hot path: hash lookup, revocation
  *    check, expiration check, hard quota cut-off.
@@ -18,9 +18,16 @@
  *    revoked, or expired.
  *  - LlmProxyTokenQuotaExceededError (429) — token's quota is exhausted.
  *
- * Security invariants:
- *  - The plaintext token is never persisted. It is generated in memory,
- *    returned to the caller of `grant()` exactly once, and discarded.
+ * Storage of the plaintext:
+ *  - The plaintext IS persisted, in `LlmProxyToken.token_plaintext`, next to
+ *    the SHA-256 hash that the proxy hot path looks up. It is stored so the
+ *    student can read their token again on the Account page and so the League
+ *    laptops can fetch the same token at every login through
+ *    POST /api/fleet/llm-token (`ensureActive`) instead of minting a new one
+ *    each time. These tokens are quota-capped, expire, and are scoped to
+ *    classroom use, so the trade-off is deliberate. Rows created before the
+ *    column existed have NULL and get a fresh token on the next `ensureActive`.
+ *    Validation still uses only `token_hash`.
  *  - The token format is `llmp_<base64url(randomBytes(32))>`. The prefix
  *    aids identification in logs/pastes and does not affect validation.
  */
