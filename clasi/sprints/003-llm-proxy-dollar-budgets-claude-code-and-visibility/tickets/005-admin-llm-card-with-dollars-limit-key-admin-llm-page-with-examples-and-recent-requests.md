@@ -2,9 +2,12 @@
 id: '005'
 title: 'Admin: LLM card with dollars, limit, key; admin LLM page with examples and
   recent requests'
-status: open
-use-cases: [SUC-004, SUC-005]
-depends-on: ['004']
+status: in-progress
+use-cases:
+- SUC-004
+- SUC-005
+depends-on:
+- '004'
 github-issue: ''
 issue: admin-llm-usage-visibility-and-dollar-limits.md
 completes_issue: true
