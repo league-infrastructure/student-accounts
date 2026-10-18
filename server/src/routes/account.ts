@@ -282,6 +282,10 @@ accountRouter.patch(
         data: update,
       });
       adminBus.notify('users');
+      // The laptop roster entry carries the display name; never throws.
+      if (update.display_name !== undefined) {
+        await req.services.laptopAccounts.reconcile(userId, userId);
+      }
       res.json({
         ok: true,
         displayName: updated.display_name,
@@ -358,6 +362,8 @@ accountRouter.post(
         },
       });
       adminBus.notify('users');
+      // The laptop roster entry carries the display name; never throws.
+      await req.services.laptopAccounts.reconcile(userId, userId);
       res.json({ ok: true });
     } catch (err) {
       next(err);
@@ -433,6 +439,10 @@ accountRouter.get(
 //   DB and sets allowFirstTimeSetup=true. On success a passphrase Login row is
 //   created (provider='username', provider_user_id='self:<userId>:<username>')
 //   if one does not already exist.
+//
+// Laptop accounts (sprint 002 T004): UserService.updateCredentials stores the
+// SHA-512 crypt hash alongside scrypt, applies the laptop username rules when
+// allows_laptop_account is on, and reconciles the roster entry (never throws).
 accountRouter.patch(
   '/account/credentials',
   requireAuth,

@@ -5,18 +5,20 @@
  * time-limited passphrase tied to a Group or Cohort scope.
  *
  * Algorithm:
- *  1. Validate inputs: username, passphrase, password, displayName, email.
+ *  1. Validate inputs: username (laptop roster rules, sprint 002 T004),
+ *     passphrase, password, displayName, email.
  *  2. Look up the passphrase via PassphraseService.findBySignupValue.
- *  3. Check username uniqueness.
+ *  3. Check username uniqueness here and on the laptop roster.
  *  4. Validate email uniqueness.
- *  5. Hash the password (not the passphrase).
+ *  5. Hash the password (not the passphrase): scrypt for this app plus the
+ *     SHA-512 crypt form for the laptop roster.
  *  6. Create User + Login in a single transaction.
- *     - User: username, password_hash, display_name=displayName, primary_email=email,
- *       onboarding_completed=true.
+ *     - User: username, password_hash, laptop_password_hash,
+ *       display_name=displayName, primary_email=email, onboarding_completed=true.
  *     - Login: provider='username', provider_email=email, provider_username=username.
  *  7. Set session.
- *  8. Fail-soft side effects: workspace provisioning, LLM proxy grant,
- *     group membership.
+ *  8. Fail-soft side effects: laptop roster write-back, workspace
+ *     provisioning, LLM proxy grant, group membership.
  *  9. Notify adminBus.
  * 10. Return 200 with user details.
  */
@@ -24,9 +26,14 @@
 import type { Request, Response } from 'express';
 import { prisma } from '../prisma.js';
 import { classifyEmailOwnership } from './email-ownership.js';
-import { hashPassword } from '../../utils/password.js';
+import { hashPassword, makeCryptHash } from '../../utils/password.js';
 import { adminBus } from '../change-bus.js';
 import { AuditService } from '../audit.service.js';
+import { isValidRosterId } from '../laptop/roster-ids.js';
+import {
+  LAPTOP_USERNAME_RULES_MESSAGE,
+  LAPTOP_USERNAME_TAKEN_MESSAGE,
+} from '../laptop/laptop-account.service.js';
 
 const auditService = new AuditService();
 
@@ -34,20 +41,16 @@ const auditService = new AuditService();
 // Username validation helpers
 // ---------------------------------------------------------------------------
 
-const USERNAME_RE = /^[a-z0-9._-]+$/;
-const USERNAME_MIN = 2;
-const USERNAME_MAX = 32;
-
-function validateUsername(raw: string): { valid: true; username: string } | { valid: false; error: string } {
-  if (typeof raw !== 'string' || !raw) {
-    return { valid: false, error: 'Username must be 2–32 characters; letters, numbers, dots, dashes, underscores only' };
-  }
-  const username = raw.trim().toLowerCase();
-  if (username.length < USERNAME_MIN || username.length > USERNAME_MAX) {
-    return { valid: false, error: 'Username must be 2–32 characters; letters, numbers, dots, dashes, underscores only' };
-  }
-  if (!USERNAME_RE.test(username)) {
-    return { valid: false, error: 'Username must be 2–32 characters; letters, numbers, dots, dashes, underscores only' };
+/**
+ * New accounts get a laptop login by default (`allows_laptop_account` is
+ * true), so the username must work as a laptop roster id: 3–32 chars of
+ * `[a-z0-9-]`, starting with a letter or digit, not a reserved system name.
+ * Case is not folded: Unix logins are case-sensitive.
+ */
+function validateUsername(raw: unknown): { valid: true; username: string } | { valid: false; error: string } {
+  const username = typeof raw === 'string' ? raw.trim() : '';
+  if (!isValidRosterId(username)) {
+    return { valid: false, error: LAPTOP_USERNAME_RULES_MESSAGE };
   }
   return { valid: true, username };
 }
@@ -111,6 +114,12 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
     res.status(409).json({ error: 'That username is already taken' });
     return;
   }
+  // A laptop account that was never imported must not be taken over here.
+  const laptopAccounts = (req as any).services?.laptopAccounts;
+  if (laptopAccounts && (await laptopAccounts.rosterIdTakenByOther(username, null))) {
+    res.status(409).json({ error: LAPTOP_USERNAME_TAKEN_MESSAGE });
+    return;
+  }
 
   // ------------------------------------------------------------------
   // 4. Check email uniqueness across all users / logins / external accts.
@@ -123,9 +132,11 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
   }
 
   // ------------------------------------------------------------------
-  // 5. Hash the password (not the passphrase)
+  // 5. Hash the password (not the passphrase): scrypt for this app and
+  //    SHA-512 crypt for the laptop roster (only possible with the plaintext).
   // ------------------------------------------------------------------
   const hashedPassword = await hashPassword(password);
+  const laptopPasswordHash = makeCryptHash(password);
 
   // ------------------------------------------------------------------
   // 6. Create User + Login in a single transaction
@@ -137,6 +148,7 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
         data: {
           username,
           password_hash: hashedPassword,
+          laptop_password_hash: laptopPasswordHash,
           display_name: normalizedDisplayName,
           primary_email: normalizedEmail,
           role: 'student',
@@ -190,6 +202,12 @@ export async function handlePassphraseSignup(req: Request, res: Response): Promi
   // ------------------------------------------------------------------
   // 8. Fail-soft side effects
   // ------------------------------------------------------------------
+
+  // Laptop roster write-back. reconcile() never throws; a failure marks the
+  // user dirty for the hourly push job.
+  if (laptopAccounts) {
+    await laptopAccounts.reconcile(newUser.id, newUser.id);
+  }
 
   // Workspace provisioning (cohort scope)
   let workspaceResult: { provisioned: boolean; error?: string } | undefined;

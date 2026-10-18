@@ -56,6 +56,7 @@ import {
   type RosterClient,
 } from './laptop/laptop-roster.client';
 import { LaptopRosterImportService } from './laptop/laptop-roster-import.service';
+import { LaptopAccountService } from './laptop/laptop-account.service';
 
 // Infrastructure services
 import { SchedulerService } from './scheduler.service';
@@ -116,6 +117,8 @@ export class ServiceRegistry {
   readonly laptopRoster: RosterClient;
   /** One-time import of the laptop roster into a group (sprint 002 T003). */
   readonly laptopRosterImport: LaptopRosterImportService;
+  /** Laptop login write-back: reconcile() after credential/flag/status changes, pushAll() (sprint 002 T004). */
+  readonly laptopAccounts: LaptopAccountService;
 
   private constructor(
     source: ServiceSource = 'UI',
@@ -126,7 +129,21 @@ export class ServiceRegistry {
     // MailService — Sprint 028 T001. Reads env directly; never throws.
     this.mail = new MailService();
     this.audit = new AuditService();
-    this.users = new UserService(defaultPrisma, this.audit);
+
+    // LaptopRosterClient — sprint 002 (laptop accounts) T002. Like
+    // BackupService, reads DO_SPACES_* from env at construction (the config
+    // cache is not loaded yet). Without a key, a stub throws on first use.
+    this.laptopRoster = process.env.DO_SPACES_KEY
+      ? new LaptopRosterClient({
+          bucket: process.env.LAPTOP_ROSTER_BUCKET || DEFAULT_LAPTOP_ROSTER_BUCKET,
+        })
+      : new UnconfiguredLaptopRosterClient();
+
+    // LaptopAccountService — sprint 002 T004. Built before UserService, which
+    // calls reconcile() after every credential change.
+    this.laptopAccounts = new LaptopAccountService(this.laptopRoster, defaultPrisma, this.audit);
+
+    this.users = new UserService(defaultPrisma, this.audit, this.laptopAccounts);
     this.logins = new LoginService(defaultPrisma, this.audit);
     this.externalAccounts = new ExternalAccountService(defaultPrisma, this.audit);
     this.mergeSuggestions = new MergeSuggestionService(defaultPrisma);
@@ -275,15 +292,6 @@ export class ServiceRegistry {
 
     // OAuthConsentService — Sprint 019.
     this.oauthConsents = new OAuthConsentService(defaultPrisma);
-
-    // LaptopRosterClient — sprint 002 (laptop accounts) T002. Like
-    // BackupService, reads DO_SPACES_* from env at construction (the config
-    // cache is not loaded yet). Without a key, a stub throws on first use.
-    this.laptopRoster = process.env.DO_SPACES_KEY
-      ? new LaptopRosterClient({
-          bucket: process.env.LAPTOP_ROSTER_BUCKET || DEFAULT_LAPTOP_ROSTER_BUCKET,
-        })
-      : new UnconfiguredLaptopRosterClient();
 
     // LaptopRosterImportService — sprint 002 (laptop accounts) T003.
     this.laptopRosterImport = new LaptopRosterImportService(

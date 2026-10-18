@@ -180,6 +180,13 @@ model User {
   allows_llm_proxy      Boolean @default(false)
   allows_league_account Boolean @default(false)
 
+  /** Laptop login (sprint 002 "laptop accounts"). On by default; admins can
+   *  switch it off per user. When off, the roster entry is locked (`!`). */
+  allows_laptop_account Boolean @default(true)
+  /** True when the last laptop roster write for this user failed; the hourly
+   *  `laptop-roster-push` job retries dirty rows. */
+  laptop_roster_dirty   Boolean @default(false)
+
   @@index([role])
   @@index([cohort_id])
 }

@@ -17,13 +17,26 @@ import { LoginRepository } from './repositories/login.repository.js';
 import { ExternalAccountRepository } from './repositories/external-account.repository.js';
 import type { User } from '../generated/prisma/client.js';
 import type { FindAllUsersFilter } from './repositories/user.repository.js';
-import { hashPassword, verifyPassword } from '../utils/password.js';
+import { hashPassword, makeCryptHash, verifyPassword } from '../utils/password.js';
 import { Prisma } from '../generated/prisma/client.js';
+import {
+  LAPTOP_USERNAME_RULES_MESSAGE,
+  LAPTOP_USERNAME_TAKEN_MESSAGE,
+  type LaptopAccountService,
+} from './laptop/laptop-account.service.js';
+import { isValidRosterId } from './laptop/roster-ids.js';
 
 export class UserService {
   constructor(
     private prisma: any,
     private audit: AuditService,
+    /**
+     * Laptop roster write-back (sprint 002 T004). Optional so older tests
+     * can construct the service without it; when absent, credential changes
+     * do not touch the roster and the roster-ownership username check is
+     * skipped (the shape rules still apply).
+     */
+    private laptopAccounts?: LaptopAccountService,
   ) {}
 
   /**
@@ -171,7 +184,11 @@ export class UserService {
    *    verifying the user has no credentials at all).
    *  - At least one of username or newPassword must be provided.
    *  - Empty/whitespace-only newPassword is a ValidationError (400).
+   *  - Username shape follows `validateUsername` (laptop rules by default).
    *  - Username uniqueness is enforced by the DB unique constraint (→ ConflictError).
+   *  - A new password is stored twice: scrypt in `password_hash` and SHA-512
+   *    crypt in `laptop_password_hash` for the laptop roster (sprint 002 T004).
+   *  - After the write the laptop roster is reconciled; that never throws.
    *
    * @returns { id, username } — never exposes password_hash.
    */
@@ -210,27 +227,23 @@ export class UserService {
       }
     }
 
-    // 4. Build the update payload.
+    // 4. Build the update payload (username rules first: no hashing for a
+    //    request that is going to be rejected anyway).
     const data: Record<string, unknown> = {};
+    if (hasUsername) {
+      data['username'] = await this.validateUsername(patch.username ?? '', user);
+    }
     if (hasNewPassword) {
       data['password_hash'] = await hashPassword(patch.newPassword!);
-    }
-    if (hasUsername) {
-      const trimmed = (patch.username ?? '').trim().toLowerCase();
-      if (trimmed.length < 2 || trimmed.length > 32) {
-        throw new ValidationError('Username must be 2–32 characters');
-      }
-      if (!/^[a-z0-9._-]+$/.test(trimmed)) {
-        throw new ValidationError(
-          'Username must contain only letters, numbers, dots, dashes, underscores',
-        );
-      }
-      data['username'] = trimmed;
+      // The plaintext is only in hand here, so the laptop roster's crypt
+      // form is computed now and kept for later rewrites (push-all, merges).
+      data['laptop_password_hash'] = makeCryptHash(patch.newPassword!);
     }
 
     // 5. Update and record audit event atomically.
+    let result: { id: number; username: string | null };
     try {
-      return await this.prisma.$transaction(async (tx: any) => {
+      result = await this.prisma.$transaction(async (tx: any) => {
         const updated = await tx.user.update({ where: { id: userId }, data });
         await this.audit.record(tx, {
           actor_user_id: userId,
@@ -254,6 +267,49 @@ export class UserService {
       }
       throw err;
     }
+
+    // 6. Write-back to the laptop roster. Never throws: a failure marks the
+    //    user dirty and the hourly laptop-roster-push job retries.
+    if (this.laptopAccounts) await this.laptopAccounts.reconcile(userId, userId);
+
+    return result;
+  }
+
+  /**
+   * Normalise and validate a username for `user` (sprint 002 T004).
+   *
+   * With `allows_laptop_account` on (the default) the laptop rules apply so
+   * the same name works at a laptop login screen: `isValidRosterId` (3–32
+   * chars of `[a-z0-9-]`, starting with a letter or digit, not a reserved
+   * system name; case is NOT folded, Unix logins are case-sensitive) and the
+   * roster must not already hold that id for somebody else. With the flag
+   * off the legacy rules apply: 2–32 chars of `[a-z0-9._-]`, lower-cased.
+   *
+   * @throws ValidationError (400) on shape, ConflictError (409) when the
+   *         roster id belongs to another account.
+   */
+  async validateUsername(
+    raw: string,
+    user: { id: number | null; allows_laptop_account?: boolean },
+  ): Promise<string> {
+    const trimmed = (raw ?? '').trim();
+    if (user.allows_laptop_account ?? true) {
+      if (!isValidRosterId(trimmed)) throw new ValidationError(LAPTOP_USERNAME_RULES_MESSAGE);
+      if (this.laptopAccounts && (await this.laptopAccounts.rosterIdTakenByOther(trimmed, user.id))) {
+        throw new ConflictError(LAPTOP_USERNAME_TAKEN_MESSAGE);
+      }
+      return trimmed;
+    }
+    const lower = trimmed.toLowerCase();
+    if (lower.length < 2 || lower.length > 32) {
+      throw new ValidationError('Username must be 2–32 characters');
+    }
+    if (!/^[a-z0-9._-]+$/.test(lower)) {
+      throw new ValidationError(
+        'Username must contain only letters, numbers, dots, dashes, underscores',
+      );
+    }
+    return lower;
   }
 
   // -------------------------------------------------------------------------
@@ -326,7 +382,7 @@ export class UserService {
    * Atomically update one or more per-user permission flags and record a
    * `user_permission_changed` audit event in the same transaction.
    *
-   * Any combination of the three boolean fields may be included in `patch`;
+   * Any combination of the four boolean fields may be included in `patch`;
    * omitted fields are left unchanged.  If `patch` is empty the User row is
    * still read so the current permission state can be returned, but no write
    * is issued.
@@ -335,6 +391,8 @@ export class UserService {
    * flag that is `true` when `allows_league_account` transitioned from `false`
    * to `true` in this call.  The caller (route handler) uses this to decide
    * whether to trigger `provisionUserIfNeeded` as a fail-soft side-effect.
+   * `laptopAccountChanged` tells the caller to reconcile the laptop roster
+   * (sprint 002 T004).
    *
    * @param userId  - Target user primary key.
    * @param patch   - Partial permission update; at least one field is typical.
@@ -347,15 +405,18 @@ export class UserService {
       allows_oauth_client?: boolean;
       allows_llm_proxy?: boolean;
       allows_league_account?: boolean;
+      allows_laptop_account?: boolean;
     },
     actorId: number | null = null,
   ): Promise<{
     allowsOauthClient: boolean;
     allowsLlmProxy: boolean;
     allowsLeagueAccount: boolean;
+    allowsLaptopAccount: boolean;
     leagueAccountFlipped: boolean;
     llmProxyFlipped: boolean;
     llmProxyUnflipped: boolean;
+    laptopAccountChanged: boolean;
   }> {
     const user = await UserRepository.findByIdIncludingInactive(this.prisma, userId);
     if (!user) throw new NotFoundError(`User ${userId} not found`);
@@ -363,12 +424,14 @@ export class UserService {
     const hasChanges =
       patch.allows_oauth_client !== undefined ||
       patch.allows_llm_proxy !== undefined ||
-      patch.allows_league_account !== undefined;
+      patch.allows_league_account !== undefined ||
+      patch.allows_laptop_account !== undefined;
 
     const before = {
       allows_oauth_client: (user as any).allows_oauth_client as boolean,
       allows_llm_proxy: (user as any).allows_llm_proxy as boolean,
       allows_league_account: (user as any).allows_league_account as boolean,
+      allows_laptop_account: (user as any).allows_laptop_account as boolean,
     };
 
     if (!hasChanges) {
@@ -377,9 +440,11 @@ export class UserService {
         allowsOauthClient: before.allows_oauth_client,
         allowsLlmProxy: before.allows_llm_proxy,
         allowsLeagueAccount: before.allows_league_account,
+        allowsLaptopAccount: before.allows_laptop_account,
         leagueAccountFlipped: false,
         llmProxyFlipped: false,
         llmProxyUnflipped: false,
+        laptopAccountChanged: false,
       };
     }
 
@@ -387,6 +452,7 @@ export class UserService {
       allows_oauth_client: patch.allows_oauth_client ?? before.allows_oauth_client,
       allows_llm_proxy: patch.allows_llm_proxy ?? before.allows_llm_proxy,
       allows_league_account: patch.allows_league_account ?? before.allows_league_account,
+      allows_laptop_account: patch.allows_laptop_account ?? before.allows_laptop_account,
     };
 
     await this.prisma.$transaction(async (tx: any) => {
@@ -405,14 +471,17 @@ export class UserService {
       !before.allows_league_account && after.allows_league_account;
     const llmProxyFlipped = !before.allows_llm_proxy && after.allows_llm_proxy;
     const llmProxyUnflipped = before.allows_llm_proxy && !after.allows_llm_proxy;
+    const laptopAccountChanged = before.allows_laptop_account !== after.allows_laptop_account;
 
     return {
       allowsOauthClient: after.allows_oauth_client,
       allowsLlmProxy: after.allows_llm_proxy,
       allowsLeagueAccount: after.allows_league_account,
+      allowsLaptopAccount: after.allows_laptop_account,
       leagueAccountFlipped,
       llmProxyFlipped,
       llmProxyUnflipped,
+      laptopAccountChanged,
     };
   }
 }

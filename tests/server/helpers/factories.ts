@@ -60,6 +60,12 @@ export async function makeUser(
     allows_oauth_client: boolean;
     allows_llm_proxy: boolean;
     allows_league_account: boolean;
+    allows_laptop_account: boolean;
+    laptop_roster_dirty: boolean;
+    is_active: boolean;
+    username: string | null;
+    password_hash: string | null;
+    laptop_password_hash: string | null;
   }> = {},
 ): Promise<User> {
   const n = seq();
