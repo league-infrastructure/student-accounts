@@ -1,9 +1,11 @@
 ---
 id: '003'
 title: Anthropic-compatible /proxy/v1/messages passthrough for Claude Code
-status: open
-use-cases: [SUC-002]
-depends-on: ['002']
+status: in-progress
+use-cases:
+- SUC-002
+depends-on:
+- '002'
 github-issue: ''
 issue: anthropic-compatible-proxy-endpoint-for-claude-code.md
 completes_issue: true
