@@ -28,6 +28,22 @@ import { accountEventsRouter } from './account-events.js';
 import { LoginRepository } from '../services/repositories/login.repository.js';
 import { classifyEmailOwnership } from '../services/auth/email-ownership.js';
 import type { LaptopLoginView } from '../services/laptop/laptop-account.service.js';
+import { anthropicProxyEnabled } from './llm-proxy.js';
+
+/**
+ * Anthropic-compatible surface advertised to the student (sprint 003 ticket
+ * 003). `anthropicEndpoint` is the ANTHROPIC_BASE_URL value — the same
+ * `<scheme>://<host>/proxy` base as `endpoint`; the Anthropic SDK appends
+ * /v1/messages itself. Null while LLM_PROXY_ANTHROPIC_ENABLED is off so the
+ * client can hide the Claude Code example.
+ */
+function anthropicFields(endpoint: string): {
+  anthropicEnabled: boolean;
+  anthropicEndpoint: string | null;
+} {
+  const anthropicEnabled = anthropicProxyEnabled();
+  return { anthropicEnabled, anthropicEndpoint: anthropicEnabled ? endpoint : null };
+}
 
 export const accountRouter = Router();
 
@@ -126,11 +142,13 @@ accountRouter.get(
         : 'http';
     const host = req.header('x-forwarded-host') ?? req.get('host') ?? 'localhost';
     // Dollar fields (sprint 003) come from the same budgetSummary the admin
-    // and fleet payloads use, so every view agrees.
+    // and fleet payloads use, so every view agrees. anthropicEnabled /
+    // anthropicEndpoint mirror GET /account/llm-proxy (ticket 003).
     const llmProxy = llmActive
       ? {
           token: (llmActive as any).token_plaintext ?? null,
           endpoint: `${scheme}://${host}/proxy`,
+          ...anthropicFields(`${scheme}://${host}/proxy`),
           ...llmProxyTokens.budgetSummary(llmActive),
         }
       : null;
@@ -454,13 +472,14 @@ accountRouter.get(
     const tokens = req.services.llmProxyTokens;
     const active = await tokens.getActiveForUser(userId);
     if (!active) {
-      return res.json({ enabled: false, endpoint });
+      return res.json({ enabled: false, endpoint, ...anthropicFields(endpoint) });
     }
 
     // budgetUsd / spentUsd / spentUsdTotal / periodResetsAt (sprint 003).
     return res.json({
       enabled: true,
       endpoint,
+      ...anthropicFields(endpoint),
       token: (active as any).token_plaintext ?? null,
       tokensUsed: active.tokens_used,
       tokenLimit: active.token_limit,

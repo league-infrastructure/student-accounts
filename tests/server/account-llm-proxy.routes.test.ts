@@ -114,6 +114,9 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     expect(res.body.enabled).toBe(false);
     expect(typeof res.body.endpoint).toBe('string');
     expect(res.body.endpoint).toMatch(/\/proxy$/);
+    // Sprint 003 ticket 003: the Anthropic surface is on by default.
+    expect(res.body.anthropicEnabled).toBe(true);
+    expect(res.body.anthropicEndpoint).toBe(res.body.endpoint);
     expect(res.body).not.toHaveProperty('token');
     expect(res.body).not.toHaveProperty('tokenHash');
   });
@@ -137,6 +140,8 @@ describe('GET /api/account/llm-proxy — response shape', () => {
     expect(res.body.requestCount).toBe(0);
     expect(typeof res.body.endpoint).toBe('string');
     expect(res.body.endpoint).toMatch(/\/proxy$/);
+    expect(res.body.anthropicEnabled).toBe(true);
+    expect(res.body.anthropicEndpoint).toBe(res.body.endpoint);
     // Plaintext token is surfaced so the student can see and use it.
     expect(res.body.token).toBe(granted);
     expect(res.body).not.toHaveProperty('tokenHash');
@@ -194,6 +199,10 @@ describe('GET /api/account/llm-proxy and GET /api/account — budget fields', ()
     });
     expect(typeof account.body.profile.llmProxy.token).toBe('string');
     expect(account.body.profile.llmProxy.endpoint).toMatch(/\/proxy$/);
+    expect(account.body.profile.llmProxy.anthropicEnabled).toBe(true);
+    expect(account.body.profile.llmProxy.anthropicEndpoint).toBe(
+      account.body.profile.llmProxy.endpoint,
+    );
   });
 
   it('a legacy token (budget_usd null) reports budgetUsd null', async () => {
@@ -208,5 +217,53 @@ describe('GET /api/account/llm-proxy and GET /api/account — budget fields', ()
     expect(res.status).toBe(200);
     expect(res.body.budgetUsd).toBeNull();
     expect(res.body.tokenLimit).toBe(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Anthropic surface flag (sprint 003 ticket 003, SUC-002)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/account/llm-proxy — anthropicEnabled / anthropicEndpoint', () => {
+  afterEach(() => {
+    delete process.env.LLM_PROXY_ANTHROPIC_ENABLED;
+  });
+
+  it('reports the proxy base as anthropicEndpoint when enabled, derived from the forwarded host', async () => {
+    const res = await studentAgent
+      .get('/api/account/llm-proxy')
+      .set('X-Forwarded-Proto', 'https')
+      .set('X-Forwarded-Host', 'accounts.example.org');
+    expect(res.status).toBe(200);
+    expect(res.body.endpoint).toBe('https://accounts.example.org/proxy');
+    expect(res.body.anthropicEnabled).toBe(true);
+    expect(res.body.anthropicEndpoint).toBe('https://accounts.example.org/proxy');
+  });
+
+  it('reports anthropicEnabled false and a null anthropicEndpoint when LLM_PROXY_ANTHROPIC_ENABLED is "false"', async () => {
+    process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'false';
+    const admin = await makeUser({ role: 'admin' });
+    await registry.llmProxyTokens.grant(
+      studentId,
+      { expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
+      admin.id,
+    );
+
+    const res = await studentAgent.get('/api/account/llm-proxy');
+    expect(res.status).toBe(200);
+    expect(res.body.enabled).toBe(true);
+    expect(res.body.anthropicEnabled).toBe(false);
+    expect(res.body.anthropicEndpoint).toBeNull();
+    expect(res.body.endpoint).toMatch(/\/proxy$/);
+
+    // The GET /api/account mirror agrees.
+    const account = await studentAgent.get('/api/account');
+    expect(account.body.profile.llmProxy.anthropicEnabled).toBe(false);
+    expect(account.body.profile.llmProxy.anthropicEndpoint).toBeNull();
+
+    // And the disabled shape carries the fields too.
+    await registry.llmProxyTokens.revoke(studentId, admin.id);
+    const off = await studentAgent.get('/api/account/llm-proxy');
+    expect(off.body).toMatchObject({ enabled: false, anthropicEnabled: false, anthropicEndpoint: null });
   });
 });

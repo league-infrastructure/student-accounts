@@ -33,9 +33,12 @@ export const CONFIG_KEYS: ConfigKeyMeta[] = [
   { key: 'LLM_PROXY_MODEL_LARGE', group: 'LLM Proxy', label: 'Large Model', isSecret: false, requiresRestart: false },
   { key: 'LLM_PROXY_MODEL_MEDIUM', group: 'LLM Proxy', label: 'Medium Model', isSecret: false, requiresRestart: false },
   { key: 'LLM_PROXY_MODEL_SMALL', group: 'LLM Proxy', label: 'Small Model', isSecret: false, requiresRestart: false },
-  // 'true' once the Anthropic-compatible endpoint ships (sprint 003); the fleet
-  // token endpoint then advertises anthropic_base_url to the laptops.
-  { key: 'LLM_PROXY_ANTHROPIC_ENABLED', group: 'LLM Proxy', label: 'Anthropic Endpoint Enabled', isSecret: false, requiresRestart: false, defaultValue: 'false' },
+  // Anthropic-compatible passthrough for Claude Code (sprint 003 ticket 003):
+  // POST /proxy/v1/messages → OpenRouter's Anthropic-shaped endpoint. On by
+  // default; set 'false' to hide the route (404) and stop the fleet and account
+  // payloads from advertising anthropic_base_url / anthropicEndpoint.
+  { key: 'LLM_PROXY_ANTHROPIC_ENABLED', group: 'LLM Proxy', label: 'Anthropic Endpoint Enabled', isSecret: false, requiresRestart: false, defaultValue: 'true' },
+  { key: 'LLM_PROXY_ANTHROPIC_BASE_URL', group: 'LLM Proxy', label: 'Anthropic Messages URL', isSecret: false, requiresRestart: false, defaultValue: 'https://openrouter.ai/api/v1/messages' },
   // Monthly dollar budget given to new tokens (sprint 003). Admins change a
   // single token's budget with PATCH /api/admin/llm-proxy/tokens/:id.
   { key: 'LLM_PROXY_DEFAULT_BUDGET_USD', group: 'LLM Proxy', label: 'Default Monthly Budget (USD)', isSecret: false, requiresRestart: false, defaultValue: '5' },

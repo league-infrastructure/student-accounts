@@ -27,14 +27,14 @@ const forwarderState = {
 };
 
 /** The report a real forwarder would produce for `req`, with test overrides. */
-function fakeReport(req: any): UsageReport {
+function fakeReport(req: any, protocol: UsageReport['protocol']): UsageReport {
   return {
     inputTokens: 5,
     outputTokens: 7,
     costUsd: null,
     modelRequested: typeof req.body?.model === 'string' ? req.body.model : null,
     modelSent: 'deepseek/deepseek-v4-flash',
-    protocol: 'openai',
+    protocol,
     status: 200,
     ...(forwarderState.lastUsage ?? {}),
   };
@@ -45,7 +45,12 @@ const fakeForwarder = {
   forwardMessages: vi.fn(async (req: any, res: any, opts: any) => {
     forwarderState.onForward(req, res, opts);
     // Call onUsage from the fake so the recordUsage path is exercised.
-    opts.onUsage(fakeReport(req));
+    opts.onUsage(fakeReport(req, 'openai'));
+  }),
+  // Anthropic path (sprint 003 ticket 003) — same contract, protocol tag differs.
+  forwardAnthropicMessages: vi.fn(async (req: any, res: any, opts: any) => {
+    forwarderState.onForward(req, res, opts);
+    opts.onUsage(fakeReport(req, 'anthropic'));
   }),
 };
 
@@ -72,7 +77,10 @@ async function wipeTestState() {
   await (prisma as any).cohort.deleteMany();
 }
 
+// LLM_PROXY_ANTHROPIC_ENABLED defaults to 'true' (config.ts); tests that need
+// the surface off set the env var to 'false' (env wins over DB and default).
 beforeEach(async () => {
+  delete process.env.LLM_PROXY_ANTHROPIC_ENABLED;
   forwarderState.configured = true;
   forwarderState.onForward = (_req, res, _opts) => {
     res.status(200).json({ ok: true, usage: { input_tokens: 5, output_tokens: 7 } });
@@ -83,6 +91,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  delete process.env.LLM_PROXY_ANTHROPIC_ENABLED;
   await wipeTestState();
 });
 
@@ -122,6 +131,14 @@ describe('GET /proxy/v1/health', () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.endpoint).toBe('/proxy/v1/chat/completions');
+    expect(res.body.anthropicEndpoint).toBe('/proxy/v1/messages');
+  });
+
+  it('omits anthropicEndpoint when the Anthropic surface is disabled', async () => {
+    process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'false';
+    const res = await request(app).get('/proxy/v1/health');
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('anthropicEndpoint');
   });
 });
 
@@ -163,8 +180,43 @@ describe('GET /proxy — base-URL info', () => {
     expect(res.body.base).toMatch(/\/proxy$/);
     expect(res.body.openaiBaseUrl).toMatch(/\/proxy\/v1$/);
     expect(res.body.chatCompletions).toMatch(/\/proxy\/v1\/chat\/completions$/);
+    expect(res.body.models).toMatch(/\/proxy\/v1\/models$/);
+    expect(res.body.health).toMatch(/\/proxy\/v1\/health$/);
+  });
+
+  it('lists both protocols and the Claude Code env vars when the Anthropic surface is on (default)', async () => {
+    const res = await request(app)
+      .get('/proxy')
+      .set('X-Forwarded-Proto', 'https')
+      .set('X-Forwarded-Host', 'accounts.example.org');
+    expect(res.status).toBe(200);
+    expect(res.body.base).toBe('https://accounts.example.org/proxy');
+    expect(res.body.protocols).toEqual(['openai', 'anthropic']);
+    expect(res.body.anthropicEnabled).toBe(true);
+    expect(res.body.anthropicBaseUrl).toBe('https://accounts.example.org/proxy');
+    expect(res.body.messages).toBe('https://accounts.example.org/proxy/v1/messages');
+    expect(res.body.env.openai).toEqual({
+      OPENAI_BASE_URL: 'https://accounts.example.org/proxy/v1',
+      OPENAI_API_KEY: '<your llmp_ token>',
+    });
+    expect(res.body.env.anthropic).toEqual({
+      ANTHROPIC_BASE_URL: 'https://accounts.example.org/proxy',
+      ANTHROPIC_AUTH_TOKEN: '<your llmp_ token>',
+      ANTHROPIC_API_KEY: '',
+    });
+    expect(res.body.note).toMatch(/ANTHROPIC_BASE_URL/);
+  });
+
+  it('lists only the OpenAI protocol when LLM_PROXY_ANTHROPIC_ENABLED is "false"', async () => {
+    process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'false';
+    const res = await request(app).get('/proxy');
+    expect(res.status).toBe(200);
+    expect(res.body.protocols).toEqual(['openai']);
+    expect(res.body.anthropicEnabled).toBe(false);
     expect(res.body).not.toHaveProperty('anthropicBaseUrl');
     expect(res.body).not.toHaveProperty('messages');
+    expect(res.body.env).not.toHaveProperty('anthropic');
+    expect(res.body.note).not.toMatch(/ANTHROPIC_BASE_URL/);
   });
 });
 
@@ -442,15 +494,233 @@ describe('/proxy/v1/chat/completions — other methods', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Old /messages path returns 404
+// POST /proxy/v1/messages — Anthropic protocol (sprint 003 ticket 003)
 // ---------------------------------------------------------------------------
 
-describe('/proxy/v1/messages — no longer registered', () => {
-  it('POST returns 404', async () => {
+const anthropicBody = {
+  model: 'claude-sonnet-4-5-20250929',
+  max_tokens: 32,
+  messages: [{ role: 'user', content: 'hi' }],
+};
+
+describe('POST /proxy/v1/messages — feature flag', () => {
+  it('404 { error: "anthropic endpoint disabled" } when LLM_PROXY_ANTHROPIC_ENABLED is "false", even with a valid token', async () => {
+    process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'false';
+    const { token } = await grantTokenForStudent();
     const res = await request(app)
       .post('/proxy/v1/messages')
-      .send({ model: 'x' });
+      .set('x-api-key', token)
+      .send(anthropicBody);
     expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'anthropic endpoint disabled' });
+    expect(fakeForwarder.forwardAnthropicMessages).not.toHaveBeenCalled();
+    expect(fakeForwarder.forwardMessages).not.toHaveBeenCalled();
+  });
+
+  it('404 when disabled and unauthenticated (the flag check runs before auth)', async () => {
+    process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'false';
+    const res = await request(app).post('/proxy/v1/messages').send(anthropicBody);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('anthropic endpoint disabled');
+  });
+
+  it('GET /messages is 404 while disabled and 405 while enabled', async () => {
+    process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'false';
+    expect((await request(app).get('/proxy/v1/messages')).status).toBe(404);
+    delete process.env.LLM_PROXY_ANTHROPIC_ENABLED;
+    const res = await request(app).get('/proxy/v1/messages');
+    expect(res.status).toBe(405);
+    expect(res.headers.allow).toBe('POST');
+  });
+});
+
+describe('POST /proxy/v1/messages — authentication', () => {
+  it('401 with neither x-api-key nor Authorization', async () => {
+    const res = await request(app).post('/proxy/v1/messages').send(anthropicBody);
+    expect(res.status).toBe(401);
+    expect(fakeForwarder.forwardAnthropicMessages).not.toHaveBeenCalled();
+  });
+
+  it('401 for an unknown x-api-key token', async () => {
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('x-api-key', 'llmp_garbage')
+      .send(anthropicBody);
+    expect(res.status).toBe(401);
+  });
+
+  it('401 for an unknown bearer token', async () => {
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('Authorization', 'Bearer llmp_garbage')
+      .send(anthropicBody);
+    expect(res.status).toBe(401);
+  });
+
+  it('401 for a revoked token sent as x-api-key', async () => {
+    const { token, userId } = await grantTokenForStudent();
+    await registry.llmProxyTokens.revoke(userId, userId);
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('x-api-key', token)
+      .send(anthropicBody);
+    expect(res.status).toBe(401);
+  });
+
+  it('200 with x-api-key (ANTHROPIC_API_KEY style)', async () => {
+    const { token } = await grantTokenForStudent();
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('x-api-key', token)
+      .set('anthropic-version', '2023-06-01')
+      .send(anthropicBody);
+    expect(res.status).toBe(200);
+    expect(fakeForwarder.forwardAnthropicMessages).toHaveBeenCalledTimes(1);
+    expect(fakeForwarder.forwardMessages).not.toHaveBeenCalled();
+    const [req] = fakeForwarder.forwardAnthropicMessages.mock.calls[0];
+    expect(req.body).toEqual(anthropicBody);
+  });
+
+  it('200 with Authorization: Bearer (ANTHROPIC_AUTH_TOKEN style)', async () => {
+    const { token } = await grantTokenForStudent();
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('Authorization', `Bearer ${token}`)
+      .send(anthropicBody);
+    expect(res.status).toBe(200);
+    expect(fakeForwarder.forwardAnthropicMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('prefers the llmp_ x-api-key when Authorization carries a foreign token (Claude Code sends both)', async () => {
+    const { token } = await grantTokenForStudent();
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('x-api-key', token)
+      .set('Authorization', 'Bearer sk-ant-oat01-not-ours')
+      .send(anthropicBody);
+    expect(res.status).toBe(200);
+  });
+
+  it('429 "monthly budget" applies to this route too', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    await (prisma as any).llmProxyToken.update({
+      where: { id: tokenId },
+      data: { budget_usd: 0.01, spent_usd: 0.01 },
+    });
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('x-api-key', token)
+      .send(anthropicBody);
+    expect(res.status).toBe(429);
+    expect(res.body.error).toMatch(/^monthly budget of \$0\.01 reached; resets \d{4}-\d{2}-01$/);
+    expect(fakeForwarder.forwardAnthropicMessages).not.toHaveBeenCalled();
+  });
+
+  it('429 when the legacy token quota is exhausted', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    await (prisma as any).llmProxyToken.update({
+      where: { id: tokenId },
+      data: { tokens_used: 1_000_000, budget_usd: null },
+    });
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('Authorization', `Bearer ${token}`)
+      .send(anthropicBody);
+    expect(res.status).toBe(429);
+  });
+});
+
+describe('POST /proxy/v1/messages — forwarding and accounting', () => {
+  it('returns 503 when the forwarder reports not configured', async () => {
+    const { token } = await grantTokenForStudent();
+    forwarderState.configured = false;
+    const res = await request(app)
+      .post('/proxy/v1/messages')
+      .set('x-api-key', token)
+      .send(anthropicBody);
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/OPENROUTER_API_KEY/);
+    expect(fakeForwarder.forwardAnthropicMessages).not.toHaveBeenCalled();
+  });
+
+  it('passes the Anthropic usage report to recordUsage and writes a protocol=anthropic request row', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    forwarderState.lastUsage = { inputTokens: 25, outputTokens: 8, costUsd: 0.0009 };
+    const spy = vi.spyOn(registry.llmProxyTokens, 'recordUsage');
+    try {
+      await request(app)
+        .post('/proxy/v1/messages')
+        .set('x-api-key', token)
+        .send(anthropicBody)
+        .expect(200);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith(tokenId, {
+        inputTokens: 25,
+        outputTokens: 8,
+        costUsd: 0.0009,
+        modelRequested: 'claude-sonnet-4-5-20250929',
+        modelSent: 'deepseek/deepseek-v4-flash',
+        protocol: 'anthropic',
+        status: 200,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    await new Promise((r) => setTimeout(r, 10));
+
+    const row = await (prisma as any).llmProxyToken.findUnique({ where: { id: tokenId } });
+    expect(row.tokens_used).toBe(33);
+    expect(row.request_count).toBe(1);
+    expect(row.spent_usd).toBeCloseTo(0.0009, 12);
+    const requests = await (prisma as any).llmProxyRequest.findMany({ where: { token_id: tokenId } });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      protocol: 'anthropic',
+      model_requested: 'claude-sonnet-4-5-20250929',
+      model_sent: 'deepseek/deepseek-v4-flash',
+      input_tokens: 25,
+      output_tokens: 8,
+      cost_usd: 0.0009,
+      status: 200,
+    });
+  });
+
+  it('a null cost is estimated from TierPricing like the OpenAI path', async () => {
+    const { token, tokenId } = await grantTokenForStudent();
+    forwarderState.lastUsage = {
+      inputTokens: 1000,
+      outputTokens: 500,
+      costUsd: null,
+      modelSent: 'deepseek/deepseek-v4-pro',
+    };
+    await request(app)
+      .post('/proxy/v1/messages')
+      .set('x-api-key', token)
+      .send({ ...anthropicBody, model: 'claude-opus-4-1' })
+      .expect(200);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const pricing = new TierPricing();
+    const expected = pricing.costUsd(pricing.tierFor('deepseek/deepseek-v4-pro'), 1000, 500);
+    const requests = await (prisma as any).llmProxyRequest.findMany({ where: { token_id: tokenId } });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].cost_usd).toBeCloseTo(expected, 12);
+    expect(requests[0].protocol).toBe('anthropic');
+  });
+});
+
+describe('POST /proxy/v1/messages/count_tokens', () => {
+  it('404 JSON explaining that the upstream has no token-counting endpoint', async () => {
+    const { token } = await grantTokenForStudent();
+    const res = await request(app)
+      .post('/proxy/v1/messages/count_tokens')
+      .set('x-api-key', token)
+      .send(anthropicBody);
+    expect(res.status).toBe(404);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+    expect(res.body.error).toMatch(/count_tokens/);
+    expect(res.body.error).toMatch(/not supported/i);
+    expect(fakeForwarder.forwardAnthropicMessages).not.toHaveBeenCalled();
   });
 });
 
@@ -459,15 +729,17 @@ describe('/proxy/v1/messages — no longer registered', () => {
 // ---------------------------------------------------------------------------
 
 describe('CORS headers on /proxy/v1/*', () => {
-  it('does not include anthropic-specific headers in Access-Control-Allow-Headers', async () => {
+  it('allows the OpenAI and Anthropic SDK request headers (sprint 003)', async () => {
     const res = await request(app)
-      .options('/proxy/v1/chat/completions')
+      .options('/proxy/v1/messages')
       .set('Origin', 'https://example.com');
+    expect(res.status).toBe(204);
     const allowHeaders = res.headers['access-control-allow-headers'] ?? '';
-    expect(allowHeaders).not.toMatch(/anthropic-version/i);
-    expect(allowHeaders).not.toMatch(/anthropic-beta/i);
-    expect(allowHeaders).not.toMatch(/x-api-key/i);
     expect(allowHeaders).toMatch(/Content-Type/i);
     expect(allowHeaders).toMatch(/Authorization/i);
+    expect(allowHeaders).toMatch(/anthropic-version/i);
+    expect(allowHeaders).toMatch(/anthropic-beta/i);
+    expect(allowHeaders).toMatch(/x-api-key/i);
+    expect(res.headers['access-control-allow-origin']).toBe('*');
   });
 });

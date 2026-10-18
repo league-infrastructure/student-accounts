@@ -97,6 +97,8 @@ describe('POST /api/fleet/llm-token — success', () => {
       username: 'alice',
       api_key: expect.stringMatching(/^llmp_[A-Za-z0-9_-]+$/),
       base_url: 'https://student-accounts.jtlapp.net/proxy/v1',
+      // LLM_PROXY_ANTHROPIC_ENABLED defaults to 'true' since sprint 003 ticket 003.
+      anthropic_base_url: 'https://student-accounts.jtlapp.net/proxy',
       models: ['league-small', 'league-medium', 'league-large'],
       default_model: 'league-medium',
       token_limit: 1_000_000,
@@ -110,7 +112,6 @@ describe('POST /api/fleet/llm-token — success', () => {
       expires_at: expect.any(String),
       granted_at: expect.any(String),
     });
-    expect(res.body).not.toHaveProperty('anthropic_base_url');
 
     // period_resets_at is the first instant of next UTC month.
     const now = new Date();
@@ -135,7 +136,7 @@ describe('POST /api/fleet/llm-token — success', () => {
     expect(res.body.base_url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/proxy\/v1$/);
   });
 
-  it('includes anthropic_base_url only when LLM_PROXY_ANTHROPIC_ENABLED is "true"', async () => {
+  it('includes anthropic_base_url when LLM_PROXY_ANTHROPIC_ENABLED is "true"', async () => {
     await makeStudent('carol', 'pw-for-carol');
     process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'true';
     const res = await fetchToken(
@@ -145,6 +146,15 @@ describe('POST /api/fleet/llm-token — success', () => {
     expect(res.status).toBe(200);
     expect(res.body.anthropic_base_url).toBe('https://accounts.example.org/proxy');
     expect(res.body.base_url).toBe('https://accounts.example.org/proxy/v1');
+  });
+
+  it('omits anthropic_base_url when LLM_PROXY_ANTHROPIC_ENABLED is "false"', async () => {
+    await makeStudent('dave', 'pw-for-dave');
+    process.env.LLM_PROXY_ANTHROPIC_ENABLED = 'false';
+    const res = await fetchToken({ username: 'dave', password: 'pw-for-dave' });
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('anthropic_base_url');
+    expect(res.body.base_url).toMatch(/\/proxy\/v1$/);
   });
 
   it('returns the same api_key on a second call and creates only one token row', async () => {
