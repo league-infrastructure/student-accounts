@@ -26,6 +26,7 @@ import UserGroupsCard from './UserGroupsCard';
 import UserLlmProxyCard from './UserLlmProxyCard';
 import UserCredentialsCard from './UserCredentialsCard';
 import UserLaptopCard from './UserLaptopCard';
+import MergeWithDialog from './MergeWithDialog';
 import { isStudentLeagueEmail, isStaffLeagueEmail } from '../../lib/email-domain';
 
 // ---------------------------------------------------------------------------
@@ -302,6 +303,17 @@ export default function UserDetailPanel() {
           {user.cohort && (
             <span style={{ color: '#64748b', fontSize: 13 }}>· cohort: {user.cohort.name}</span>
           )}
+          <span style={{ marginLeft: 'auto' }}>
+            {/* Admin manual merge (sprint 002 "laptop accounts" T008) */}
+            <MergeWithDialog
+              userId={user.id}
+              userName={prettifyNameFromUser()}
+              onMerged={(survivorId) => {
+                queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+                navigate(`/users/${survivorId}`);
+              }}
+            />
+          </span>
         </div>
         <div style={{ marginTop: 10, fontSize: 13 }}>
           <div style={{ color: '#64748b', marginBottom: 4 }}>Email addresses</div>

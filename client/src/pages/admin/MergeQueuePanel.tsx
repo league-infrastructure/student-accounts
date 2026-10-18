@@ -6,7 +6,12 @@
  *     "Review" button per row.
  *  2. Detail view — side-by-side user comparison with Approve / Reject / Defer
  *     actions.  Approve requires selecting a survivor; the confirmation dialog
- *     warns that the other user will be deactivated.
+ *     warns that the other user will be deactivated and lists what it loses
+ *     under the chosen survivor (`describeLosses`, sprint 002 T008).
+ *
+ * Per-user columns (sprint 002 T008): username, created via / laptop host,
+ * active LLM proxy token usage, group memberships — the facts that decide a
+ * laptop-import merge.
  *
  * Navigation between views uses local React state rather than URL params so
  * the parent route stays simple (/admin/merge-queue).
@@ -47,11 +52,26 @@ interface ExternalAccountEntry {
   status: string;
 }
 
-interface UserDetail {
+export interface ProxyTokenSummary {
+  tokens_used: number;
+  token_limit: number;
+}
+
+export interface UserDetail {
   id: number;
   display_name: string;
   primary_email: string;
   cohort_id: number | null;
+  is_active?: boolean;
+  /** Login username (also the laptop login id). */
+  username: string | null;
+  created_via: string;
+  /** Laptop that created the roster entry (from the username Login payload). */
+  created_host: string | null;
+  /** Active LLM proxy token, or null. */
+  llm_proxy_token: ProxyTokenSummary | null;
+  /** Group names. */
+  groups: string[];
   logins: LoginEntry[];
   external_accounts: ExternalAccountEntry[];
 }
@@ -66,6 +86,51 @@ interface MergeSuggestionDetail {
   decided_by: number | null;
   decided_at: string | null;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// What the non-survivor loses (mirrors MergeSuggestionService.approve rules)
+// ---------------------------------------------------------------------------
+
+const LIVE_EXTERNAL_STATUSES = new Set(['pending', 'active']);
+
+/**
+ * Human-readable list of what `nonSurvivor` loses when merged into
+ * `survivor`. Everything not listed here is moved to the survivor. Empty
+ * when nothing is dropped.
+ */
+export function describeLosses(survivor: UserDetail, nonSurvivor: UserDetail): string[] {
+  const out: string[] = [];
+
+  if (nonSurvivor.username && survivor.username) {
+    out.push(
+      `username ${nonSurvivor.username} is dropped; survivor keeps ${survivor.username} ` +
+        `(the laptop login ${nonSurvivor.username} is locked)`,
+    );
+  }
+
+  if (nonSurvivor.llm_proxy_token && survivor.llm_proxy_token) {
+    out.push(
+      `LLM proxy token is revoked; its ${nonSurvivor.llm_proxy_token.tokens_used.toLocaleString()} ` +
+        `tokens of usage are added to the survivor's token`,
+    );
+  }
+
+  const survivorLiveTypes = new Set(
+    survivor.external_accounts.filter((a) => LIVE_EXTERNAL_STATUSES.has(a.status)).map((a) => a.type),
+  );
+  for (const account of nonSurvivor.external_accounts) {
+    if (LIVE_EXTERNAL_STATUSES.has(account.status) && survivorLiveTypes.has(account.type)) {
+      out.push(`${account.type} account is marked removed; survivor keeps its own`);
+    }
+  }
+
+  const shared = nonSurvivor.groups.filter((g) => survivor.groups.includes(g));
+  if (shared.length > 0) {
+    out.push(`duplicate membership in ${shared.join(', ')} is dropped (survivor is already a member)`);
+  }
+
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -389,7 +454,8 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
       {/* Survivor selector instructions */}
       <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 16px' }}>
         Select the survivor above, then click Approve Merge.  The other user will be
-        deactivated and their logins will be transferred to the survivor.
+        deactivated; their logins, external accounts, groups, proxy token and
+        credentials move to the survivor.
       </p>
 
       {/* Action buttons */}
@@ -431,6 +497,7 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
         <ConfirmDialog
           survivorName={survivorUser.display_name}
           nonSurvivorName={nonSurvivorUser.display_name}
+          losses={describeLosses(survivorUser, nonSurvivorUser)}
           isPending={approveMutation.isPending}
           onConfirm={handleConfirmApprove}
           onCancel={() => setShowConfirm(false)}
@@ -455,7 +522,7 @@ interface UserCardProps {
 
 function UserCard({ label, user, selected, onSelect, radioName, radioValue }: UserCardProps) {
   return (
-    <div style={userCardStyle(selected)}>
+    <div style={userCardStyle(selected)} data-testid={`merge-user-${user.id}`}>
       <div style={userCardHeaderStyle}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
           <input
@@ -475,6 +542,20 @@ function UserCard({ label, user, selected, onSelect, radioName, radioValue }: Us
       <div style={userCardBodyStyle}>
         <Field label="Name" value={user.display_name} />
         <Field label="Email" value={user.primary_email} />
+        <Field label="Username" value={user.username ?? '—'} />
+        <Field
+          label="Created via"
+          value={user.created_host ? `${user.created_via} (laptop ${user.created_host})` : user.created_via}
+        />
+        <Field
+          label="LLM proxy token"
+          value={
+            user.llm_proxy_token
+              ? `active — ${user.llm_proxy_token.tokens_used.toLocaleString()} / ${user.llm_proxy_token.token_limit.toLocaleString()} tokens used`
+              : 'none'
+          }
+        />
+        <Field label="Groups" value={user.groups.length > 0 ? user.groups.join(', ') : '—'} />
         <Field label="Cohort ID" value={user.cohort_id !== null ? String(user.cohort_id) : '—'} />
 
         <div style={{ marginTop: 10 }}>
@@ -531,6 +612,8 @@ function Field({ label, value }: { label: string; value: string }) {
 interface ConfirmDialogProps {
   survivorName: string;
   nonSurvivorName: string;
+  /** From `describeLosses`; empty when nothing is dropped. */
+  losses: string[];
   isPending: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -539,6 +622,7 @@ interface ConfirmDialogProps {
 function ConfirmDialog({
   survivorName,
   nonSurvivorName,
+  losses,
   isPending,
   onConfirm,
   onCancel,
@@ -549,11 +633,25 @@ function ConfirmDialog({
         <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>
           Confirm Merge
         </h3>
-        <p style={{ fontSize: 14, color: '#334155', margin: '0 0 16px' }}>
+        <p style={{ fontSize: 14, color: '#334155', margin: '0 0 12px' }}>
           This will merge the two accounts. <strong>{nonSurvivorName}</strong> will be
-          deactivated and their logins will be transferred to{' '}
-          <strong>{survivorName}</strong>. This action cannot be undone.
+          deactivated; their logins, external accounts, groups, proxy token and
+          credentials move to <strong>{survivorName}</strong>. This action cannot be undone.
         </p>
+        <div style={{ fontSize: 13, color: '#334155', margin: '0 0 16px' }} data-testid="merge-losses">
+          {losses.length === 0 ? (
+            <span>Nothing is dropped: {nonSurvivorName} has nothing that conflicts with {survivorName}.</span>
+          ) : (
+            <>
+              <span style={{ fontWeight: 600 }}>{nonSurvivorName} loses:</span>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                {losses.map((loss) => (
+                  <li key={loss}>{loss}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button
             style={cancelButtonStyle}

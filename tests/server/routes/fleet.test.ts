@@ -28,8 +28,11 @@ const GENERIC_401 = { error: 'Invalid username or password' };
 async function cleanDb(): Promise<void> {
   await (prisma as any).auditEvent.deleteMany();
   await (prisma as any).llmProxyToken.deleteMany();
+  await (prisma as any).mergeSuggestion.deleteMany();
   await (prisma as any).userGroup.deleteMany();
   await (prisma as any).group.deleteMany();
+  // ExternalAccount restricts User deletes; a preceding file may leave rows.
+  await (prisma as any).externalAccount.deleteMany();
   await (prisma as any).login.deleteMany();
   await (prisma as any).user.deleteMany();
   await (prisma as any).cohort.deleteMany();

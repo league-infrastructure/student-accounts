@@ -1,16 +1,25 @@
 /**
- * MergeScanService — real Haiku-powered similarity scanner.
- * Sprint 007, T003.
+ * MergeScanService — rule-based pass plus the Haiku-powered similarity scanner.
+ * Sprint 007, T003; deterministic rules added in sprint 002 T008.
  *
- * Called after every new User creation (social_login or pike13_sync). Compares
- * the new user against all existing active non-staff users, calls the Haiku AI
- * model to evaluate pairwise similarity, and inserts MergeSuggestion rows for
- * pairs whose confidence score meets or exceeds the threshold.
+ * Called after every new User creation (social_login, pike13_sync,
+ * laptop_import). Compares the new user against all existing active non-staff
+ * users: first with cheap deterministic rules (`ruleMatch`), then by calling
+ * the Haiku AI model for the remaining pairs, and inserts MergeSuggestion rows
+ * for pairs whose confidence score meets or exceeds the threshold.
  *
- * Rules:
+ * Rule-based pass (no LLM call for hits, confidence 1.0):
+ *  - `same username as email local part` — one user's `username` equals the
+ *    local part of the other's `primary_email` (case-insensitive). This is
+ *    the laptop-import case: roster id `alice` vs. `alice@gmail.com`.
+ *  - `same display name` — normalised display names match (lowercase,
+ *    whitespace collapsed, at least two tokens).
+ *  `ruleScanAll(createdVia)` backfills these rules over existing users.
+ *
+ * LLM pass rules:
  *  1. Skips entirely for role=staff users (no API calls).
  *  2. Skips entirely when no other active non-staff users exist.
- *  3. For each candidate pair, calls HaikuClient.evaluate().
+ *  3. For each remaining candidate pair, calls HaikuClient.evaluate().
  *  4. Confidence >= MERGE_SCAN_CONFIDENCE_THRESHOLD (default 0.6) → create row.
  *  5. Pair order is canonicalised: lower id → user_a_id.
  *  6. Unique-constraint violations (duplicate pair) are caught silently.
@@ -82,6 +91,190 @@ function tokensFor(displayName: string | null | undefined, email: string | null 
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Rule-based matching (sprint 002 T008)
+// ---------------------------------------------------------------------------
+
+export const RULE_SAME_USERNAME_LOCAL_PART = 'same username as email local part';
+export const RULE_SAME_DISPLAY_NAME = 'same display name';
+
+/** The User columns the rules look at. */
+export interface RuleUser {
+  id: number;
+  username?: string | null;
+  primary_email: string;
+  display_name: string;
+}
+
+/** Lowercase local part of an email address, or null when there is none. */
+export function emailLocalPart(email: string | null | undefined): string | null {
+  if (!email) return null;
+  const at = email.indexOf('@');
+  if (at <= 0) return null;
+  return email.slice(0, at).toLowerCase();
+}
+
+/**
+ * Display name normalised for comparison: lowercase, whitespace collapsed.
+ * Returns null for names with fewer than two tokens (a lone first name is
+ * not identity evidence).
+ */
+export function normalizeDisplayName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const tokens = name.toLowerCase().split(/\s+/).filter((t) => t.length > 0);
+  if (tokens.length < 2) return null;
+  return tokens.join(' ');
+}
+
+/**
+ * Deterministic match between two users; returns the rationale or null.
+ * Checked in both directions so a Google sign-up after the laptop import
+ * finds the imported user just as the import finds the Google user.
+ */
+export function ruleMatch(a: RuleUser, b: RuleUser): string | null {
+  const aUsername = a.username?.toLowerCase() ?? null;
+  const bUsername = b.username?.toLowerCase() ?? null;
+  if (aUsername && aUsername === emailLocalPart(b.primary_email)) {
+    return RULE_SAME_USERNAME_LOCAL_PART;
+  }
+  if (bUsername && bUsername === emailLocalPart(a.primary_email)) {
+    return RULE_SAME_USERNAME_LOCAL_PART;
+  }
+  const aName = normalizeDisplayName(a.display_name);
+  if (aName !== null && aName === normalizeDisplayName(b.display_name)) {
+    return RULE_SAME_DISPLAY_NAME;
+  }
+  return null;
+}
+
+/**
+ * Create a MergeSuggestion for the pair (canonical order) and its
+ * merge_suggestion_created audit event. Returns false when the pair already
+ * has a row (P2002) or the insert failed; never throws.
+ */
+async function createSuggestion(
+  prisma: any,
+  audit: AuditService,
+  newUserId: number,
+  candidateId: number,
+  confidence: number,
+  rationale: string,
+): Promise<boolean> {
+  const userAId = Math.min(newUserId, candidateId);
+  const userBId = Math.max(newUserId, candidateId);
+
+  try {
+    const suggestion = await MergeSuggestionRepository.create(prisma, {
+      user_a_id: userAId,
+      user_b_id: userBId,
+      haiku_confidence: confidence,
+      haiku_rationale: rationale,
+      status: 'pending',
+    });
+
+    logger.info(
+      { suggestionId: suggestion.id, userAId, userBId, confidence, rationale },
+      '[merge-scan] MergeSuggestion created.',
+    );
+
+    // Write audit event (best-effort; failure does not roll back suggestion).
+    try {
+      await audit.record(prisma, {
+        actor_user_id: null,
+        action: 'merge_suggestion_created',
+        target_user_id: newUserId,
+        target_entity_type: 'MergeSuggestion',
+        target_entity_id: String(suggestion.id),
+        details: { user_a_id: userAId, user_b_id: userBId, confidence, rationale },
+      });
+    } catch (auditErr) {
+      logger.error(
+        { suggestionId: suggestion.id, err: auditErr },
+        '[merge-scan] Failed to write merge_suggestion_created audit event.',
+      );
+    }
+    return true;
+  } catch (createErr: any) {
+    // Unique constraint violation (P2002 in Prisma) — silently skip.
+    if (
+      createErr?.code === 'P2002' ||
+      (createErr?.message as string | undefined)?.includes('Unique constraint')
+    ) {
+      logger.debug(
+        { userAId, userBId },
+        '[merge-scan] Duplicate pair (unique constraint) — skipping.',
+      );
+      return false;
+    }
+    logger.error(
+      { userId: newUserId, candidateId, err: createErr },
+      '[merge-scan] Unexpected error creating MergeSuggestion — skipping pair.',
+    );
+    return false;
+  }
+}
+
+/**
+ * Rule pass for `user` against `candidates`. Returns the ids of candidates
+ * that matched a rule (whether or not a row was created — an existing row
+ * for the pair also means the LLM need not look at it).
+ */
+async function rulePass(
+  user: RuleUser,
+  candidates: RuleUser[],
+  prisma: any,
+  audit: AuditService,
+): Promise<{ matched: Set<number>; created: number }> {
+  const matched = new Set<number>();
+  let created = 0;
+  for (const candidate of candidates) {
+    const rationale = ruleMatch(user, candidate);
+    if (!rationale) continue;
+    matched.add(candidate.id);
+    if (await createSuggestion(prisma, audit, user.id, candidate.id, 1.0, rationale)) {
+      created++;
+    }
+  }
+  return { matched, created };
+}
+
+export interface RuleScanAllResult {
+  /** Users with the given created_via that were scanned. */
+  scanned: number;
+  /** New MergeSuggestion rows created. */
+  created: number;
+}
+
+/**
+ * Backfill: run the rule pass for every active user with `created_via`
+ * against every other active non-staff user. Idempotent (existing pairs are
+ * skipped). No LLM calls.
+ */
+export async function ruleScanAll(
+  prisma: any,
+  audit: AuditService,
+  createdVia: string = 'laptop_import',
+): Promise<RuleScanAllResult> {
+  const subjects: RuleUser[] = await (prisma as any).user.findMany({
+    where: { created_via: createdVia, is_active: true, role: { not: 'staff' } },
+    select: { id: true, username: true, primary_email: true, display_name: true },
+    orderBy: { id: 'asc' },
+  });
+  const others: RuleUser[] = await (prisma as any).user.findMany({
+    where: { is_active: true, role: { not: 'staff' } },
+    select: { id: true, username: true, primary_email: true, display_name: true },
+  });
+
+  let created = 0;
+  for (const subject of subjects) {
+    const candidates = others.filter((o) => o.id !== subject.id);
+    const result = await rulePass(subject, candidates, prisma, audit);
+    created += result.created;
+  }
+  logger.info({ createdVia, scanned: subjects.length, created }, '[merge-scan] Rule backfill done.');
+  return { scanned: subjects.length, created };
+}
+
 /**
  * Build a UserSnapshot from a raw Prisma user row (with optional joined data).
  */
@@ -151,6 +344,17 @@ export async function mergeScanWithDeps(
     return;
   }
 
+  // Deterministic rules first (sprint 002 T008). Hits are recorded with
+  // confidence 1.0 and never sent to the LLM.
+  const rule = await rulePass(user, allCandidates, prisma, audit);
+  if (rule.matched.size > 0) {
+    logger.info(
+      { userId: user.id, ruleHits: rule.matched.size, created: rule.created },
+      '[merge-scan] Rule-based suggestions.',
+    );
+  }
+  const llmCandidates = allCandidates.filter((c) => !rule.matched.has(c.id));
+
   // Cheap pre-filter: when the candidate pool is large, only evaluate
   // candidates that share at least one lexical token with the new user.
   // A fresh user imported from Workspace/Pike13 typically has zero lexical
@@ -159,9 +363,9 @@ export async function mergeScanWithDeps(
   // fresh installs) the full scan is cheap and correctness-preserving.
   const PREFILTER_THRESHOLD_SIZE = 20;
   let candidates: any[];
-  if (allCandidates.length > PREFILTER_THRESHOLD_SIZE) {
+  if (llmCandidates.length > PREFILTER_THRESHOLD_SIZE) {
     const newTokens = tokensFor(user.display_name, user.primary_email);
-    candidates = allCandidates.filter((c) => {
+    candidates = llmCandidates.filter((c) => {
       if (c.primary_email?.toLowerCase() === user.primary_email?.toLowerCase()) {
         return true;
       }
@@ -174,13 +378,13 @@ export async function mergeScanWithDeps(
     logger.info(
       {
         userId: user.id,
-        totalCandidates: allCandidates.length,
+        totalCandidates: llmCandidates.length,
         afterPrefilter: candidates.length,
       },
       '[merge-scan] Candidate pre-filter applied.',
     );
   } else {
-    candidates = allCandidates;
+    candidates = llmCandidates;
   }
 
   if (candidates.length === 0) {
@@ -232,56 +436,6 @@ export async function mergeScanWithDeps(
       continue;
     }
 
-    // Canonicalise pair order: lower id first.
-    const userAId = Math.min(user.id, candidate.id);
-    const userBId = Math.max(user.id, candidate.id);
-
-    try {
-      const suggestion = await MergeSuggestionRepository.create(prisma, {
-        user_a_id: userAId,
-        user_b_id: userBId,
-        haiku_confidence: confidence,
-        haiku_rationale: rationale,
-        status: 'pending',
-      });
-
-      logger.info(
-        { suggestionId: suggestion.id, userAId, userBId, confidence },
-        '[merge-scan] MergeSuggestion created.',
-      );
-
-      // Write audit event (best-effort; failure does not roll back suggestion).
-      try {
-        await audit.record(prisma, {
-          actor_user_id: null,
-          action: 'merge_suggestion_created',
-          target_user_id: user.id,
-          target_entity_type: 'MergeSuggestion',
-          target_entity_id: String(suggestion.id),
-          details: { user_a_id: userAId, user_b_id: userBId, confidence },
-        });
-      } catch (auditErr) {
-        logger.error(
-          { suggestionId: suggestion.id, err: auditErr },
-          '[merge-scan] Failed to write merge_suggestion_created audit event.',
-        );
-      }
-    } catch (createErr: any) {
-      // Unique constraint violation (P2002 in Prisma) — silently skip.
-      if (
-        createErr?.code === 'P2002' ||
-        (createErr?.message as string | undefined)?.includes('Unique constraint')
-      ) {
-        logger.debug(
-          { userAId, userBId },
-          '[merge-scan] Duplicate pair (unique constraint) — skipping.',
-        );
-        continue;
-      }
-      logger.error(
-        { userId: user.id, candidateId: candidate.id, err: createErr },
-        '[merge-scan] Unexpected error creating MergeSuggestion — skipping pair.',
-      );
-    }
+    await createSuggestion(prisma, audit, user.id, candidate.id, confidence, rationale);
   }
 }

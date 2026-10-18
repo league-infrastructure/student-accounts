@@ -8,6 +8,8 @@
  *   POST /admin/merge-queue/:id/approve
  *   POST /admin/merge-queue/:id/reject
  *   POST /admin/merge-queue/:id/defer
+ *   POST /admin/merge-queue/rescan        (sprint 002 T008: rule-based backfill)
+ *   POST /admin/users/:id/merge           (sprint 002 T008: admin manual merge)
  *
  * requireAuth + requireRole('admin') are applied by the adminRouter before
  * this router is invoked — individual handlers do not re-apply those guards.
@@ -44,8 +46,28 @@ adminMergeQueueRouter.get(
 );
 
 // ---------------------------------------------------------------------------
+// POST /admin/merge-queue/rescan
+// Rule-based suggestion backfill over laptop-imported users (no LLM calls).
+// Declared before /merge-queue/:id so the literal segment wins.
+// Returns { scanned, created }.
+// ---------------------------------------------------------------------------
+
+adminMergeQueueRouter.post(
+  '/merge-queue/rescan',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await req.services.mergeSuggestions.rescan('laptop_import');
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // GET /admin/merge-queue/:id
-// Returns a single suggestion with full user data (Logins, ExternalAccounts).
+// Returns a single suggestion with full user data (Logins, ExternalAccounts,
+// username / created_via / created_host, active proxy token, group names).
 // ---------------------------------------------------------------------------
 
 adminMergeQueueRouter.get(
@@ -163,6 +185,56 @@ adminMergeQueueRouter.post(
       }
       await req.services.mergeSuggestions.defer(id);
       res.status(200).json({ ok: true });
+    } catch (err: any) {
+      if (err instanceof MergeConflictError) {
+        res.status(409).json({ error: err.message });
+        return;
+      }
+      if (err instanceof AppError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+      }
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /admin/users/:id/merge
+// Body: { otherUserId: number, survivorId: number }
+// Admin-initiated merge of :id with otherUserId: records a pending suggestion
+// (rationale "admin-initiated") and approves it in the same request.
+//   400 — bad ids, survivorId is neither user, same user
+//   404 — either user unknown
+//   409 — either user inactive, or the pair was already merged
+// Returns { ok: true, survivorId }.
+// ---------------------------------------------------------------------------
+
+adminMergeQueueRouter.post(
+  '/users/:id/merge',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = parseInt(String(req.params.id), 10);
+      if (isNaN(id)) {
+        res.status(400).json({ error: 'Invalid user id' });
+        return;
+      }
+      const { otherUserId, survivorId } = req.body as {
+        otherUserId?: unknown;
+        survivorId?: unknown;
+      };
+      if (typeof otherUserId !== 'number' || !Number.isInteger(otherUserId)) {
+        res.status(400).json({ error: 'otherUserId must be a number' });
+        return;
+      }
+      if (typeof survivorId !== 'number' || !Number.isInteger(survivorId)) {
+        res.status(400).json({ error: 'survivorId must be a number' });
+        return;
+      }
+
+      const actorId = (req.session as any).userId as number;
+      await req.services.mergeSuggestions.manualMerge(id, otherUserId, survivorId, actorId);
+      res.status(200).json({ ok: true, survivorId });
     } catch (err: any) {
       if (err instanceof MergeConflictError) {
         res.status(409).json({ error: err.message });

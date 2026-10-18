@@ -146,7 +146,9 @@ export class ServiceRegistry {
     this.users = new UserService(defaultPrisma, this.audit, this.laptopAccounts);
     this.logins = new LoginService(defaultPrisma, this.audit);
     this.externalAccounts = new ExternalAccountService(defaultPrisma, this.audit);
-    this.mergeSuggestions = new MergeSuggestionService(defaultPrisma);
+    // MergeSuggestionService — sprint 002 T008: reconciles the laptop roster
+    // for both users after an approved merge.
+    this.mergeSuggestions = new MergeSuggestionService(defaultPrisma, this.audit, this.laptopAccounts);
 
     // Build a Google Workspace Admin client if not provided. The client
     // constructor defers credential errors to first use, so missing env vars
